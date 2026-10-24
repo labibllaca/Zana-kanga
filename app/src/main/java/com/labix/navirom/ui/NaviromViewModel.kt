@@ -1,0 +1,2839 @@
+package com.labix.navirom.ui
+
+import android.app.Application
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.util.Log
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.labix.navirom.data.api.NaviromSubsonicClient
+import com.labix.navirom.data.cache.OfflineDownloadManager
+import com.labix.navirom.data.local.*
+import com.labix.navirom.data.lyrics.LyricsData
+import com.labix.navirom.data.lyrics.LyricsRepository
+import com.labix.navirom.data.model.*
+import com.labix.navirom.data.stats.ListeningStatsManager
+import com.labix.navirom.data.stats.ListeningStatsSummary
+import com.labix.navirom.player.AudioPlayerController
+import com.labix.navirom.player.wlan.*
+import com.labix.navirom.update.AppUpdateInfo
+import com.labix.navirom.update.UpdateManager
+import com.labix.navirom.update.UpdateState
+import com.labix.navirom.ui.util.TrackOrderingHelper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.net.wifi.WifiManager
+import java.net.Inet4Address
+import java.net.InetSocketAddress
+import java.net.NetworkInterface
+import java.net.Socket
+import java.util.Calendar
+import java.util.Locale
+import java.util.UUID
+
+enum class NaviromTab {
+    LIBRARY,
+    PLAYLISTS,
+    FOLDERS,
+    SEARCH,
+    SETTINGS
+}
+
+enum class LibrarySubTab {
+    OVERVIEW,
+    SONGS,
+    ALBUMS,
+    ARTISTS,
+    NEWEST,
+    QUICK_MIX,
+    RECENT,
+    LIBRARIES,
+    GENRES
+}
+
+enum class SongSortOrder {
+    NAME,
+    DURATION,
+    RECENTLY_ADDED,
+    ARTIST
+}
+
+data class ServerConnectionUiState(
+    val serverUrl: String = "",
+    val protocol: String = "http",
+    val host: String = "",
+    val port: String = "4533",
+    val username: String = "",
+    val password: String = "",
+    val useTokenAuth: Boolean = true,
+    val isConnecting: Boolean = false,
+    val connectionStatusMessage: String? = null,
+    val isConnected: Boolean = false,
+    val serverVersion: String? = null,
+    val musicFolders: List<com.labix.navirom.data.api.dto.MusicFolderDto> = emptyList(),
+    val selectedMusicFolderIds: Set<String> = emptySet(),
+    val alternativeHost: String = ""
+) {
+    val selectedMusicFolderId: String? get() = if (selectedMusicFolderIds.size == 1) selectedMusicFolderIds.first() else null
+}
+
+class NaviromViewModel(application: Application) : AndroidViewModel(application) {
+
+    companion object {
+        private const val TAG = "NaviromViewModel"
+    }
+
+    private val prefs = application.getSharedPreferences("navirom_prefs", Context.MODE_PRIVATE)
+
+    private val db = NaviromDatabase.getDatabase(application)
+    private val cachedTrackDao = db.cachedTrackDao()
+    private val playlistDao = db.playlistDao()
+    private val favoriteDao = db.favoriteDao()
+    private val serverConfigDao = db.serverConfigDao()
+    private val playbackHistoryDao = db.playbackHistoryDao()
+    private val lyricsDao = db.lyricsDao()
+    private val playbackQueueDao = db.playbackQueueDao()
+    private val recentSongsDao = db.recentSongsDao()
+
+    val subsonicClient = NaviromSubsonicClient()
+    val downloadManager = OfflineDownloadManager(application, cachedTrackDao)
+    val playerController = AudioPlayerController.getInstance(application)
+    val statsManager = ListeningStatsManager(playbackHistoryDao)
+    val lyricsRepository = LyricsRepository(application, lyricsDao, subsonicClient)
+    val recentSongsRepository = RecentSongsRepository(recentSongsDao)
+    val updateManager = UpdateManager(application)
+
+    val updateState: StateFlow<UpdateState> = updateManager.updateState
+    val autoCheckUpdates: StateFlow<Boolean> = updateManager.autoCheckEnabled
+    val updateGithubRepo: StateFlow<String> = updateManager.githubRepo
+    val lastUpdateCheckedTime: StateFlow<Long> = updateManager.lastCheckedTime
+
+    // Language & Theme states
+    private val _appLanguage = MutableStateFlow(
+        try {
+            AppLanguage.valueOf(prefs.getString("app_language", AppLanguage.ALBANIAN.name) ?: AppLanguage.ALBANIAN.name)
+        } catch (e: Exception) {
+            AppLanguage.ALBANIAN
+        }
+    )
+    val appLanguage: StateFlow<AppLanguage> = _appLanguage.asStateFlow()
+
+    private val _appThemeMode = MutableStateFlow(
+        try {
+            AppThemeMode.valueOf(prefs.getString("app_theme_mode", AppThemeMode.LIGHT.name) ?: AppThemeMode.LIGHT.name)
+        } catch (e: Exception) {
+            AppThemeMode.LIGHT
+        }
+    )
+    val appThemeMode: StateFlow<AppThemeMode> = _appThemeMode.asStateFlow()
+
+    private val _sleepTimerOptions = MutableStateFlow(
+        SleepTimerOptions(
+            disableBluetooth = prefs.getBoolean("sleep_timer_disable_bt", false),
+            disableWifi = prefs.getBoolean("sleep_timer_disable_wifi", false),
+            disableMobileData = prefs.getBoolean("sleep_timer_disable_mobile_data", false)
+        )
+    )
+    val sleepTimerOptions: StateFlow<SleepTimerOptions> = _sleepTimerOptions.asStateFlow()
+
+    // Current navigation state
+    private val _currentTab = MutableStateFlow(NaviromTab.LIBRARY)
+    val currentTab: StateFlow<NaviromTab> = _currentTab.asStateFlow()
+
+    // Initial Setup & Onboarding State
+    private val _hasCompletedInitialSetup = MutableStateFlow(
+        prefs.getBoolean("has_completed_initial_setup", false)
+    )
+    val hasCompletedInitialSetup: StateFlow<Boolean> = _hasCompletedInitialSetup.asStateFlow()
+
+    fun completeInitialSetup() {
+        _hasCompletedInitialSetup.value = true
+        prefs.edit().putBoolean("has_completed_initial_setup", true).apply()
+        // Automatically scan local storage after initial setup completion
+        scanLocalAudio()
+    }
+
+    fun resetInitialSetupForReplay() {
+        _hasCompletedInitialSetup.value = false
+    }
+
+    private val _librarySubTab = MutableStateFlow(LibrarySubTab.OVERVIEW)
+    val librarySubTab: StateFlow<LibrarySubTab> = _librarySubTab.asStateFlow()
+
+    private val _selectedAlbumId = MutableStateFlow<String?>(null)
+    val selectedAlbumId: StateFlow<String?> = _selectedAlbumId.asStateFlow()
+
+    private val _selectedPlaylistId = MutableStateFlow<String?>(null)
+    val selectedPlaylistId: StateFlow<String?> = _selectedPlaylistId.asStateFlow()
+
+    private val _selectedArtistId = MutableStateFlow<String?>(null)
+    val selectedArtistId: StateFlow<String?> = _selectedArtistId.asStateFlow()
+
+    private val _currentArtist = MutableStateFlow<NaviromArtist?>(null)
+    val currentArtist: StateFlow<NaviromArtist?> = _currentArtist.asStateFlow()
+
+    private val _currentArtistAlbums = MutableStateFlow<List<NaviromAlbum>>(emptyList())
+    val currentArtistAlbums: StateFlow<List<NaviromAlbum>> = _currentArtistAlbums.asStateFlow()
+
+    private val _currentArtistSongs = MutableStateFlow<List<NaviromTrack>>(emptyList())
+    val currentArtistSongs: StateFlow<List<NaviromTrack>> = _currentArtistSongs.asStateFlow()
+
+    private val _isLoadingArtistDetails = MutableStateFlow(false)
+    val isLoadingArtistDetails: StateFlow<Boolean> = _isLoadingArtistDetails.asStateFlow()
+
+    private val _isFullPlayerVisible = MutableStateFlow(false)
+    val isFullPlayerVisible: StateFlow<Boolean> = _isFullPlayerVisible.asStateFlow()
+
+    private val _isQueueSheetVisible = MutableStateFlow(false)
+    val isQueueSheetVisible: StateFlow<Boolean> = _isQueueSheetVisible.asStateFlow()
+
+    private val _isStatsScreenVisible = MutableStateFlow(false)
+    val isStatsScreenVisible: StateFlow<Boolean> = _isStatsScreenVisible.asStateFlow()
+
+    val wlanSpeakerState: StateFlow<WlanSpeakerState> = playerController.wlanSpeakerManager.wlanState
+
+    private val _isWlanCastSheetVisible = MutableStateFlow(false)
+    val isWlanCastSheetVisible: StateFlow<Boolean> = _isWlanCastSheetVisible.asStateFlow()
+
+    fun showWlanCastSheet() {
+        _isWlanCastSheetVisible.value = true
+        startWlanDiscovery()
+    }
+
+    fun hideWlanCastSheet() {
+        _isWlanCastSheetVisible.value = false
+    }
+
+    fun startWlanDiscovery() {
+        playerController.wlanSpeakerManager.startDiscovery()
+    }
+
+    fun connectToWlanSpeaker(device: WlanSpeakerDevice) {
+        playerController.wlanSpeakerManager.connectToDevice(device)
+    }
+
+    fun disconnectWlanSpeaker() {
+        playerController.wlanSpeakerManager.disconnect()
+    }
+
+    fun setWlanPlaybackMode(mode: WlanPlaybackMode) {
+        playerController.wlanSpeakerManager.setPlaybackMode(mode)
+    }
+
+    fun setWlanSpeakerVolume(vol: Float) {
+        playerController.wlanSpeakerManager.setSpeakerVolume(vol)
+    }
+
+    fun toggleWlanMute() {
+        playerController.wlanSpeakerManager.toggleMute()
+    }
+
+    fun addCustomWlanDevice(ip: String, port: Int, name: String) {
+        playerController.wlanSpeakerManager.addCustomDevice(ip, port, name)
+    }
+
+    // Astrolabe Radial Wheel System Mode
+    private val _isAstrolabeModeEnabled = MutableStateFlow(
+        prefs.getBoolean("astrolabe_mode_enabled", false)
+    )
+    val isAstrolabeModeEnabled: StateFlow<Boolean> = _isAstrolabeModeEnabled.asStateFlow()
+
+    fun setAstrolabeMode(enabled: Boolean) {
+        _isAstrolabeModeEnabled.value = enabled
+        prefs.edit().putBoolean("astrolabe_mode_enabled", enabled).apply()
+    }
+
+    fun toggleAstrolabeMode() {
+        setAstrolabeMode(!_isAstrolabeModeEnabled.value)
+    }
+
+    // Offline only mode toggle
+    private val _isOfflineOnlyMode = MutableStateFlow(false)
+    val isOfflineOnlyMode: StateFlow<Boolean> = _isOfflineOnlyMode.asStateFlow()
+
+    // Data lists
+    private val _albums = MutableStateFlow<List<NaviromAlbum>>(emptyList())
+    val albums: StateFlow<List<NaviromAlbum>> = _albums.asStateFlow()
+
+    private val _newestAlbums = MutableStateFlow<List<NaviromAlbum>>(emptyList())
+    val newestAlbums: StateFlow<List<NaviromAlbum>> = _newestAlbums.asStateFlow()
+
+    private val _mostPlayedAlbums = MutableStateFlow<List<NaviromAlbum>>(emptyList())
+    val mostPlayedAlbums: StateFlow<List<NaviromAlbum>> = _mostPlayedAlbums.asStateFlow()
+
+    private val _randomAlbums = MutableStateFlow<List<NaviromAlbum>>(emptyList())
+    val randomAlbums: StateFlow<List<NaviromAlbum>> = _randomAlbums.asStateFlow()
+
+    private val _newestTracks = MutableStateFlow<List<NaviromTrack>>(emptyList())
+    val newestTracks: StateFlow<List<NaviromTrack>> = _newestTracks.asStateFlow()
+
+    private val _artists = MutableStateFlow<List<NaviromArtist>>(emptyList())
+    val artists: StateFlow<List<NaviromArtist>> = _artists.asStateFlow()
+
+    private val _playlists = MutableStateFlow<List<NaviromPlaylist>>(emptyList())
+
+    private val _currentAlbumTracks = MutableStateFlow<List<NaviromTrack>>(emptyList())
+    val currentAlbumTracks: StateFlow<List<NaviromTrack>> = _currentAlbumTracks.asStateFlow()
+
+    private val _currentPlaylistTracks = MutableStateFlow<List<NaviromTrack>>(emptyList())
+    val currentPlaylistTracks: StateFlow<List<NaviromTrack>> = _currentPlaylistTracks.asStateFlow()
+
+    private val _quickMixTracks = MutableStateFlow<List<NaviromTrack>>(emptyList())
+    val quickMixTracks: StateFlow<List<NaviromTrack>> = _quickMixTracks.asStateFlow()
+
+    private val _rawLibrarySongs = MutableStateFlow<List<NaviromTrack>>(emptyList())
+
+    private val localAudioRepository = LocalAudioRepository(application)
+    private val _localTracks = MutableStateFlow<List<NaviromTrack>>(emptyList())
+    val localTracks: StateFlow<List<NaviromTrack>> = _localTracks.asStateFlow()
+
+    // All folders discovered on the device
+    private val _allDiscoveredLocalFolders = MutableStateFlow<List<LocalMusicFolder>>(emptyList())
+    val allDiscoveredLocalFolders: StateFlow<List<LocalMusicFolder>> = _allDiscoveredLocalFolders.asStateFlow()
+
+    // Settings: Folders enabled by the user in Settings (legacy compatibility)
+    private val _settingsEnabledLocalFolderIds = MutableStateFlow<Set<String>>(emptySet())
+    val settingsEnabledLocalFolderIds: StateFlow<Set<String>> = _settingsEnabledLocalFolderIds.asStateFlow()
+
+    // Local folders: directly uses all discovered folders, decoupled from settings
+    val localFolders: StateFlow<List<LocalMusicFolder>> = _allDiscoveredLocalFolders.asStateFlow()
+
+    // Folder view navigation state
+    val defaultMusicPath: String = localAudioRepository.getDefaultMusicDirectoryPath()
+    private val _currentMusicFolderPath = MutableStateFlow<String>(defaultMusicPath)
+    val currentMusicFolderPath: StateFlow<String> = _currentMusicFolderPath.asStateFlow()
+
+    fun navigateToMusicFolder(path: String) {
+        _currentMusicFolderPath.value = path
+    }
+
+    fun navigateUpMusicFolder(): Boolean {
+        val current = _currentMusicFolderPath.value
+        val defaultNorm = defaultMusicPath.trimEnd('/')
+        val currentNorm = current.trimEnd('/')
+        if (currentNorm == defaultNorm) {
+            return false
+        }
+        val parent = try { java.io.File(currentNorm).parentFile?.absolutePath } catch (_: Exception) { null }
+        return if (parent != null && parent.length >= "/storage/emulated/0".length) {
+            _currentMusicFolderPath.value = parent
+            true
+        } else {
+            _currentMusicFolderPath.value = defaultMusicPath
+            true
+        }
+    }
+
+    fun playFolder(folderPath: String, shuffle: Boolean = false) {
+        val tracksInFolder = getTracksUnderFolder(folderPath)
+        if (tracksInFolder.isNotEmpty()) {
+            if (shuffle) {
+                shuffleAll(tracksInFolder)
+            } else {
+                playAll(tracksInFolder, 0)
+            }
+        }
+    }
+
+    fun getTracksUnderFolder(folderPath: String): List<NaviromTrack> {
+        val normPath = folderPath.trimEnd('/')
+        return _localTracks.value.filter { track ->
+            val trackPath = track.path.trimEnd('/')
+            if (trackPath.isBlank()) false else {
+                trackPath.startsWith("$normPath/") || trackPath == normPath ||
+                    (try { java.io.File(trackPath).parentFile?.absolutePath?.trimEnd('/') == normPath } catch (_: Exception) { false })
+            }
+        }.sortedBy { it.title.lowercase() }
+    }
+
+    fun getFolderViewContent(path: String = _currentMusicFolderPath.value): FolderViewContent {
+        return localAudioRepository.getFolderViewContent(path, _localTracks.value)
+    }
+
+    // Playback active/inactive toggles for the sidebar and library
+    private val _disabledLocalFolderIds = MutableStateFlow<Set<String>>(
+        prefs.getStringSet("disabled_local_folder_ids", emptySet()) ?: emptySet()
+    )
+    val disabledLocalFolderIds: StateFlow<Set<String>> = _disabledLocalFolderIds.asStateFlow()
+
+    // Active tracks for playback: tracks from localFolders that are not disabled
+    val activeLocalTracks: StateFlow<List<NaviromTrack>> = combine(localFolders, _disabledLocalFolderIds) { folders, disabledIds ->
+        folders.filter { !disabledIds.contains(it.id) }.flatMap { it.tracks }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _isScanningLocalAudio = MutableStateFlow(false)
+    val isScanningLocalAudio: StateFlow<Boolean> = _isScanningLocalAudio.asStateFlow()
+
+    fun scanLocalAudio() {
+        viewModelScope.launch {
+            _isScanningLocalAudio.value = true
+            try {
+                val scanned = localAudioRepository.getLocalAudioTracks()
+                val folders = localAudioRepository.groupTracksIntoFolders(scanned)
+                    .filter { it.trackCount > 0 && it.tracks.isNotEmpty() }
+                _localTracks.value = scanned
+                _allDiscoveredLocalFolders.value = folders
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isScanningLocalAudio.value = false
+            }
+        }
+    }
+
+    // Settings local folder management
+    fun toggleSettingsLocalFolder(folderId: String) {
+        val current = _settingsEnabledLocalFolderIds.value.toMutableSet()
+        if (current.contains(folderId)) {
+            current.remove(folderId)
+        } else {
+            current.add(folderId)
+        }
+        _settingsEnabledLocalFolderIds.value = current
+        prefs.edit().putStringSet("settings_enabled_local_folder_ids", current).apply()
+    }
+
+    fun setSettingsLocalFolderEnabled(folderId: String, enabled: Boolean) {
+        val current = _settingsEnabledLocalFolderIds.value.toMutableSet()
+        if (enabled) {
+            current.add(folderId)
+        } else {
+            current.remove(folderId)
+        }
+        _settingsEnabledLocalFolderIds.value = current
+        prefs.edit().putStringSet("settings_enabled_local_folder_ids", current).apply()
+    }
+
+    fun selectAllSettingsLocalFolders() {
+        val allIds = _allDiscoveredLocalFolders.value.map { it.id }.toSet()
+        _settingsEnabledLocalFolderIds.value = allIds
+        prefs.edit().putStringSet("settings_enabled_local_folder_ids", allIds).apply()
+    }
+
+    fun deselectAllSettingsLocalFolders() {
+        _settingsEnabledLocalFolderIds.value = emptySet()
+        prefs.edit().putStringSet("settings_enabled_local_folder_ids", emptySet()).apply()
+    }
+
+    // Playback active/inactive toggling (Sidebar & Library)
+    fun toggleLocalFolder(folderId: String) {
+        val current = _disabledLocalFolderIds.value.toMutableSet()
+        if (current.contains(folderId)) {
+            current.remove(folderId) // Enable folder for playback
+        } else {
+            current.add(folderId) // Disable folder for playback
+        }
+        _disabledLocalFolderIds.value = current
+        prefs.edit().putStringSet("disabled_local_folder_ids", current).apply()
+    }
+
+    fun setLocalFolderEnabled(folderId: String, enabled: Boolean) {
+        val current = _disabledLocalFolderIds.value.toMutableSet()
+        if (enabled) {
+            current.remove(folderId)
+        } else {
+            current.add(folderId)
+        }
+        _disabledLocalFolderIds.value = current
+        prefs.edit().putStringSet("disabled_local_folder_ids", current).apply()
+    }
+
+    fun selectAllLocalFolders() {
+        _disabledLocalFolderIds.value = emptySet()
+        prefs.edit().putStringSet("disabled_local_folder_ids", emptySet()).apply()
+    }
+
+    fun deselectAllLocalFolders() {
+        val allIds = localFolders.value.map { it.id }.toSet()
+        _disabledLocalFolderIds.value = allIds
+        prefs.edit().putStringSet("disabled_local_folder_ids", allIds).apply()
+    }
+
+    val recentlyPlayedTracks: StateFlow<List<NaviromTrack>> = recentSongsRepository.getRecentlyPlayed(50)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val _songSortOrder = MutableStateFlow(SongSortOrder.NAME)
+    val songSortOrder: StateFlow<SongSortOrder> = _songSortOrder.asStateFlow()
+    private val _isSongSortReversed = MutableStateFlow(false)
+    val isSongSortReversed: StateFlow<Boolean> = _isSongSortReversed.asStateFlow()
+
+    val librarySongs: StateFlow<List<NaviromTrack>> = combine(
+        _rawLibrarySongs,
+        activeLocalTracks,
+        _songSortOrder,
+        _isSongSortReversed
+    ) { serverSongs, localSongs, order, isReversed ->
+        val combined = (serverSongs + localSongs).distinctBy { it.id }
+        val sorted = when (order) {
+            SongSortOrder.NAME -> combined.sortedBy { it.title.lowercase() }
+            SongSortOrder.DURATION -> combined.sortedByDescending { it.durationSeconds }
+            SongSortOrder.RECENTLY_ADDED -> combined // Order as received from newest/last input
+            SongSortOrder.ARTIST -> combined.sortedBy { it.artist.lowercase() }
+        }
+        if (isReversed) sorted.reversed() else sorted
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _shakeNotificationMessage = MutableStateFlow<String?>(null)
+    val shakeNotificationMessage: StateFlow<String?> = _shakeNotificationMessage.asStateFlow()
+
+    // Lyrics State
+    private val _currentLyrics = MutableStateFlow(LyricsData())
+    val currentLyrics: StateFlow<LyricsData> = _currentLyrics.asStateFlow()
+
+    // Listening Stats State
+    val listeningStats: StateFlow<ListeningStatsSummary> = statsManager.statsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ListeningStatsSummary())
+
+    // Focus Username event trigger
+    private val _focusUsernameTrigger = MutableStateFlow(0L)
+    val focusUsernameTrigger: StateFlow<Long> = _focusUsernameTrigger.asStateFlow()
+
+    fun requestFocusUsername() {
+        _focusUsernameTrigger.value = System.currentTimeMillis()
+    }
+
+    fun startAutoScanAndFocusUsername() {
+        setTab(NaviromTab.SETTINGS)
+        scanLocalNetwork()
+        requestFocusUsername()
+    }
+
+    // Search results
+    // Search history state
+    private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
+    val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _searchFocusTrigger = MutableStateFlow(0)
+    val searchFocusTrigger: StateFlow<Int> = _searchFocusTrigger.asStateFlow()
+
+    fun triggerSearchFocus() {
+        _searchFocusTrigger.value = _searchFocusTrigger.value + 1
+    }
+
+    private val _searchResults = MutableStateFlow<Triple<List<NaviromArtist>, List<NaviromAlbum>, List<NaviromTrack>>>(
+        Triple(emptyList(), emptyList(), emptyList())
+    )
+    val searchResults = _searchResults.asStateFlow()
+
+    private val _isSearching = MutableStateFlow(false)
+    val isSearching = _isSearching.asStateFlow()
+
+    val allServers: StateFlow<List<ServerConfigEntity>> = serverConfigDao.getAllServers()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Server connection state
+    private val _serverState = MutableStateFlow(ServerConnectionUiState())
+    val serverState: StateFlow<ServerConnectionUiState> = _serverState.asStateFlow()
+
+    // Offline cached tracks from Room
+    val cachedTracks: StateFlow<List<CachedTrackEntity>> = cachedTrackDao.getAllCachedTracks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val totalCacheSizeBytes: StateFlow<Long> = cachedTrackDao.getTotalCacheSizeBytes()
+        .map { it ?: 0L }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+
+    val favoriteIds: StateFlow<List<String>> = favoriteDao.getAllFavoriteTrackIds()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val favoriteTracks: StateFlow<List<NaviromTrack>> = favoriteDao.getAllFavoriteTracks()
+        .map { entities ->
+            entities.map { entity ->
+                NaviromTrack(
+                    id = entity.trackId,
+                    title = entity.title.ifBlank { "Track ${entity.trackId}" },
+                    artist = entity.artist.ifBlank { "Unknown Artist" },
+                    artistId = entity.artistId,
+                    album = entity.album.ifBlank { "Unknown Album" },
+                    albumId = entity.albumId,
+                    durationSeconds = entity.durationSeconds,
+                    coverArtId = entity.coverArtId,
+                    coverArtUrl = entity.coverArtUrl.ifBlank { subsonicClient.getCoverArtUrl(entity.coverArtId.ifBlank { entity.trackId }) },
+                    streamUrl = entity.streamUrl.ifBlank { subsonicClient.getStreamUrl(entity.trackId) },
+                    year = entity.year,
+                    genre = entity.genre,
+                    suffix = entity.suffix,
+                    isFavorite = true
+                )
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val playlists: StateFlow<List<NaviromPlaylist>> = combine(
+        _playlists,
+        favoriteTracks,
+        cachedTracks,
+        playlistDao.getAllLocalPlaylists()
+    ) { serverList, favs, cached, localList ->
+        val favoritePlaylist = NaviromPlaylist(
+            id = "favorites_dynamic_playlist_id",
+            name = "Favorite Songs",
+            comment = "Your favorite tracks",
+            songCount = favs.size,
+            durationSeconds = favs.sumOf { it.durationSeconds },
+            coverArt = "",
+            isLocal = true
+        )
+        val downloadedPlaylist = NaviromPlaylist(
+            id = "downloaded_dynamic_playlist_id",
+            name = "Downloaded Songs",
+            comment = "All downloaded offline tracks",
+            songCount = cached.size,
+            durationSeconds = cached.sumOf { it.durationSeconds },
+            coverArt = cached.firstOrNull()?.coverArtUrl ?: "",
+            isLocal = true
+        )
+        val localMapped = localList.map { local ->
+            NaviromPlaylist(
+                id = local.id,
+                name = local.name,
+                comment = local.comment,
+                songCount = local.songCount,
+                durationSeconds = local.durationSeconds,
+                coverArt = local.coverArtUrl,
+                isLocal = true
+            )
+        }
+        val customLocals = localMapped.filter { lp -> serverList.none { it.id == lp.id } }
+        listOf(favoritePlaylist, downloadedPlaylist) + customLocals + serverList
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val downloadStatuses = downloadManager.downloadStatusMap
+    val downloadProgresses = downloadManager.downloadProgressMap
+    val playbackState = playerController.playbackState
+    val currentQueue = playerController.queue
+    val currentQueueIndex = playerController.currentIndex
+
+    private var searchJob: Job? = null
+    private var lyricsJob: Job? = null
+    private var networkScanJob: Job? = null
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            checkConnectionState()
+        }
+        override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+            checkConnectionState()
+        }
+        override fun onLost(network: Network) {
+            checkConnectionState()
+        }
+    }
+
+    private val _isCrossfadeEnabled = MutableStateFlow(prefs.getBoolean("crossfade_enabled", false))
+    val isCrossfadeEnabled: StateFlow<Boolean> = _isCrossfadeEnabled.asStateFlow()
+
+    private val _crossfadeDurationSeconds = MutableStateFlow(prefs.getInt("crossfade_duration_seconds", 5))
+    val crossfadeDurationSeconds: StateFlow<Int> = _crossfadeDurationSeconds.asStateFlow()
+
+    private val _isVinylEffectEnabled = MutableStateFlow(prefs.getBoolean("vinyl_effect_enabled", true))
+    val isVinylEffectEnabled: StateFlow<Boolean> = _isVinylEffectEnabled.asStateFlow()
+
+    private val _isDualAudioEnabled = MutableStateFlow(prefs.getBoolean("dual_audio_enabled", false))
+    val isDualAudioEnabled: StateFlow<Boolean> = _isDualAudioEnabled.asStateFlow()
+
+    val secondaryPlaybackState: StateFlow<SecondaryPlaybackState> = playerController.secondaryPlaybackState
+    val isDeckSyncEnabled: StateFlow<Boolean> = playerController.isDeckSyncEnabled
+    val dualSpeakerMode: StateFlow<DualSpeakerMode> = playerController.dualSpeakerMode
+    val deckSyncBalance: StateFlow<Float> = playerController.deckSyncBalance
+    val availableOutputDevices: StateFlow<List<AudioOutputDevice>> = playerController.availableOutputDevices
+    val player1DeviceId: StateFlow<Int?> = playerController.player1DeviceId
+    val player2DeviceId: StateFlow<Int?> = playerController.player2DeviceId
+
+    init {
+        val savedSpeakerMode = try {
+            DualSpeakerMode.valueOf(prefs.getString("dual_speaker_mode", DualSpeakerMode.DUAL_STEREO.name) ?: DualSpeakerMode.DUAL_STEREO.name)
+        } catch (_: Exception) {
+            DualSpeakerMode.DUAL_STEREO
+        }
+        playerController.setDualSpeakerMode(savedSpeakerMode)
+        val savedBalance = prefs.getFloat("deck_sync_balance", 0.5f)
+        playerController.setDeckSyncBalance(savedBalance)
+
+        playerController.isCrossfadeEnabled = _isCrossfadeEnabled.value
+        playerController.crossfadeDurationMs = _crossfadeDurationSeconds.value * 1000L
+        playerController.urlResolver = { url -> subsonicClient.resolveUrl(url) }
+        playerController.smartShuffleProvider = { tracks -> smartShuffleTracks(tracks) }
+        loadSearchHistoryFromPrefs()
+        loadActiveServerConfig()
+        observePlaybackForLyricsAndStats()
+
+        val hasLocalAudioPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                getApplication(),
+                android.Manifest.permission.READ_MEDIA_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                getApplication(),
+                android.Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        if (hasLocalAudioPermission) {
+            scanLocalAudio()
+        }
+
+        try {
+            val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            cm?.registerNetworkCallback(request, networkCallback)
+        } catch (e: Exception) {
+            android.util.Log.w("NaviromViewModel", "Failed to register NetworkCallback", e)
+        }
+
+        // Sync favorite tracks and downloaded tracks in real-time when dynamic playlists are active
+        viewModelScope.launch {
+            combine(_selectedPlaylistId, favoriteTracks, cachedTracks) { selectedId, favList, cached ->
+                when (selectedId) {
+                    "favorites_dynamic_playlist_id" -> favList
+                    "downloaded_dynamic_playlist_id" -> cached.map { entity ->
+                        NaviromTrack(
+                            id = entity.id,
+                            title = entity.title,
+                            artist = entity.artist,
+                            artistId = entity.artistId,
+                            album = entity.album,
+                            albumId = entity.albumId,
+                            durationSeconds = entity.durationSeconds,
+                            coverArtUrl = entity.coverArtUrl,
+                            streamUrl = "",
+                            localFilePath = entity.localFilePath,
+                            year = entity.year,
+                            genre = entity.genre,
+                            bitRate = entity.bitRate,
+                            suffix = entity.format,
+                            isCached = true,
+                            sizeBytes = entity.fileSizeBytes
+                        )
+                    }
+                    else -> null
+                }
+            }.collect { matchedTracks ->
+                if (matchedTracks != null) {
+                    _currentPlaylistTracks.value = matchedTracks
+                }
+            }
+        }
+
+        // Automatic background update check on app launch
+        viewModelScope.launch {
+            delay(2500)
+            updateManager.checkForUpdates(isManual = false)
+        }
+
+        // Migrate/seed recently played songs from playback history if recent_songs table is empty
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val existing = recentSongsDao.getRecentSongs(1).firstOrNull()
+                if (existing.isNullOrEmpty()) {
+                    val history = playbackHistoryDao.getRecentHistory(50).firstOrNull()
+                    if (!history.isNullOrEmpty()) {
+                        history.distinctBy { it.trackId }.forEach { item ->
+                            recentSongsRepository.addSong(
+                                NaviromTrack(
+                                    id = item.trackId,
+                                    title = item.title,
+                                    artist = item.artist,
+                                    album = item.album,
+                                    coverArtUrl = item.coverArtUrl,
+                                    durationSeconds = item.durationSeconds
+                                )
+                            )
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun clearRecentlyPlayed() {
+        viewModelScope.launch {
+            recentSongsRepository.clearAll()
+        }
+    }
+
+    fun removeRecentlyPlayedTrack(trackId: String) {
+        viewModelScope.launch {
+            recentSongsRepository.removeSong(trackId)
+        }
+    }
+
+    fun checkForAppUpdates(isManual: Boolean = true) {
+        viewModelScope.launch {
+            updateManager.checkForUpdates(isManual = isManual)
+        }
+    }
+
+    fun downloadAndInstallUpdate(updateInfo: AppUpdateInfo) {
+        viewModelScope.launch {
+            updateManager.downloadAndInstall(updateInfo)
+        }
+    }
+
+    fun dismissAppUpdate() {
+        updateManager.dismissUpdate()
+    }
+
+    fun setAutoCheckUpdates(enabled: Boolean) {
+        updateManager.setAutoCheckEnabled(enabled)
+    }
+
+    fun setUpdateGithubRepo(repo: String) {
+        updateManager.setGithubRepo(repo)
+    }
+
+    private fun loadSearchHistoryFromPrefs() {
+        val saved = prefs.getString("search_history_items", "") ?: ""
+        if (saved.isNotBlank()) {
+            _searchHistory.value = saved.split("||").filter { it.isNotBlank() }
+        }
+    }
+
+    private fun saveSearchHistoryToPrefs(list: List<String>) {
+        prefs.edit().putString("search_history_items", list.joinToString("||")).apply()
+    }
+
+    fun addSearchQueryToHistory(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isBlank() || trimmed.length < 2) return
+        val current = _searchHistory.value
+        val updated = (listOf(trimmed) + current.filter { !it.equals(trimmed, ignoreCase = true) }).take(15)
+        _searchHistory.value = updated
+        saveSearchHistoryToPrefs(updated)
+    }
+
+    fun removeSearchHistoryItem(item: String) {
+        val updated = _searchHistory.value.filter { !it.equals(item, ignoreCase = true) }
+        _searchHistory.value = updated
+        saveSearchHistoryToPrefs(updated)
+    }
+
+    fun clearSearchHistory() {
+        _searchHistory.value = emptyList()
+        saveSearchHistoryToPrefs(emptyList())
+    }
+
+    private var lastLoggedTrackId: String? = null
+
+    fun recordTrackToHistory(track: NaviromTrack) {
+        if (track.id.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Persist to RecentSongs Room schema via repository
+                recentSongsRepository.addSong(track)
+
+                val calendar = Calendar.getInstance()
+                playbackHistoryDao.insertSession(
+                    PlaybackHistoryEntity(
+                        trackId = track.id,
+                        title = track.title,
+                        artist = track.artist,
+                        album = track.album,
+                        coverArtUrl = track.coverArtUrl,
+                        durationSeconds = track.durationSeconds,
+                        listenedSeconds = 1L,
+                        timestamp = System.currentTimeMillis(),
+                        dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK),
+                        hourOfDay = calendar.get(Calendar.HOUR_OF_DAY)
+                    )
+                )
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun observePlaybackForLyricsAndStats() {
+        // Instant logging & Auto-fetch lyrics on track change
+        viewModelScope.launch {
+            playbackState
+                .map { Pair(it.currentTrack, it.isBuffering) }
+                .distinctUntilChanged()
+                .collect { (track, isBuffering) ->
+                    if (track != null) {
+                        if (track.id != lastLoggedTrackId) {
+                            lastLoggedTrackId = track.id
+                            recordTrackToHistory(track)
+                        }
+                        if (!isBuffering && (track.durationSeconds > 0) && track.id != _currentLyrics.value.trackId) {
+                            fetchLyricsForTrack(track)
+                        }
+                    }
+                }
+        }
+
+        // Auto-record playback history for listening statistics
+        viewModelScope.launch {
+            var activeTrack: NaviromTrack? = null
+            var lastPositionMs: Long = 0L
+            var accumulatedPlaySeconds: Long = 0L
+
+            while (true) {
+                delay(2000) // check every 2 seconds
+                val state = playerController.playbackState.value
+                val track = state.currentTrack
+
+                if (track != null && state.isPlaying) {
+                    if (track.id != activeTrack?.id) {
+                        // Track changed: flush accumulated session for previous track
+                        if (activeTrack != null && accumulatedPlaySeconds >= 10) {
+                            statsManager.recordPlaybackSession(activeTrack, accumulatedPlaySeconds)
+                        }
+                        activeTrack = track
+                        lastPositionMs = state.currentPositionMs
+                        accumulatedPlaySeconds = 0L
+                    } else {
+                        val delta = (state.currentPositionMs - lastPositionMs).coerceAtLeast(0)
+                        if (delta in 500..4000) {
+                            accumulatedPlaySeconds += (delta / 1000).coerceAtLeast(1)
+                        }
+                        lastPositionMs = state.currentPositionMs
+                    }
+                } else {
+                    // Playback paused or stopped: flush accumulated session
+                    if (activeTrack != null && accumulatedPlaySeconds >= 10) {
+                        statsManager.recordPlaybackSession(activeTrack, accumulatedPlaySeconds)
+                        accumulatedPlaySeconds = 0L
+                    }
+                    if (!state.isPlaying) {
+                        lastPositionMs = state.currentPositionMs
+                    }
+                }
+            }
+        }
+    }
+
+    fun fetchLyricsForTrack(track: NaviromTrack, forceRefresh: Boolean = false) {
+        lyricsJob?.cancel()
+        lyricsJob = viewModelScope.launch {
+            _currentLyrics.value = LyricsData(trackId = track.id, isLoading = true)
+            // Check local file if downloaded
+            val localFile = downloadManager.getLocalFileForTrack(track.id)
+            val cachedFile = if (localFile.exists() && localFile.length() > 0) localFile.absolutePath else null
+            val lyrics = lyricsRepository.getLyricsForTrack(track, cachedFile, forceRefresh = forceRefresh)
+            _currentLyrics.value = lyrics
+        }
+    }
+
+    fun refetchCurrentLyrics() {
+        val track = playbackState.value.currentTrack ?: return
+        fetchLyricsForTrack(track, forceRefresh = true)
+    }
+
+    fun fetchLyricsFromTeksteShqip(customUrl: String? = null, track: NaviromTrack? = null) {
+        val targetTrack = track ?: playbackState.value.currentTrack ?: return
+        lyricsJob?.cancel()
+        lyricsJob = viewModelScope.launch {
+            _currentLyrics.value = LyricsData(trackId = targetTrack.id, isLoading = true)
+            val lyrics = lyricsRepository.fetchAndSaveTeksteShqipLyrics(targetTrack, customUrl)
+            _currentLyrics.value = lyrics
+        }
+    }
+
+    fun setStatsScreenVisible(visible: Boolean) {
+        _isStatsScreenVisible.value = visible
+    }
+
+    fun clearListeningStats() {
+        viewModelScope.launch {
+            statsManager.clearStats()
+        }
+    }
+
+    fun setLanguage(language: AppLanguage) {
+        _appLanguage.value = language
+        prefs.edit().putString("app_language", language.name).apply()
+    }
+
+    fun setCrossfadeEnabled(enabled: Boolean) {
+        _isCrossfadeEnabled.value = enabled
+        playerController.isCrossfadeEnabled = enabled
+        prefs.edit().putBoolean("crossfade_enabled", enabled).apply()
+    }
+
+    fun setCrossfadeDurationSeconds(seconds: Int) {
+        val clamped = seconds.coerceIn(1, 20)
+        _crossfadeDurationSeconds.value = clamped
+        playerController.crossfadeDurationMs = clamped * 1000L
+        prefs.edit().putInt("crossfade_duration_seconds", clamped).apply()
+    }
+
+    fun setVinylEffectEnabled(enabled: Boolean) {
+        _isVinylEffectEnabled.value = enabled
+        prefs.edit().putBoolean("vinyl_effect_enabled", enabled).apply()
+    }
+
+    fun setDualAudioEnabled(enabled: Boolean) {
+        _isDualAudioEnabled.value = enabled
+        prefs.edit().putBoolean("dual_audio_enabled", enabled).apply()
+        if (!enabled) {
+            playerController.stopSecondaryTrack()
+        }
+    }
+
+    fun setThemeMode(themeMode: AppThemeMode) {
+        _appThemeMode.value = themeMode
+        prefs.edit().putString("app_theme_mode", themeMode.name).apply()
+    }
+
+    private fun buildAlternativeUrl(protocol: String, alternativeHost: String, port: String): String {
+        return NaviromSubsonicClient.buildAlternativeUrl(protocol, alternativeHost, port)
+    }
+
+    private fun loadActiveServerConfig() {
+        viewModelScope.launch {
+            try {
+                serverConfigDao.pruneToLastThreeServers()
+            } catch (_: Exception) {}
+            val saved = serverConfigDao.getActiveServer()
+            if (saved != null && saved.serverUrl.isNotBlank()) {
+                val cleanUrl = saved.serverUrl.trim()
+                val parsedProto = if (cleanUrl.startsWith("https://", ignoreCase = true)) "https" else "http"
+                val stripped = cleanUrl.removePrefix("http://").removePrefix("https://").removePrefix("HTTP://").removePrefix("HTTPS://")
+                val parts = stripped.split(":")
+                val parsedHost = parts[0].substringBefore("/")
+                val parsedPort = if (parts.size > 1) parts[1].substringBefore("/") else ""
+                val savedFolderIds = when (val savedStr = saved.activeMusicFolderId) {
+                    null, "__ALL__" -> setOf("__ALL__")
+                    "__NONE__", "" -> emptySet()
+                    else -> savedStr.split(",").filter { it.isNotBlank() }.toSet()
+                }
+
+                _serverState.value = ServerConnectionUiState(
+                    serverUrl = saved.serverUrl,
+                    protocol = parsedProto,
+                    host = parsedHost,
+                    port = parsedPort,
+                    username = saved.username,
+                    password = saved.password,
+                    useTokenAuth = saved.useTokenAuth,
+                    selectedMusicFolderIds = savedFolderIds,
+                    isConnected = false,
+                    alternativeHost = saved.alternativeHost
+                )
+                subsonicClient.configure(
+                    serverUrl = saved.serverUrl,
+                    username = saved.username,
+                    password = saved.password,
+                    useTokenAuth = saved.useTokenAuth,
+                    alternativeServerUrl = buildAlternativeUrl(parsedProto, saved.alternativeHost, parsedPort)
+                )
+                subsonicClient.activeMusicFolderId = if (savedFolderIds.size == 1 && !savedFolderIds.contains("__ALL__")) savedFolderIds.first() else null
+                connectServer()
+            }
+        }
+    }
+
+    fun setTab(tab: NaviromTab) {
+        _currentTab.value = tab
+    }
+
+    fun setLibrarySubTab(subTab: LibrarySubTab) {
+        _librarySubTab.value = subTab
+    }
+
+    fun selectAlbum(albumId: String?) {
+        _selectedAlbumId.value = albumId
+        if (albumId != null) {
+            loadAlbumDetails(albumId)
+        } else {
+            _currentAlbumTracks.value = emptyList()
+        }
+    }
+
+    fun selectPlaylist(playlistId: String?) {
+        _selectedPlaylistId.value = playlistId
+        if (playlistId != null) {
+            loadPlaylistDetails(playlistId)
+        } else {
+            _currentPlaylistTracks.value = emptyList()
+        }
+    }
+
+    fun selectArtist(artistId: String?) {
+        _selectedArtistId.value = artistId
+        if (artistId != null) {
+            loadArtistDetails(artistId)
+        } else {
+            _currentArtist.value = null
+            _currentArtistAlbums.value = emptyList()
+            _currentArtistSongs.value = emptyList()
+        }
+    }
+
+    fun loadArtistDetails(artistId: String) {
+        viewModelScope.launch {
+            _isLoadingArtistDetails.value = true
+            try {
+                // 1. Get artist info & albums
+                val res = subsonicClient.getArtistDetails(artistId)
+                res.onSuccess { (artist, albums) ->
+                    _currentArtist.value = artist
+                    _currentArtistAlbums.value = albums
+                    
+                    // 2. Load songs from each album in parallel
+                    val allSongs = mutableListOf<NaviromTrack>()
+                    val deferredSongs = albums.map { album ->
+                        async(Dispatchers.IO) {
+                            subsonicClient.getAlbumDetails(album.id).getOrNull()?.second ?: emptyList()
+                        }
+                    }
+                    val songsList = deferredSongs.awaitAll()
+                    songsList.forEach { allSongs.addAll(it) }
+                    
+                    _currentArtistSongs.value = allSongs.distinctBy { it.id }.sortedBy { it.title.lowercase() }
+                }.onFailure {
+                    // Fallback to local/offline filtering
+                    val localArtist = _artists.value.find { it.id == artistId }
+                    if (localArtist != null) {
+                        _currentArtist.value = localArtist
+                        val localAlbums = _newestAlbums.value.filter { it.artistId == artistId || it.artist.equals(localArtist.name, ignoreCase = true) }
+                        _currentArtistAlbums.value = localAlbums
+                        
+                        val localSongs = _rawLibrarySongs.value.filter { it.artistId == artistId || it.artist.equals(localArtist.name, ignoreCase = true) }
+                        _currentArtistSongs.value = localSongs.sortedBy { it.title.lowercase() }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("NaviromViewModel", "Error loading artist details", e)
+            } finally {
+                _isLoadingArtistDetails.value = false
+            }
+        }
+    }
+
+    fun setFullPlayerVisible(show: Boolean) {
+        _isFullPlayerVisible.value = show
+    }
+
+    fun showFullPlayer(show: Boolean) {
+        _isFullPlayerVisible.value = show
+    }
+
+    fun setQueueSheetVisible(show: Boolean) {
+        _isQueueSheetVisible.value = show
+    }
+
+    fun showQueueSheet(show: Boolean) {
+        _isQueueSheetVisible.value = show
+    }
+
+    fun setOfflineOnlyMode(enabled: Boolean) {
+        _isOfflineOnlyMode.value = enabled
+    }
+
+    fun setServerConfig(server: ServerConfigEntity) {
+        val cleanUrl = server.serverUrl.trim()
+        val parsedProto = if (cleanUrl.startsWith("https://", ignoreCase = true)) "https" else "http"
+        val stripped = cleanUrl.removePrefix("http://").removePrefix("https://").removePrefix("HTTP://").removePrefix("HTTPS://")
+        val parts = stripped.split(":")
+        val parsedHost = parts[0].substringBefore("/")
+        val parsedPort = if (parts.size > 1) parts[1].substringBefore("/") else ""
+
+        val savedFolderIds = when (val savedStr = server.activeMusicFolderId) {
+            null, "__ALL__" -> setOf("__ALL__")
+            "__NONE__", "" -> emptySet()
+            else -> server.activeMusicFolderId.split(",").filter { it.isNotBlank() }.toSet()
+        }
+
+        _serverState.value = ServerConnectionUiState(
+            serverUrl = server.serverUrl,
+            protocol = parsedProto,
+            host = parsedHost,
+            port = parsedPort,
+            username = server.username,
+            password = server.password,
+            useTokenAuth = server.useTokenAuth,
+            selectedMusicFolderIds = savedFolderIds,
+            isConnected = false,
+            alternativeHost = server.alternativeHost
+        )
+    }
+
+    fun deleteServerConfig(server: ServerConfigEntity) {
+        viewModelScope.launch {
+            try {
+                serverConfigDao.deleteServer(server)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete server config", e)
+            }
+        }
+    }
+
+    fun updateServerConfig(
+        protocol: String,
+        host: String,
+        port: String,
+        username: String,
+        password: String,
+        useTokenAuth: Boolean,
+        alternativeHost: String = ""
+    ) {
+        val cleanHost = host.trim().removePrefix("http://").removePrefix("https://").removePrefix("HTTP://").removePrefix("HTTPS://")
+        val cleanAltHost = alternativeHost.trim().removePrefix("http://").removePrefix("https://").removePrefix("HTTP://").removePrefix("HTTPS://")
+        val fullUrl = if (port.isNotBlank()) {
+            "$protocol://$cleanHost:$port"
+        } else {
+            "$protocol://$cleanHost"
+        }
+        _serverState.update {
+            it.copy(
+                serverUrl = fullUrl,
+                protocol = protocol,
+                host = cleanHost,
+                port = port,
+                username = username,
+                password = password,
+                useTokenAuth = useTokenAuth,
+                alternativeHost = cleanAltHost
+            )
+        }
+    }
+
+    fun selectMusicFolder(folderId: String?) {
+        val newSelection = if (folderId == null) emptySet() else setOf(folderId)
+        setMusicFoldersSelection(newSelection)
+    }
+
+    fun toggleMusicFolder(folderId: String) {
+        val current = _serverState.value.selectedMusicFolderIds.toMutableSet()
+        val allFolderIds = _serverState.value.musicFolders.map { it.id }.toSet()
+
+        if (current.contains("__ALL__")) {
+            current.clear()
+            current.addAll(allFolderIds)
+        }
+
+        if (current.contains(folderId)) {
+            current.remove(folderId)
+        } else {
+            current.add(folderId)
+        }
+
+        val newSelection = if (allFolderIds.isNotEmpty() && current.size == allFolderIds.size) {
+            setOf("__ALL__")
+        } else {
+            current
+        }
+        setMusicFoldersSelection(newSelection)
+    }
+
+    fun selectAllMusicFolders() {
+        setMusicFoldersSelection(setOf("__ALL__"))
+    }
+
+    fun deselectAllMusicFolders() {
+        setMusicFoldersSelection(emptySet())
+    }
+
+    fun setMusicFoldersSelection(folderIds: Set<String>) {
+        _serverState.update { it.copy(selectedMusicFolderIds = folderIds) }
+        subsonicClient.activeMusicFolderId = when {
+            folderIds.isEmpty() -> null
+            folderIds.contains("__ALL__") -> null
+            folderIds.size == 1 -> folderIds.first()
+            else -> null
+        }
+        viewModelScope.launch {
+            val active = serverConfigDao.getActiveServer()
+            if (active != null) {
+                val folderString = when {
+                    folderIds.isEmpty() -> "__NONE__"
+                    folderIds.contains("__ALL__") -> "__ALL__"
+                    else -> folderIds.joinToString(",")
+                }
+                serverConfigDao.updateServer(
+                    active.copy(
+                        activeMusicFolderId = folderString
+                    )
+                )
+            }
+        }
+        if (_serverState.value.isConnected) {
+            syncLibrary()
+        }
+    }
+
+    
+    fun checkConnectionState() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val state = _serverState.value
+            val activeConfig = if (state.username.isBlank() || state.serverUrl.isBlank()) {
+                serverConfigDao.getActiveServer()
+            } else null
+
+            val user = if (state.username.isNotBlank()) state.username else activeConfig?.username ?: ""
+            val pass = if (state.password.isNotBlank()) state.password else activeConfig?.password ?: ""
+            val proto = if (state.protocol.isNotBlank()) state.protocol else "http"
+            val port = if (state.port.isNotBlank()) state.port else ""
+            val altHost = if (state.alternativeHost.isNotBlank()) state.alternativeHost else activeConfig?.alternativeHost ?: ""
+            val primaryUrl = if (state.serverUrl.isNotBlank()) state.serverUrl else activeConfig?.serverUrl ?: ""
+            val tokenAuth = state.useTokenAuth
+
+            // If credentials or server url are not provided, do not execute ping
+            if (user.isBlank() || (primaryUrl.isBlank() && altHost.isBlank())) {
+                return@launch
+            }
+
+            val constructedAltUrl = buildAlternativeUrl(proto, altHost, port)
+
+            subsonicClient.configure(
+                serverUrl = primaryUrl,
+                username = user,
+                password = pass,
+                useTokenAuth = tokenAuth,
+                alternativeServerUrl = constructedAltUrl
+            )
+
+            // Ping will automatically switch activeServerUrl to alternative if primary fails
+            val ping = subsonicClient.ping()
+            if (ping.isSuccess) {
+                val activeUrl = subsonicClient.activeServerUrl
+                withContext(Dispatchers.Main) {
+                    _serverState.update {
+                        it.copy(
+                            serverUrl = if (activeUrl.isNotBlank()) activeUrl else it.serverUrl,
+                            isConnected = true,
+                            username = user
+                        )
+                    }
+                    if (activeUrl.isNotBlank() && activeUrl != state.serverUrl) {
+                        syncLibrary()
+                    }
+                    // Continue/resume active search query if pending/present
+                    val currentQuery = _searchQuery.value
+                    if (currentQuery.isNotBlank() && !_isOfflineOnlyMode.value) {
+                        onSearchQueryChange(currentQuery)
+                    }
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    _serverState.update { it.copy(isConnected = false) }
+                }
+            }
+        }
+    }
+
+    fun isDeviceConnectedToNetwork(): Boolean {
+        val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        val activeNetwork = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(activeNetwork) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED)
+    }
+
+    private fun getDeviceLocalIpAddresses(): List<String> {
+        val localIps = LinkedHashSet<String>()
+
+        // 1. Highly reliable WifiManager extraction first to get the exact active Wi-Fi IP address
+        try {
+            val wm = getApplication<Application>().applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            val connectionInfo = wm?.connectionInfo
+            val ipAddress = connectionInfo?.ipAddress ?: 0
+            if (ipAddress != 0) {
+                val ipString = String.format(
+                    Locale.US,
+                    "%d.%d.%d.%d",
+                    ipAddress and 0xff,
+                    ipAddress shr 8 and 0xff,
+                    ipAddress shr 16 and 0xff,
+                    ipAddress shr 24 and 0xff
+                )
+                if (ipString != "0.0.0.0" && ipString.isNotBlank()) {
+                    localIps.add(ipString)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("NaviromViewModel", "Error reading IP from WifiManager", e)
+        }
+
+        // 2. ConnectivityManager fallback
+        try {
+            val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val activeNetwork = cm?.activeNetwork
+            if (activeNetwork != null) {
+                val linkProps = cm.getLinkProperties(activeNetwork)
+                if (linkProps != null) {
+                    for (linkAddress in linkProps.linkAddresses) {
+                        val inetAddr = linkAddress.address
+                        if (inetAddr is Inet4Address && !inetAddr.isLoopbackAddress) {
+                            val host = inetAddr.hostAddress ?: ""
+                            if (host.isNotBlank() && !host.startsWith("127.") && !host.startsWith("169.254.")) {
+                                localIps.add(host)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("NaviromViewModel", "Error reading IP from LinkProperties", e)
+        }
+
+        // 3. NetworkInterface fallback
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces != null && interfaces.hasMoreElements()) {
+                val ni = interfaces.nextElement()
+                if (!ni.isUp || ni.isLoopback) continue
+                val addresses = ni.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val addr = addresses.nextElement()
+                    if (addr is Inet4Address && !addr.isLoopbackAddress) {
+                        val hostAddr = addr.hostAddress ?: ""
+                        if (hostAddr.isNotBlank() && !hostAddr.startsWith("127.") && !hostAddr.startsWith("169.254.")) {
+                            localIps.add(hostAddr)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("NaviromViewModel", "Error reading IP from NetworkInterface", e)
+        }
+
+        // Sort the list of IPs to prioritize standard local ranges (192.168.x.x > 10.x.x.x / 172.x.x.x > others)
+        val sortedIps = localIps.toList().sortedWith { ip1, ip2 ->
+            val p1 = if (ip1.startsWith("192.168.")) 0 else if (ip1.startsWith("10.") || ip1.startsWith("172.")) 1 else 2
+            val p2 = if (ip2.startsWith("192.168.")) 0 else if (ip2.startsWith("10.") || ip2.startsWith("172.")) 1 else 2
+            p1.compareTo(p2)
+        }
+        return sortedIps
+    }
+
+    fun scanLocalNetwork() {
+        if (networkScanJob?.isActive == true) {
+            networkScanJob?.cancel()
+            networkScanJob = null
+            val isSq = _appLanguage.value == AppLanguage.ALBANIAN
+            _serverState.update {
+                it.copy(
+                    isConnecting = false,
+                    connectionStatusMessage = if (isSq) "Skanimi u ndalua nga përdoruesi." else "Scan stopped by user."
+                )
+            }
+            return
+        }
+
+        val isSq = _appLanguage.value == AppLanguage.ALBANIAN
+        if (!isDeviceConnectedToNetwork()) {
+            _serverState.update {
+                it.copy(
+                    isConnecting = false,
+                    connectionStatusMessage = if (isSq) 
+                        "⚠️ Nuk ka lidhje me rrjet! Ju lutem lidhni telefonin me Wi-Fi ose rrjet lokal për të përdorur skanimin automatik."
+                    else 
+                        "⚠️ No network connection! Please connect your phone to Wi-Fi or a local network to use auto-scan."
+                )
+            }
+            return
+        }
+
+        networkScanJob = viewModelScope.launch(Dispatchers.IO) {
+            val enteredPort = _serverState.value.port.trim().toIntOrNull() ?: 4533
+            val portsToScan = if (enteredPort != 4533) listOf(enteredPort, 4533) else listOf(4533)
+            val primaryPort = portsToScan.first()
+
+            // Step 1: Read active device IP address from OS
+            val deviceIps = getDeviceLocalIpAddresses()
+            if (deviceIps.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    _serverState.update {
+                        it.copy(
+                            isConnecting = false,
+                            connectionStatusMessage = if (isSq)
+                                "⚠️ Nuk u gjet asnjë adresë IP lokale nga sistemi! Ju lutem lidhni telefonin me Wi-Fi ose LAN."
+                            else
+                                "⚠️ Could not read local device IP from OS! Please connect phone to Wi-Fi or local LAN."
+                        )
+                    }
+                }
+                return@launch
+            }
+
+            // Step 2: Identify local subnet directly from device IP address(es)
+            val primaryDeviceIp = deviceIps.first()
+            val deviceSubnets = LinkedHashSet<String>()
+            for (ip in deviceIps) {
+                val parts = ip.split(".")
+                if (parts.size == 4) {
+                    deviceSubnets.add("${parts[0]}.${parts[1]}.${parts[2]}")
+                }
+            }
+
+            val primarySubnet = deviceSubnets.firstOrNull() ?: ""
+
+            val msgScanning = if (isSq)
+                "IP e pajisjes: $primaryDeviceIp | Subneti: $primarySubnet.x\nDuke kërkuar serverin Navidrome (Porta $primaryPort)..."
+            else
+                "Device IP: $primaryDeviceIp | Subnet: $primarySubnet.x\nSearching for Navidrome server (Port $primaryPort)..."
+
+            withContext(Dispatchers.Main) {
+                _serverState.update { it.copy(isConnecting = true, connectionStatusMessage = msgScanning) }
+            }
+
+            try {
+                // Step 3: Prioritize scanning within the identified device subnet
+                val candidateHosts = LinkedHashSet<String>()
+
+                val currentEnteredHost = _serverState.value.host.trim()
+                    .removePrefix("http://").removePrefix("https://").removePrefix("HTTP://").removePrefix("HTTPS://")
+                    .substringBefore(":").substringBefore("/")
+
+                val currentAltHost = _serverState.value.alternativeHost.trim()
+                    .removePrefix("http://").removePrefix("https://").removePrefix("HTTP://").removePrefix("HTTPS://")
+                    .substringBefore(":").substringBefore("/")
+
+                if (currentEnteredHost.isNotBlank()) candidateHosts.add(currentEnteredHost)
+                if (currentAltHost.isNotBlank()) candidateHosts.add(currentAltHost)
+
+                // High-probability router / gateway / static server addresses in identified device subnet(s)
+                for (subnet in deviceSubnets) {
+                    candidateHosts.add("$subnet.1")
+                    candidateHosts.add("$subnet.2")
+                    candidateHosts.add("$subnet.100")
+                    candidateHosts.add("$subnet.200")
+                    candidateHosts.add("$subnet.254")
+                }
+
+                var foundHost: String? = null
+                var foundPort: Int = primaryPort
+
+                // Phase 1: Direct priority probe on candidate hosts
+                for (targetPort in portsToScan) {
+                    if (foundHost != null) break
+                    for (host in candidateHosts) {
+                        try {
+                            Socket().use { socket ->
+                                socket.connect(InetSocketAddress(host, targetPort), 500)
+                                foundHost = host
+                                foundPort = targetPort
+                                break
+                            }
+                        } catch (_: Exception) { }
+                    }
+                }
+
+                // Phase 2: High-speed parallel sweep across all octets (1..254) in device subnet(s)
+                if (foundHost == null) {
+                    for (subnetPrefix in deviceSubnets) {
+                        if (foundHost != null) break
+                        for (targetPort in portsToScan) {
+                            if (foundHost != null) break
+                            for (chunk in (1..254).chunked(32)) {
+                                if (foundHost != null) break
+                                coroutineScope {
+                                    val jobs = chunk.map { lastOctet ->
+                                        async(Dispatchers.IO) {
+                                            val targetIp = "$subnetPrefix.$lastOctet"
+                                            if (deviceIps.contains(targetIp)) return@async null
+                                            try {
+                                                Socket().use { socket ->
+                                                    socket.connect(InetSocketAddress(targetIp, targetPort), 600)
+                                                    return@async targetIp
+                                                }
+                                            } catch (_: Exception) { }
+                                            null
+                                        }
+                                    }
+                                    val hit = jobs.awaitAll().firstOrNull { it != null }
+                                    if (hit != null) {
+                                        foundHost = hit
+                                        foundPort = targetPort
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Phase 3: Secondary backup check on other standard local subnets if not found in primary device subnet
+                if (foundHost == null) {
+                    val fallbackSubnets = listOf("192.168.1", "192.168.0", "192.168.178", "192.168.2", "192.168.86", "10.0.0")
+                        .filter { !deviceSubnets.contains(it) }
+
+                    for (fallbackPrefix in fallbackSubnets) {
+                        if (foundHost != null) break
+                        for (targetPort in portsToScan) {
+                            if (foundHost != null) break
+                            for (lastOctet in listOf(1, 2, 100, 200, 254)) {
+                                val targetIp = "$fallbackPrefix.$lastOctet"
+                                try {
+                                    Socket().use { socket ->
+                                        socket.connect(InetSocketAddress(targetIp, targetPort), 250)
+                                        foundHost = targetIp
+                                        foundPort = targetPort
+                                        break
+                                    }
+                                } catch (_: Exception) { }
+                            }
+                        }
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    if (foundHost != null) {
+                        _serverState.update {
+                            it.copy(
+                                host = foundHost!!,
+                                port = foundPort.toString(),
+                                isConnecting = false,
+                                connectionStatusMessage = if (isSq) 
+                                    "U gjet serveri Navidrome në $foundHost:$foundPort!" 
+                                else 
+                                    "Found Navidrome server at $foundHost:$foundPort!"
+                            )
+                        }
+                        connectServer()
+                    } else {
+                        _serverState.update {
+                            it.copy(
+                                isConnecting = false,
+                                connectionStatusMessage = if (isSq) 
+                                    "Nuk u gjet asnjë server Navidrome në subnetin $primarySubnet.x (Porta $primaryPort)." 
+                                else 
+                                    "No Navidrome server found on subnet $primarySubnet.x (Port $primaryPort)."
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _serverState.update {
+                        it.copy(
+                            isConnecting = false,
+                            connectionStatusMessage = if (isSq) "Skanimi dështoi: ${e.message}" else "Scan failed: ${e.message}"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun connectServer() {
+        val state = _serverState.value
+        val rawHost = state.host.trim().removePrefix("http://").removePrefix("https://").removePrefix("HTTP://").removePrefix("HTTPS://")
+        var cleanHost = rawHost
+        var cleanPort = state.port.trim()
+
+        if (cleanHost.contains(":")) {
+            val parts = cleanHost.split(":")
+            cleanHost = parts[0].substringBefore("/")
+            if (parts.size > 1 && parts[1].isNotBlank()) {
+                cleanPort = parts[1].substringBefore("/").trim()
+            }
+        }
+
+        if (cleanPort.isBlank()) {
+            cleanPort = "4533"
+        }
+
+        val fullUrl = "${state.protocol}://$cleanHost:$cleanPort"
+        val isSq = _appLanguage.value == AppLanguage.ALBANIAN
+
+        if (cleanHost.isBlank()) {
+            _serverState.update {
+                it.copy(
+                    connectionStatusMessage = if (isSq) "Ju lutemi vendosni IP ose adresën e serverit." else "Please enter a valid server host / IP."
+                )
+            }
+            return
+        }
+
+        _serverState.update {
+            it.copy(
+                host = cleanHost,
+                port = cleanPort,
+                isConnecting = true,
+                connectionStatusMessage = if (isSq) "Duke u lidhur me serverin $fullUrl..." else "Connecting to server $fullUrl...",
+                serverUrl = fullUrl
+            )
+        }
+
+        val altUrl = buildAlternativeUrl(state.protocol, state.alternativeHost, cleanPort)
+        subsonicClient.configure(
+            serverUrl = fullUrl,
+            username = state.username,
+            password = state.password,
+            useTokenAuth = state.useTokenAuth,
+            alternativeServerUrl = altUrl
+        )
+        subsonicClient.activeMusicFolderId = state.selectedMusicFolderId
+
+         viewModelScope.launch(Dispatchers.IO) {
+            val localSubnets = LinkedHashSet<String>()
+            try {
+                val interfaces = NetworkInterface.getNetworkInterfaces()
+                while (interfaces != null && interfaces.hasMoreElements()) {
+                    val ni = interfaces.nextElement()
+                    val addresses = ni.inetAddresses
+                    while (addresses.hasMoreElements()) {
+                        val addr = addresses.nextElement()
+                        if (addr is Inet4Address && !addr.isLoopbackAddress) {
+                            val hostAddr = addr.hostAddress ?: ""
+                            val parts = hostAddr.split(".")
+                            if (parts.size == 4) {
+                                localSubnets.add("${parts[0]}.${parts[1]}.${parts[2]}")
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            val enteredParts = cleanHost.split(".")
+            val enteredSubnet = if (enteredParts.size == 4) "${enteredParts[0]}.${enteredParts[1]}.${enteredParts[2]}" else ""
+            val primaryNotInLocal = enteredSubnet.isNotBlank() && localSubnets.isNotEmpty() && !localSubnets.contains(enteredSubnet)
+
+            var pingResult = Result.failure<String>(Exception("Not connected"))
+            var effectiveHost = cleanHost
+            var effectivePort = cleanPort
+
+            // If primary host is clearly not in local network and alternative host is configured, try alternative host FIRST (jump to alternative IP)
+            if (primaryNotInLocal && state.alternativeHost.isNotBlank()) {
+                val testAltUrl = buildAlternativeUrl(state.protocol, state.alternativeHost, cleanPort)
+                subsonicClient.configure(
+                    serverUrl = testAltUrl,
+                    username = state.username,
+                    password = state.password,
+                    useTokenAuth = state.useTokenAuth,
+                    alternativeServerUrl = fullUrl
+                )
+                val testPing = subsonicClient.ping()
+                if (testPing.isSuccess) {
+                    pingResult = testPing
+                    subsonicClient.activeServerUrl = testAltUrl
+                    effectiveHost = state.alternativeHost.trim().removePrefix("http://").removePrefix("https://").removePrefix("HTTP://").removePrefix("HTTPS://")
+                }
+            }
+
+            // If alternative ping wasn't tried or failed, try primary URL
+            if (pingResult.isFailure) {
+                subsonicClient.configure(
+                    serverUrl = fullUrl,
+                    username = state.username,
+                    password = state.password,
+                    useTokenAuth = state.useTokenAuth,
+                    alternativeServerUrl = altUrl
+                )
+                pingResult = subsonicClient.ping()
+                effectiveHost = cleanHost
+            }
+
+            // Try alternative URL ping if primary fails and we didn't try it already
+            if (pingResult.isFailure && !primaryNotInLocal && state.alternativeHost.isNotBlank()) {
+                val testAltUrl = buildAlternativeUrl(state.protocol, state.alternativeHost, cleanPort)
+                subsonicClient.configure(
+                    serverUrl = testAltUrl,
+                    username = state.username,
+                    password = state.password,
+                    useTokenAuth = state.useTokenAuth,
+                    alternativeServerUrl = fullUrl
+                )
+                val testPing = subsonicClient.ping()
+                if (testPing.isSuccess) {
+                    pingResult = testPing
+                    subsonicClient.activeServerUrl = testAltUrl
+                    effectiveHost = state.alternativeHost.trim().removePrefix("http://").removePrefix("https://").removePrefix("HTTP://").removePrefix("HTTPS://")
+                } else {
+                    subsonicClient.configure(
+                        serverUrl = fullUrl,
+                        username = state.username,
+                        password = state.password,
+                        useTokenAuth = state.useTokenAuth,
+                        alternativeServerUrl = testAltUrl
+                    )
+                }
+            }
+
+            // If initial ping and alternative ping failed, try fallback on default port 4533 (if different)
+            if (pingResult.isFailure && cleanPort != "4533") {
+                withContext(Dispatchers.Main) {
+                    _serverState.update {
+                        it.copy(connectionStatusMessage = if (isSq) "Duke kërkuar serverin në portën 4533..." else "Trying default port 4533...")
+                    }
+                }
+
+                val testUrl = "${state.protocol}://$cleanHost:4533"
+                subsonicClient.configure(
+                    serverUrl = testUrl,
+                    username = state.username,
+                    password = state.password,
+                    useTokenAuth = state.useTokenAuth,
+                    alternativeServerUrl = altUrl
+                )
+                val testPing = subsonicClient.ping()
+                if (testPing.isSuccess) {
+                    pingResult = testPing
+                    effectiveHost = cleanHost
+                    effectivePort = "4533"
+                }
+            }
+
+            val finalUrl = "${state.protocol}://$effectiveHost:$effectivePort"
+            withContext(Dispatchers.Main) {
+                pingResult.onSuccess { version ->
+                    _serverState.update {
+                        it.copy(
+                            host = effectiveHost,
+                            port = effectivePort,
+                            serverUrl = finalUrl,
+                            isConnecting = false,
+                            isConnected = true,
+                            serverVersion = version,
+                            connectionStatusMessage = if (isSq) "U lidh me sukses! (Versioni: $version)" else "Connected successfully! (Version: $version)"
+                        )
+                    }
+
+                    // Persist config to database - keep strictly only the last three different servers
+                    viewModelScope.launch {
+                        try {
+                            serverConfigDao.deactivateAllServers()
+                            val existing = serverConfigDao.getServerByUrl(finalUrl)
+                            val serverName = if (existing != null && existing.name.isNotBlank()) {
+                                existing.name
+                            } else {
+                                "Server ${effectiveHost}"
+                            }
+                            val entityToSave = (existing ?: ServerConfigEntity(name = serverName)).copy(
+                                name = serverName,
+                                serverUrl = finalUrl,
+                                username = state.username,
+                                password = state.password,
+                                useTokenAuth = state.useTokenAuth,
+                                isConnected = true,
+                                activeMusicFolderId = if (state.selectedMusicFolderIds.isEmpty()) null else state.selectedMusicFolderIds.joinToString(","),
+                                alternativeHost = state.alternativeHost,
+                                lastSyncTime = System.currentTimeMillis()
+                            )
+                            serverConfigDao.insertServer(entityToSave)
+                            serverConfigDao.pruneToLastThreeServers()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to persist server config to database", e)
+                        }
+                    }
+
+                    // Load music folders
+                    viewModelScope.launch {
+                        val foldersResult = subsonicClient.getMusicFolders()
+                        foldersResult.onSuccess { folders ->
+                            _serverState.update { it.copy(musicFolders = folders) }
+                        }
+                        syncLibrary()
+                    }
+                }.onFailure { err ->
+                    _serverState.update {
+                        it.copy(
+                            isConnecting = false,
+                            isConnected = false,
+                            connectionStatusMessage = if (isSq) "Lidhja dështoi: ${err.message ?: "Gabim i panjohur"}" else "Connection failed: ${err.message ?: "Unknown error"}"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun syncLibrary() {
+        viewModelScope.launch {
+            // Fetch Music Folders (Server Libraries)
+            val foldersRes = subsonicClient.getMusicFolders()
+            val folders = foldersRes.getOrDefault(emptyList())
+            if (folders.isNotEmpty()) {
+                _serverState.update { it.copy(musicFolders = folders) }
+            }
+
+            val selectedIds = _serverState.value.selectedMusicFolderIds
+
+            if (selectedIds.isEmpty()) {
+                // NO server folders selected: clear server catalog so only local files are used
+                subsonicClient.activeMusicFolderId = null
+                _albums.value = emptyList()
+                _newestAlbums.value = emptyList()
+                _mostPlayedAlbums.value = emptyList()
+                _randomAlbums.value = emptyList()
+                _artists.value = emptyList()
+                _playlists.value = emptyList()
+                _rawLibrarySongs.value = emptyList()
+                _quickMixTracks.value = emptyList()
+                _newestTracks.value = emptyList()
+                return@launch
+            }
+
+            if (selectedIds.contains("__ALL__") || (folders.isNotEmpty() && selectedIds.size >= folders.size)) {
+                // Unified catalog (all folders)
+                subsonicClient.activeMusicFolderId = null
+
+                // Fetch Albums
+                val albumsRes = subsonicClient.getAlbums(type = "newest", size = 150)
+                albumsRes.onSuccess { list ->
+                    _albums.value = list
+                    _newestAlbums.value = list.take(15)
+                }
+
+                // Fetch Artists
+                val artistsRes = subsonicClient.getArtists()
+                artistsRes.onSuccess { list ->
+                    _artists.value = list
+                }
+
+                // Fetch Playlists
+                val playlistsRes = subsonicClient.getPlaylists()
+                playlistsRes.onSuccess { list ->
+                    _playlists.value = list
+                }
+
+                // Fetch Frequent / Most Played Albums
+                val frequentRes = subsonicClient.getAlbums(type = "frequent", size = 20)
+                frequentRes.onSuccess { list ->
+                    _mostPlayedAlbums.value = if (list.isNotEmpty()) list else _albums.value.take(15)
+                }
+
+                // Fetch Random Albums for discovery
+                val randomRes = subsonicClient.getAlbums(type = "random", size = 20)
+                randomRes.onSuccess { list ->
+                    _randomAlbums.value = if (list.isNotEmpty()) list else _albums.value.shuffled().take(15)
+                }
+
+                // Fetch Quick Mix & Newly Added Tracks
+                val mixRes = subsonicClient.getRandomTracks(size = 30)
+                mixRes.onSuccess { list ->
+                    _quickMixTracks.value = list
+                    _newestTracks.value = list.take(20)
+                }
+
+                // Fetch Library Songs for All Songs list
+                val songsRes = subsonicClient.getLibrarySongs(size = 300)
+                songsRes.onSuccess { list ->
+                    _rawLibrarySongs.value = list
+                }
+
+                // Fetch Starred / Favorite Tracks from Subsonic server and sync into local Room DB
+                subsonicClient.getStarredTracks().onSuccess { starredTracks ->
+                    if (starredTracks.isNotEmpty()) {
+                        val entities = starredTracks.map { track ->
+                            FavoriteTrackEntity(
+                                trackId = track.id,
+                                title = track.title,
+                                artist = track.artist,
+                                artistId = track.artistId,
+                                album = track.album,
+                                albumId = track.albumId,
+                                durationSeconds = track.durationSeconds,
+                                coverArtId = track.coverArtId,
+                                coverArtUrl = track.coverArtUrl,
+                                streamUrl = track.streamUrl,
+                                year = track.year,
+                                genre = track.genre,
+                                suffix = track.suffix,
+                                starredAt = System.currentTimeMillis()
+                            )
+                        }
+                        favoriteDao.insertFavorites(entities)
+                    }
+                }
+            } else if (selectedIds.size == 1) {
+                // Single folder selected
+                val singleId = selectedIds.first()
+                subsonicClient.activeMusicFolderId = singleId
+
+                val albumsRes = subsonicClient.getAlbums(type = "newest", size = 150)
+                albumsRes.onSuccess { list ->
+                    _albums.value = list
+                    _newestAlbums.value = list.take(15)
+                }
+
+                val artistsRes = subsonicClient.getArtists()
+                artistsRes.onSuccess { list ->
+                    _artists.value = list
+                }
+
+                val playlistsRes = subsonicClient.getPlaylists()
+                playlistsRes.onSuccess { list ->
+                    _playlists.value = list
+                }
+
+                // Fetch Frequent / Most Played Albums
+                val frequentRes = subsonicClient.getAlbums(type = "frequent", size = 20)
+                frequentRes.onSuccess { list ->
+                    _mostPlayedAlbums.value = if (list.isNotEmpty()) list else _albums.value.take(15)
+                }
+
+                // Fetch Random Albums for discovery
+                val randomRes = subsonicClient.getAlbums(type = "random", size = 20)
+                randomRes.onSuccess { list ->
+                    _randomAlbums.value = if (list.isNotEmpty()) list else _albums.value.shuffled().take(15)
+                }
+
+                val mixRes = subsonicClient.getRandomTracks(size = 30)
+                mixRes.onSuccess { list ->
+                    _quickMixTracks.value = list
+                    _newestTracks.value = list.take(20)
+                }
+
+                val songsRes = subsonicClient.getLibrarySongs(size = 300)
+                songsRes.onSuccess { list ->
+                    _rawLibrarySongs.value = list
+                }
+            } else {
+                // Multi-library aggregate selection!
+                val mergedAlbums = mutableMapOf<String, NaviromAlbum>()
+                val mergedArtists = mutableMapOf<String, NaviromArtist>()
+                val mergedTracks = mutableMapOf<String, NaviromTrack>()
+                val mergedMix = mutableListOf<NaviromTrack>()
+
+                for (folderId in selectedIds) {
+                    subsonicClient.activeMusicFolderId = folderId
+                    subsonicClient.getAlbums(type = "newest", size = 100).onSuccess { list ->
+                        list.forEach { mergedAlbums[it.id] = it }
+                    }
+                    subsonicClient.getArtists().onSuccess { list ->
+                        list.forEach { mergedArtists[it.id] = it }
+                    }
+                    subsonicClient.getLibrarySongs(size = 150).onSuccess { list ->
+                        list.forEach { mergedTracks[it.id] = it }
+                    }
+                    subsonicClient.getRandomTracks(size = 20).onSuccess { list ->
+                        mergedMix.addAll(list)
+                    }
+                }
+
+                // Restore activeMusicFolderId to null for global actions
+                subsonicClient.activeMusicFolderId = null
+
+                val albumList = mergedAlbums.values.toList()
+                _albums.value = albumList
+                _newestAlbums.value = albumList.take(15)
+                _mostPlayedAlbums.value = albumList.take(15)
+                _randomAlbums.value = albumList.shuffled().take(15)
+                _artists.value = mergedArtists.values.sortedBy { it.name.lowercase() }
+                _rawLibrarySongs.value = mergedTracks.values.toList()
+                _quickMixTracks.value = mergedMix.distinctBy { it.id }.take(30)
+                _newestTracks.value = mergedMix.distinctBy { it.id }.take(20)
+
+                subsonicClient.getPlaylists().onSuccess { list ->
+                    _playlists.value = list
+                }
+            }
+
+            // Always fetch Starred / Favorite Tracks from Subsonic server and sync into local Room DB
+            subsonicClient.getStarredTracks().onSuccess { starredTracks ->
+                if (starredTracks.isNotEmpty()) {
+                    val entities = starredTracks.map { track ->
+                        FavoriteTrackEntity(
+                            trackId = track.id,
+                            title = track.title,
+                            artist = track.artist,
+                            artistId = track.artistId,
+                            album = track.album,
+                            albumId = track.albumId,
+                            durationSeconds = track.durationSeconds,
+                            coverArtId = track.coverArtId,
+                            coverArtUrl = track.coverArtUrl,
+                            streamUrl = track.streamUrl,
+                            year = track.year,
+                            genre = track.genre,
+                            suffix = track.suffix,
+                            starredAt = System.currentTimeMillis()
+                        )
+                    }
+                    favoriteDao.insertFavorites(entities)
+                }
+            }
+        }
+    }
+
+    fun refreshRandomAlbums() {
+        viewModelScope.launch {
+            val randomRes = subsonicClient.getAlbums(type = "random", size = 20)
+            randomRes.onSuccess { list ->
+                if (list.isNotEmpty()) {
+                    _randomAlbums.value = list
+                } else if (_albums.value.isNotEmpty()) {
+                    _randomAlbums.value = _albums.value.shuffled().take(15)
+                }
+            }.onFailure {
+                if (_albums.value.isNotEmpty()) {
+                    _randomAlbums.value = _albums.value.shuffled().take(15)
+                }
+            }
+        }
+    }
+
+    fun setSongSortOrder(order: SongSortOrder) {
+        if (_songSortOrder.value == order) {
+            _isSongSortReversed.value = !_isSongSortReversed.value
+        } else {
+            _songSortOrder.value = order
+            _isSongSortReversed.value = false
+        }
+    }
+
+    fun dismissShakeNotification() {
+        _shakeNotificationMessage.value = null
+    }
+
+    fun playRandomTrackFromCurrentLibrary() {
+        viewModelScope.launch {
+            val state = _serverState.value
+            val selectedIds = state.selectedMusicFolderIds
+            val folderName = when {
+                selectedIds.isEmpty() || (state.musicFolders.isNotEmpty() && selectedIds.size >= state.musicFolders.size) -> {
+                    if (_appLanguage.value == AppLanguage.ALBANIAN) "Të gjitha bibliotekat" else "All Libraries"
+                }
+                selectedIds.size == 1 -> {
+                    state.musicFolders.find { it.id == selectedIds.first() }?.name ?: "Library"
+                }
+                else -> {
+                    val names = state.musicFolders.filter { it.id in selectedIds }.map { it.name }
+                    if (names.isNotEmpty()) names.joinToString(", ") else "${selectedIds.size} Libraries"
+                }
+            }
+
+            // Prioritize candidate tracks in current library
+            var candidateTracks = _rawLibrarySongs.value
+            if (candidateTracks.isEmpty()) {
+                candidateTracks = _quickMixTracks.value
+            }
+            if (candidateTracks.isEmpty()) {
+                val randomFetch = subsonicClient.getRandomTracks(size = 20)
+                randomFetch.onSuccess {
+                    candidateTracks = it
+                    _rawLibrarySongs.value = it
+                }
+            }
+
+            if (candidateTracks.isNotEmpty()) {
+                val randomTrack = candidateTracks.random()
+                playTrack(randomTrack, candidateTracks)
+
+                val isSq = _appLanguage.value == AppLanguage.ALBANIAN
+                val msg = if (isSq) {
+                    "🎲 Lëkundje 2s! Po luhet '${randomTrack.title}' nga $folderName"
+                } else {
+                    "🎲 Shake 2s! Playing '${randomTrack.title}' from $folderName"
+                }
+                _shakeNotificationMessage.value = msg
+
+                // Clear notification after 4 seconds
+                delay(4000)
+                if (_shakeNotificationMessage.value == msg) {
+                    _shakeNotificationMessage.value = null
+                }
+            }
+        }
+    }
+
+    fun loadAlbumDetails(albumId: String) {
+        viewModelScope.launch {
+            val res = subsonicClient.getAlbumDetails(albumId)
+            res.onSuccess { (_, tracks) ->
+                _currentAlbumTracks.value = TrackOrderingHelper.sortAlbumTracks(tracks)
+            }.onFailure {
+                val rawMap = _rawLibrarySongs.value.associateBy { it.id }
+                val cached = cachedTracks.value.map { entity ->
+                    val orig = rawMap[entity.id]
+                    NaviromTrack(
+                        id = entity.id,
+                        title = entity.title,
+                        artist = entity.artist,
+                        artistId = entity.artistId,
+                        album = entity.album,
+                        albumId = entity.albumId,
+                        durationSeconds = entity.durationSeconds,
+                        coverArtId = orig?.coverArtId ?: "",
+                        coverArtUrl = entity.coverArtUrl,
+                        streamUrl = entity.localFilePath.ifBlank { subsonicClient.getStreamUrl(entity.id) },
+                        path = orig?.path ?: "",
+                        year = entity.year,
+                        genre = entity.genre,
+                        suffix = entity.format,
+                        trackNumber = orig?.trackNumber,
+                        discNumber = orig?.discNumber,
+                        isFavorite = true
+                    )
+                }
+                val localSongs = (cached + _rawLibrarySongs.value)
+                    .filter { it.albumId == albumId || (albumId.startsWith("local_") && it.album.equals(albumId.removePrefix("local_"), ignoreCase = true)) }
+                    .distinctBy { it.id }
+                if (localSongs.isNotEmpty()) {
+                    _currentAlbumTracks.value = TrackOrderingHelper.sortAlbumTracks(localSongs)
+                }
+            }
+        }
+    }
+
+    fun loadPlaylistDetails(playlistId: String) {
+        viewModelScope.launch {
+            if (playlistId == "favorites_dynamic_playlist_id") {
+                _currentPlaylistTracks.value = favoriteTracks.value
+            } else if (playlistId == "downloaded_dynamic_playlist_id") {
+                _currentPlaylistTracks.value = cachedTracks.value.map { entity ->
+                    NaviromTrack(
+                        id = entity.id,
+                        title = entity.title,
+                        artist = entity.artist,
+                        artistId = entity.artistId,
+                        album = entity.album,
+                        albumId = entity.albumId,
+                        durationSeconds = entity.durationSeconds,
+                        coverArtUrl = entity.coverArtUrl,
+                        streamUrl = "",
+                        localFilePath = entity.localFilePath,
+                        year = entity.year,
+                        genre = entity.genre,
+                        bitRate = entity.bitRate,
+                        suffix = entity.format,
+                        isCached = true,
+                        sizeBytes = entity.fileSizeBytes
+                    )
+                }
+            } else {
+                val localItems = playlistDao.getPlaylistItems(playlistId).firstOrNull()
+                if (!localItems.isNullOrEmpty()) {
+                    _currentPlaylistTracks.value = localItems.map { item ->
+                        NaviromTrack(
+                            id = item.trackId,
+                            title = item.title,
+                            artist = item.artist,
+                            album = item.album,
+                            durationSeconds = item.durationSeconds,
+                            coverArtUrl = item.coverArtUrl,
+                            streamUrl = item.streamUrl,
+                            localFilePath = item.localFilePath
+                        )
+                    }
+                } else {
+                    val res = subsonicClient.getPlaylistDetails(playlistId)
+                    res.onSuccess { (_, tracks) ->
+                        _currentPlaylistTracks.value = tracks
+                    }
+                }
+            }
+        }
+    }
+
+    private fun performLocalSearch(query: String): Triple<List<NaviromArtist>, List<NaviromAlbum>, List<NaviromTrack>> {
+        val cleanQuery = query.trim()
+        if (cleanQuery.isBlank()) return Triple(emptyList(), emptyList(), emptyList())
+
+        val tokens = cleanQuery.lowercase().split("\\s+".toRegex()).filter { it.isNotBlank() }
+
+        // 1. Artists search
+        val matchedArtists = _artists.value.filter { artist ->
+            val nameLower = artist.name.lowercase()
+            tokens.all { nameLower.contains(it) }
+        }
+
+        // 2. Albums search
+        val matchedAlbums = _albums.value.filter { album ->
+            val textToSearch = "${album.name} ${album.artist} ${album.genre} ${album.year ?: ""}".lowercase()
+            tokens.all { textToSearch.contains(it) }
+        }
+
+        // 3. Tracks search from all loaded tracks + cached tracks
+        val allLocalTracks = mutableMapOf<String, NaviromTrack>()
+
+        // Cached offline tracks
+        cachedTracks.value.forEach { entity ->
+            allLocalTracks[entity.id] = NaviromTrack(
+                id = entity.id,
+                title = entity.title,
+                artist = entity.artist,
+                artistId = entity.artistId,
+                album = entity.album,
+                albumId = entity.albumId,
+                durationSeconds = entity.durationSeconds,
+                coverArtId = "",
+                coverArtUrl = entity.coverArtUrl,
+                streamUrl = entity.localFilePath.ifBlank { subsonicClient.getStreamUrl(entity.id) },
+                year = entity.year,
+                genre = entity.genre,
+                suffix = entity.format,
+                isFavorite = favoriteIds.value.contains(entity.id)
+            )
+        }
+
+        // Memory loaded tracks
+        (_newestTracks.value + _currentAlbumTracks.value + _currentPlaylistTracks.value + _quickMixTracks.value + activeLocalTracks.value).forEach { track ->
+            if (!allLocalTracks.containsKey(track.id)) {
+                allLocalTracks[track.id] = track
+            }
+        }
+
+        val matchedTracks = allLocalTracks.values.filter { track ->
+            val textToSearch = "${track.title} ${track.artist} ${track.album} ${track.genre} ${track.year ?: ""}".lowercase()
+            tokens.all { textToSearch.contains(it) }
+        }.toList()
+
+        return Triple(matchedArtists, matchedAlbums, matchedTracks)
+    }
+
+    fun onSearchQueryChange(query: String) {
+        _searchQuery.value = query
+        searchJob?.cancel()
+
+        if (query.isBlank()) {
+            _searchResults.value = Triple(emptyList(), emptyList(), emptyList())
+            _isSearching.value = false
+            return
+        }
+
+        // Instant sub-millisecond local search
+        val localResults = performLocalSearch(query)
+        _searchResults.value = localResults
+
+        val hasNetwork = isDeviceConnectedToNetwork()
+        if (_isOfflineOnlyMode.value || !_serverState.value.isConnected || !hasNetwork) {
+            _isSearching.value = false
+            if (query.trim().length >= 2 && (localResults.first.isNotEmpty() || localResults.second.isNotEmpty() || localResults.third.isNotEmpty())) {
+                addSearchQueryToHistory(query.trim())
+            }
+            return
+        }
+
+        searchJob = viewModelScope.launch {
+            _isSearching.value = true
+            delay(200)
+
+            if (!isDeviceConnectedToNetwork() || !_serverState.value.isConnected || _isOfflineOnlyMode.value) {
+                _isSearching.value = false
+                return@launch
+            }
+
+            val result = subsonicClient.search(query)
+            result.onSuccess { (serverArtists, serverAlbums, serverTracks) ->
+                val mergedArtists = (localResults.first + serverArtists).distinctBy { if (it.id.isNotBlank()) it.id else it.name.lowercase() }
+                val mergedAlbums = (localResults.second + serverAlbums).distinctBy { if (it.id.isNotBlank()) it.id else it.name.lowercase() }
+                val mergedTracks = (localResults.third + serverTracks).distinctBy { it.id }
+
+                _searchResults.value = Triple(mergedArtists, mergedAlbums, mergedTracks)
+
+                if (query.trim().length >= 2) {
+                    addSearchQueryToHistory(query.trim())
+                }
+            }.onFailure {
+                if (query.trim().length >= 2 && (localResults.first.isNotEmpty() || localResults.second.isNotEmpty() || localResults.third.isNotEmpty())) {
+                    addSearchQueryToHistory(query.trim())
+                }
+            }
+            _isSearching.value = false
+        }
+    }
+
+    fun createPlaylist(name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            val result = subsonicClient.createPlaylist(name)
+            result.onSuccess {
+                syncLibrary()
+            }
+        }
+    }
+
+    fun deletePlaylist(playlistId: String) {
+        if (playlistId == "favorites_dynamic_playlist_id" || playlistId == "downloaded_dynamic_playlist_id") {
+            return
+        }
+        viewModelScope.launch {
+            try {
+                playlistDao.deletePlaylist(playlistId)
+                playlistDao.clearPlaylistItems(playlistId)
+            } catch (_: Exception) {}
+            try {
+                subsonicClient.deletePlaylist(playlistId)
+            } catch (_: Exception) {}
+            syncLibrary()
+            if (_selectedPlaylistId.value == playlistId) {
+                _selectedPlaylistId.value = null
+            }
+        }
+    }
+
+    fun findTrackById(trackId: String): NaviromTrack? {
+        if (playbackState.value.currentTrack?.id == trackId) return playbackState.value.currentTrack
+        currentQueue.value.find { it.id == trackId }?.let { return it }
+        _localTracks.value.find { it.id == trackId }?.let { return it }
+        _currentPlaylistTracks.value.find { it.id == trackId }?.let { return it }
+        _currentAlbumTracks.value.find { it.id == trackId }?.let { return it }
+        _currentArtistSongs.value.find { it.id == trackId }?.let { return it }
+        _rawLibrarySongs.value.find { it.id == trackId }?.let { return it }
+        _quickMixTracks.value.find { it.id == trackId }?.let { return it }
+        _newestTracks.value.find { it.id == trackId }?.let { return it }
+        _searchResults.value.third.find { it.id == trackId }?.let { return it }
+        favoriteTracks.value.find { it.id == trackId }?.let { return it }
+        cachedTracks.value.find { it.id == trackId }?.let { entity ->
+            return NaviromTrack(
+                id = entity.id,
+                title = entity.title,
+                artist = entity.artist,
+                artistId = entity.artistId,
+                album = entity.album,
+                albumId = entity.albumId,
+                durationSeconds = entity.durationSeconds,
+                coverArtId = "",
+                coverArtUrl = entity.coverArtUrl,
+                streamUrl = entity.localFilePath.ifBlank { subsonicClient.getStreamUrl(entity.id) },
+                year = entity.year,
+                genre = entity.genre,
+                suffix = entity.format,
+                isFavorite = true
+            )
+        }
+        return null
+    }
+
+    fun toggleFavorite(track: NaviromTrack) {
+        toggleFavorite(track.id, track)
+    }
+
+    fun toggleFavorite(trackId: String, trackInfo: NaviromTrack? = null) {
+        viewModelScope.launch {
+            val isFav = favoriteDao.isFavorite(trackId)
+            if (isFav) {
+                favoriteDao.removeFavorite(trackId)
+                if (_serverState.value.isConnected && !_isOfflineOnlyMode.value) {
+                    subsonicClient.starTrack(trackId, false)
+                }
+            } else {
+                val track = trackInfo ?: findTrackById(trackId)
+                val entity = FavoriteTrackEntity(
+                    trackId = trackId,
+                    title = track?.title ?: "Track $trackId",
+                    artist = track?.artist ?: "Unknown Artist",
+                    artistId = track?.artistId ?: "",
+                    album = track?.album ?: "Unknown Album",
+                    albumId = track?.albumId ?: "",
+                    durationSeconds = track?.durationSeconds ?: 0,
+                    coverArtId = track?.coverArtId ?: "",
+                    coverArtUrl = track?.coverArtUrl ?: subsonicClient.getCoverArtUrl(trackId),
+                    streamUrl = track?.streamUrl ?: subsonicClient.getStreamUrl(trackId),
+                    year = track?.year,
+                    genre = track?.genre ?: "",
+                    suffix = track?.suffix ?: "mp3",
+                    starredAt = System.currentTimeMillis()
+                )
+                favoriteDao.addFavorite(entity)
+                if (_serverState.value.isConnected && !_isOfflineOnlyMode.value) {
+                    subsonicClient.starTrack(trackId, true)
+                }
+            }
+        }
+    }
+
+    fun playTrack(track: NaviromTrack, queue: List<NaviromTrack> = listOf(track)) {
+        playerController.playTrack(track, queue)
+        recordTrackToHistory(track)
+    }
+
+    fun playAll(tracks: List<NaviromTrack>, startIndex: Int = 0) {
+        playerController.playTrackList(tracks, startIndex)
+        tracks.getOrNull(startIndex)?.let { recordTrackToHistory(it) }
+    }
+
+    fun shuffleAll(tracks: List<NaviromTrack>) {
+        val shuffled = tracks.shuffled()
+        playerController.setShuffleMode(enabled = true, isSmart = false)
+        playerController.playTrackList(shuffled, 0)
+        shuffled.firstOrNull()?.let { recordTrackToHistory(it) }
+    }
+
+    fun smartShuffleTracks(tracks: List<NaviromTrack>): List<NaviromTrack> {
+        return ListeningStatsManager.smartShuffle(tracks, listeningStats.value.rawHistory)
+    }
+
+    fun smartShuffle(tracks: List<NaviromTrack>? = null) {
+        val targetTracks = tracks ?: librarySongs.value.ifEmpty { _rawLibrarySongs.value }.ifEmpty { _localTracks.value }
+        if (targetTracks.isEmpty()) return
+        val smartShuffled = smartShuffleTracks(targetTracks)
+        playerController.setSmartShuffle(true)
+        playerController.playTrackList(smartShuffled, 0)
+        smartShuffled.firstOrNull()?.let { recordTrackToHistory(it) }
+    }
+
+    fun togglePlayPause() {
+        playerController.togglePlayPause()
+    }
+
+    fun next() {
+        playerController.next()
+    }
+
+    fun previous() {
+        playerController.previous()
+    }
+
+    fun seekTo(positionMs: Long) {
+        playerController.seekTo(positionMs)
+    }
+
+    fun setRepeatMode(mode: RepeatMode) {
+        playerController.setRepeatMode(mode)
+    }
+
+    fun cycleRepeatMode() {
+        playerController.cycleRepeatMode()
+    }
+
+    fun toggleShuffle() {
+        playerController.toggleShuffle()
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        playerController.setPlaybackSpeed(speed)
+    }
+
+    fun setSleepTimer(minutes: Int?, options: SleepTimerOptions = _sleepTimerOptions.value) {
+        updateSleepTimerOptions(options)
+        playerController.setSleepTimer(minutes, options)
+    }
+
+    fun updateSleepTimerOptions(options: SleepTimerOptions) {
+        _sleepTimerOptions.value = options
+        playerController.updateSleepTimerOptions(options)
+        prefs.edit()
+            .putBoolean("sleep_timer_disable_bt", options.disableBluetooth)
+            .putBoolean("sleep_timer_disable_wifi", options.disableWifi)
+            .putBoolean("sleep_timer_disable_mobile_data", options.disableMobileData)
+            .apply()
+    }
+
+    fun playNext(track: NaviromTrack) {
+        playerController.playNext(track)
+    }
+
+    fun playTracksNext(tracks: List<NaviromTrack>) {
+        if (tracks.isEmpty()) return
+        playerController.playTracksNext(tracks)
+    }
+
+    fun addToQueue(track: NaviromTrack) {
+        playerController.addToQueue(track)
+    }
+
+    fun addTracksToQueue(tracks: List<NaviromTrack>) {
+        if (tracks.isEmpty()) return
+        playerController.addTracksToQueue(tracks)
+    }
+
+    fun playFolderNext(folderPath: String) {
+        val tracksInFolder = getTracksUnderFolder(folderPath)
+        if (tracksInFolder.isNotEmpty()) {
+            playTracksNext(tracksInFolder)
+        }
+    }
+
+    fun addFolderToQueue(folderPath: String) {
+        val tracksInFolder = getTracksUnderFolder(folderPath)
+        if (tracksInFolder.isNotEmpty()) {
+            addTracksToQueue(tracksInFolder)
+        }
+    }
+
+    fun addToQueueBeginning(track: NaviromTrack) {
+        playerController.addToQueueBeginning(track)
+    }
+
+    fun addToQueueEnd(track: NaviromTrack) {
+        playerController.addToQueueEnd(track)
+    }
+
+    fun seekRelative(offsetMs: Long) {
+        playerController.seekRelative(offsetMs)
+    }
+
+    fun playSecondaryTrack(track: NaviromTrack, queue: List<NaviromTrack>? = null) {
+        playerController.playSecondaryTrack(track, queue)
+    }
+
+    fun playSecondaryNext() {
+        playerController.playSecondaryNext()
+    }
+
+    fun playSecondaryPrevious() {
+        playerController.playSecondaryPrevious()
+    }
+
+    fun toggleSecondaryPlayPause() {
+        playerController.toggleSecondaryPlayPause()
+    }
+
+    fun playSecondary() {
+        playerController.playSecondary()
+    }
+
+    fun pauseSecondary() {
+        playerController.pauseSecondary()
+    }
+
+    fun seekSecondaryTo(positionMs: Long) {
+        playerController.seekSecondaryTo(positionMs)
+    }
+
+    fun seekSecondaryRelative(offsetMs: Long) {
+        playerController.seekSecondaryRelative(offsetMs)
+    }
+
+    fun setSecondaryVolume(volume: Float) {
+        playerController.setSecondaryVolume(volume)
+    }
+
+    fun stopSecondaryTrack() {
+        playerController.stopSecondaryTrack()
+    }
+
+    fun toggleDeckSync() {
+        playerController.toggleDeckSync()
+    }
+
+    fun setDeckSync(enabled: Boolean) {
+        playerController.setDeckSync(enabled)
+    }
+
+    fun realignDeckSync() {
+        playerController.realignDeckSync()
+    }
+
+    fun setDualSpeakerMode(mode: DualSpeakerMode) {
+        playerController.setDualSpeakerMode(mode)
+        prefs.edit().putString("dual_speaker_mode", mode.name).apply()
+    }
+
+    fun setDeckSyncBalance(balance: Float) {
+        playerController.setDeckSyncBalance(balance)
+        prefs.edit().putFloat("deck_sync_balance", balance).apply()
+    }
+
+    fun refreshOutputDevices() {
+        playerController.refreshOutputDevices()
+    }
+
+    fun setPlayer1PreferredDevice(deviceId: Int?) {
+        playerController.setPlayer1PreferredDevice(deviceId)
+    }
+
+    fun setPlayer2PreferredDevice(deviceId: Int?) {
+        playerController.setPlayer2PreferredDevice(deviceId)
+    }
+
+    fun generateDownloadedSongsPlaylist(name: String = "Downloaded Songs"): String {
+        val downloaded = cachedTracks.value
+        val playlistId = "downloaded_playlist_${System.currentTimeMillis()}"
+        val playlistName = if (name.isBlank()) "Downloaded Songs" else name.trim()
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val totalSecs = downloaded.sumOf { it.durationSeconds }
+            val localEntity = com.labix.navirom.data.local.LocalPlaylistEntity(
+                id = playlistId,
+                name = playlistName,
+                comment = "Generated from downloaded songs",
+                songCount = downloaded.size,
+                durationSeconds = totalSecs,
+                coverArtUrl = downloaded.firstOrNull()?.coverArtUrl ?: "",
+                createdAt = System.currentTimeMillis()
+            )
+            playlistDao.insertPlaylist(localEntity)
+
+            val items = downloaded.mapIndexed { index: Int, track: com.labix.navirom.data.local.CachedTrackEntity ->
+                com.labix.navirom.data.local.PlaylistItemEntity(
+                    playlistId = playlistId,
+                    trackId = track.id,
+                    position = index,
+                    title = track.title,
+                    artist = track.artist,
+                    album = track.album,
+                    durationSeconds = track.durationSeconds,
+                    coverArtUrl = track.coverArtUrl,
+                    streamUrl = "",
+                    localFilePath = track.localFilePath
+                )
+            }
+            playlistDao.insertPlaylistItems(items)
+
+            val songIds = downloaded.map { it.id }
+            if (songIds.isNotEmpty()) {
+                try {
+                    subsonicClient.createPlaylist(playlistName, songIds)
+                } catch (_: Exception) {}
+            }
+        }
+        return playlistId
+    }
+
+    fun removeFromQueue(index: Int) {
+        playerController.removeFromQueue(index)
+    }
+
+    fun clearQueue() {
+        playerController.clearQueue()
+    }
+
+    fun downloadTrack(track: NaviromTrack) {
+        downloadManager.downloadTrack(track)
+    }
+
+    fun downloadTracks(tracks: List<NaviromTrack>) {
+        downloadManager.downloadTracks(tracks)
+    }
+
+    fun deleteCachedTrack(trackId: String) {
+        viewModelScope.launch {
+            downloadManager.deleteCachedTrack(trackId)
+        }
+    }
+
+    fun clearAllCache() {
+        viewModelScope.launch {
+            downloadManager.clearAllCache()
+        }
+    }
+
+    fun continueLastPlayed() {
+        setTab(NaviromTab.LIBRARY)
+        playerController.continueLastPlayed()
+    }
+
+    fun startRandomMixServer() {
+        viewModelScope.launch {
+            setTab(NaviromTab.LIBRARY)
+            try {
+                val activeServer = serverConfigDao.getActiveServer()
+                if (activeServer != null && !_serverState.value.isConnected) {
+                    setServerConfig(activeServer)
+                    connectServer()
+                    delay(800)
+                }
+
+                val result = subsonicClient.getRandomTracks(size = 50)
+                result.onSuccess { tracks ->
+                    if (tracks.isNotEmpty()) {
+                        playerController.playTrackList(tracks.shuffled(), 0)
+                        return@launch
+                    }
+                }
+
+                // Fallback to quickMixTracks or cached tracks
+                val fallbackTracks = _quickMixTracks.value.ifEmpty {
+                    cachedTracks.value.map { entity ->
+                        NaviromTrack(
+                            id = entity.id,
+                            title = entity.title,
+                            artist = entity.artist,
+                            artistId = entity.artistId,
+                            album = entity.album,
+                            albumId = entity.albumId,
+                            durationSeconds = entity.durationSeconds,
+                            coverArtUrl = entity.coverArtUrl,
+                            streamUrl = subsonicClient.getStreamUrl(entity.id),
+                            localFilePath = entity.localFilePath,
+                            suffix = entity.format,
+                            year = entity.year,
+                            genre = entity.genre,
+                            bitRate = entity.bitRate,
+                            sizeBytes = entity.fileSizeBytes,
+                            isCached = true
+                        )
+                    }
+                }
+
+                if (fallbackTracks.isNotEmpty()) {
+                    playerController.playTrackList(fallbackTracks.shuffled(), 0)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to start random mix server", e)
+            }
+        }
+    }
+
+    fun startRandomLocal() {
+        viewModelScope.launch {
+            setTab(NaviromTab.LIBRARY)
+            setLibrarySubTab(LibrarySubTab.LIBRARIES)
+            try {
+                var localList = activeLocalTracks.value
+                if (localList.isEmpty()) {
+                    scanLocalAudio()
+                    delay(800)
+                    localList = activeLocalTracks.value
+                }
+                if (localList.isEmpty()) {
+                    localList = allDiscoveredLocalFolders.value.flatMap { it.tracks }
+                }
+                if (localList.isNotEmpty()) {
+                    playerController.playTrackList(localList.shuffled(), 0)
+                } else {
+                    // Fallback to cached tracks if no local files scanned yet
+                    val cached = cachedTracks.value.map { entity ->
+                        NaviromTrack(
+                            id = entity.id,
+                            title = entity.title,
+                            artist = entity.artist,
+                            artistId = entity.artistId,
+                            album = entity.album,
+                            albumId = entity.albumId,
+                            durationSeconds = entity.durationSeconds,
+                            coverArtUrl = entity.coverArtUrl,
+                            streamUrl = subsonicClient.getStreamUrl(entity.id),
+                            localFilePath = entity.localFilePath,
+                            suffix = entity.format,
+                            year = entity.year,
+                            genre = entity.genre,
+                            bitRate = entity.bitRate,
+                            sizeBytes = entity.fileSizeBytes,
+                            isCached = true
+                        )
+                    }
+                    if (cached.isNotEmpty()) {
+                        playerController.playTrackList(cached.shuffled(), 0)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to start random local music", e)
+            }
+        }
+    }
+
+    fun connectLastServer() {
+        viewModelScope.launch {
+            try {
+                val active = serverConfigDao.getActiveServer()
+                if (active != null) {
+                    setServerConfig(active)
+                    connectServer()
+                } else {
+                    val all = serverConfigDao.getAllServers().firstOrNull() ?: emptyList()
+                    val first = all.firstOrNull()
+                    if (first != null) {
+                        setServerConfig(first)
+                        connectServer()
+                    } else {
+                        setTab(NaviromTab.SETTINGS)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to connect to last server", e)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        try {
+            val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            cm?.unregisterNetworkCallback(networkCallback)
+        } catch (_: Exception) {}
+        playerController.release()
+    }
+}

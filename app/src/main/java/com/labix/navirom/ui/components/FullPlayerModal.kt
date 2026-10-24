@@ -1,0 +1,4004 @@
+package com.labix.navirom.ui.components
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.ui.draw.blur
+import androidx.compose.foundation.basicMarquee
+import androidx.palette.graphics.Palette
+import android.graphics.drawable.BitmapDrawable
+import coil.ImageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.RepeatMode as AnimRepeatMode
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.geometry.Offset
+import android.os.SystemClock
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.labix.navirom.data.model.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import kotlinx.coroutines.isActive
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import com.labix.navirom.player.SecureSettingsManager
+import com.labix.navirom.ui.components.SecureSettingsAssistantDialog
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import coil.compose.AsyncImage
+import com.labix.navirom.data.lyrics.LyricsData
+import com.labix.navirom.data.lyrics.LyricsSource
+import com.labix.navirom.data.model.DownloadStatus
+import com.labix.navirom.data.model.PlaybackState
+import com.labix.navirom.data.model.RepeatMode
+import com.labix.navirom.data.model.SecondaryPlaybackState
+import com.labix.navirom.player.wlan.*
+import com.labix.navirom.data.model.SleepTimerOptions
+import com.labix.navirom.ui.AppLanguage
+import com.labix.navirom.ui.NaviromStrings
+import com.labix.navirom.ui.util.rememberNaviromHaptics
+import com.labix.ui.theme.*
+
+enum class PlayerViewMode {
+    ARTWORK,
+    LYRICS
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun FullPlayerModal(
+    playbackState: PlaybackState,
+    isFavorite: Boolean,
+    downloadStatus: DownloadStatus,
+    downloadProgress: Float? = null,
+    queueIndex: Int = 0,
+    queueSize: Int = 0,
+    lyricsData: LyricsData = LyricsData(),
+    appLanguage: AppLanguage = AppLanguage.ENGLISH,
+    isVinylEffectEnabled: Boolean = false,
+    sleepTimerOptions: SleepTimerOptions = SleepTimerOptions(),
+    onDismiss: () -> Unit,
+    onTogglePlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onSeekRelative: ((Long) -> Unit)? = null,
+    onToggleShuffle: () -> Unit,
+    onCycleRepeat: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onDownloadTrack: () -> Unit,
+    onOpenQueue: () -> Unit,
+    onSetSpeed: (Float) -> Unit,
+    onSetSleepTimer: (Int?, SleepTimerOptions) -> Unit,
+    onUpdateSleepTimerOptions: ((SleepTimerOptions) -> Unit)? = null,
+    onRefetchLyrics: () -> Unit = {},
+    onFetchTeksteShqipLyrics: ((String?) -> Unit)? = null,
+    onArtistClick: ((String) -> Unit)? = null,
+    onAlbumClick: ((String) -> Unit)? = null,
+    isDualAudioEnabled: Boolean = false,
+    secondaryPlaybackState: SecondaryPlaybackState = SecondaryPlaybackState(),
+    onToggleSecondaryPlayPause: (() -> Unit)? = null,
+    onPlaySecondaryNext: (() -> Unit)? = null,
+    onPlaySecondaryPrevious: (() -> Unit)? = null,
+    onSeekSecondaryTo: ((Long) -> Unit)? = null,
+    onSeekSecondaryRelative: ((Long) -> Unit)? = null,
+    onSetSecondaryVolume: ((Float) -> Unit)? = null,
+    onStopSecondaryTrack: (() -> Unit)? = null,
+    isDeckSyncEnabled: Boolean = false,
+    onToggleDeckSync: (() -> Unit)? = null,
+    dualSpeakerMode: DualSpeakerMode = DualSpeakerMode.DUAL_STEREO,
+    deckSyncBalance: Float = 0.5f,
+    onSetDualSpeakerMode: ((DualSpeakerMode) -> Unit)? = null,
+    onSetDeckSyncBalance: ((Float) -> Unit)? = null,
+    onRealignDeckSync: (() -> Unit)? = null,
+    availableOutputDevices: List<AudioOutputDevice> = emptyList(),
+    player1DeviceId: Int? = null,
+    player2DeviceId: Int? = null,
+    onSetPlayer1PreferredDevice: ((Int?) -> Unit)? = null,
+    onSetPlayer2PreferredDevice: ((Int?) -> Unit)? = null,
+    onRefreshOutputDevices: (() -> Unit)? = null,
+    wlanSpeakerState: WlanSpeakerState? = null,
+    onOpenWlanCast: (() -> Unit)? = null,
+    queue: List<NaviromTrack> = emptyList(),
+    isAstrolabeModeEnabled: Boolean = false,
+    onToggleAstrolabeMode: () -> Unit = {},
+    onTrackSelect: (NaviromTrack, List<NaviromTrack>) -> Unit = { _, _ -> },
+    modifier: Modifier = Modifier
+) {
+    val track = playbackState.currentTrack ?: return
+    val haptics = rememberNaviromHaptics()
+
+    var isDraggingSlider by remember { mutableStateOf(false) }
+    var dragPositionMs by remember { mutableLongStateOf(0L) }
+    var viewMode by remember { mutableStateOf(PlayerViewMode.ARTWORK) }
+    var showMenu by remember { mutableStateOf(false) }
+    var showSleepTimerDialog by remember { mutableStateOf(false) }
+    var showCoverQuickActionsSheet by remember { mutableStateOf(false) }
+    var showSecureSettingsAssistant by remember { mutableStateOf(false) }
+    var showArtistsDialog by remember { mutableStateOf(false) }
+    var showTeksteShqipDialog by remember { mutableStateOf(false) }
+    var showAudioRoutingDialog by remember { mutableStateOf(false) }
+    var teksteShqipUrlInput by remember { mutableStateOf("") }
+    var customMinutesText by remember { mutableStateOf("30") }
+
+    val isTimerActive = (playbackState.sleepTimerSecondsLeft != null && playbackState.sleepTimerSecondsLeft > 0) ||
+            (playbackState.sleepTimerMinutesLeft != null && playbackState.sleepTimerMinutesLeft > 0)
+
+    val activeOptions = playbackState.sleepTimerOptions
+    var disableBt by remember(activeOptions.disableBluetooth, sleepTimerOptions.disableBluetooth) {
+        mutableStateOf(activeOptions.disableBluetooth || sleepTimerOptions.disableBluetooth)
+    }
+    var disableWifi by remember(activeOptions.disableWifi, sleepTimerOptions.disableWifi) {
+        mutableStateOf(activeOptions.disableWifi || sleepTimerOptions.disableWifi)
+    }
+    var disableData by remember(activeOptions.disableMobileData, sleepTimerOptions.disableMobileData) {
+        mutableStateOf(activeOptions.disableMobileData || sleepTimerOptions.disableMobileData)
+    }
+
+    val context = LocalContext.current
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(
+                context,
+                NaviromStrings.get("permission_bluetooth_needed", appLanguage),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    val checkAndRequestBtPermission = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val hasPerm = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!hasPerm) {
+                bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            }
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isLifecycleResumed by remember { mutableStateOf(true) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            isLifecycleResumed = event.targetState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    var vinylRotationAngle by remember { mutableFloatStateOf(0f) }
+    var isVinylScratching by remember { mutableStateOf(false) }
+    var vinylScratchVelocity by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(playbackState.isPlaying, isVinylEffectEnabled, viewMode, isLifecycleResumed, isVinylScratching) {
+        if (isVinylEffectEnabled && viewMode == PlayerViewMode.ARTWORK && isLifecycleResumed) {
+            val normalSpeed = 360f / 16f // 22.5 deg/sec at standard vinyl rotation
+            val targetSpeed = if (playbackState.isPlaying) normalSpeed else 0f
+            if (!isVinylScratching && vinylScratchVelocity == 0f && playbackState.isPlaying) {
+                vinylScratchVelocity = targetSpeed
+            }
+            var lastTime = withFrameNanos { it }
+            while (isActive) {
+                withFrameNanos { frameTimeNanos ->
+                    val dtSeconds = ((frameTimeNanos - lastTime) / 1_000_000_000f).coerceIn(0.001f, 0.1f)
+                    lastTime = frameTimeNanos
+                    if (!isVinylScratching) {
+                        if (kotlin.math.abs(vinylScratchVelocity - targetSpeed) > 0.5f) {
+                            // Realistic turntable slipmat friction decay towards target rotational speed
+                            val friction = 3.5f
+                            val decay = kotlin.math.exp(-friction * dtSeconds)
+                            vinylScratchVelocity = vinylScratchVelocity * decay + targetSpeed * (1f - decay)
+                        } else {
+                            vinylScratchVelocity = targetSpeed
+                        }
+
+                        if (vinylScratchVelocity != 0f) {
+                            vinylRotationAngle = (vinylRotationAngle + vinylScratchVelocity * dtSeconds) % 360f
+                            if (vinylRotationAngle < 0f) vinylRotationAngle += 360f
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Keep screen on while singing/viewing lyrics in full player modal
+    val currentView = LocalView.current
+    DisposableEffect(viewMode) {
+        if (viewMode == PlayerViewMode.LYRICS) {
+            currentView.keepScreenOn = true
+        } else {
+            currentView.keepScreenOn = false
+        }
+        onDispose {
+            currentView.keepScreenOn = false
+        }
+    }
+
+    val currentPosMs = if (isDraggingSlider) dragPositionMs else playbackState.currentPositionMs
+    val totalDurationMs = if (playbackState.durationMs > 0) playbackState.durationMs else (track.durationSeconds * 1000L)
+
+    val formatTime: (Long) -> String = { ms ->
+        val totalSec = (ms / 1000).coerceAtLeast(0)
+        val min = totalSec / 60
+        val sec = totalSec % 60
+        "%d:%02d".format(min, sec)
+    }
+
+    val isDark = isSystemInDarkTheme()
+    val backgroundColor = if (isDark) Color(0xFF000000) else Color(0xFF1E1E1E)
+    val cardColor = if (isDark) Color(0xFF000000) else Color.White
+    val textOnCard = if (isDark) Color.White else Color.Black
+    val textMutedOnCard = if (isDark) Color.LightGray else Color.Gray
+
+    var primaryCoverColor by remember(track.id) { mutableStateOf<Color?>(null) }
+    var secondaryCoverColor by remember(track.id) { mutableStateOf<Color?>(null) }
+    var tertiaryCoverColor by remember(track.id) { mutableStateOf<Color?>(null) }
+
+    LaunchedEffect(track.coverArtUrl) {
+        if (!track.coverArtUrl.isNullOrBlank()) {
+            try {
+                val loader = ImageLoader(context)
+                val request = ImageRequest.Builder(context)
+                    .data(track.coverArtUrl)
+                    .allowHardware(false)
+                    .build()
+                val result = loader.execute(request)
+                if (result is SuccessResult) {
+                    val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
+                    if (bitmap != null) {
+                        val palette = Palette.from(bitmap).generate()
+                        val c1 = palette.getVibrantColor(palette.getDominantColor(0xFF2C3E50.toInt()))
+                        val c2 = palette.getMutedColor(palette.getDarkVibrantColor(0xFF8E44AD.toInt()))
+                        val c3 = palette.getLightVibrantColor(palette.getLightMutedColor(0xFF2980B9.toInt()))
+                        primaryCoverColor = Color(c1)
+                        secondaryCoverColor = Color(c2)
+                        tertiaryCoverColor = Color(c3)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxSize()
+            .background(backgroundColor)
+            .testTag("full_player_modal")
+            .pointerInput(viewMode) {
+                var totalDragX = 0f
+                var totalDragY = 0f
+                var gestureHandled = false
+
+                detectDragGestures(
+                    onDragStart = {
+                        totalDragX = 0f
+                        totalDragY = 0f
+                        gestureHandled = false
+                    },
+                    onDragEnd = {
+                        totalDragX = 0f
+                        totalDragY = 0f
+                        gestureHandled = false
+                    },
+                    onDragCancel = {
+                        totalDragX = 0f
+                        totalDragY = 0f
+                        gestureHandled = false
+                    },
+                    onDrag = { change, dragAmount ->
+                        if (!gestureHandled) {
+                            totalDragX += dragAmount.x
+                            totalDragY += dragAmount.y
+                            val threshold = 55f
+
+                            if (kotlin.math.abs(totalDragX) > kotlin.math.abs(totalDragY) * 1.2f && kotlin.math.abs(totalDragX) > threshold) {
+                                change.consume()
+                                gestureHandled = true
+                                if (totalDragX < -threshold) {
+                                    // Swipe Right to Left -> NEXT SONG
+                                    haptics.click()
+                                    onNext()
+                                } else if (totalDragX > threshold) {
+                                    // Swipe Left to Right -> PREVIOUS SONG
+                                    haptics.click()
+                                    onPrevious()
+                                }
+                            } else if (kotlin.math.abs(totalDragY) > kotlin.math.abs(totalDragX) * 1.2f && kotlin.math.abs(totalDragY) > threshold) {
+                                if (totalDragY < -threshold) {
+                                    // Swipe Bottom to Top (Up) -> SHOW LYRICS VIEW
+                                    if (viewMode == PlayerViewMode.ARTWORK) {
+                                        change.consume()
+                                        gestureHandled = true
+                                        haptics.toggle()
+                                        viewMode = PlayerViewMode.LYRICS
+                                    }
+                                } else if (totalDragY > threshold) {
+                                    // Swipe Top to Bottom (Down) -> MINIMIZE PLAYER
+                                    change.consume()
+                                    gestureHandled = true
+                                    if (viewMode == PlayerViewMode.ARTWORK) {
+                                        haptics.click()
+                                        onDismiss()
+                                    } else if (viewMode == PlayerViewMode.LYRICS) {
+                                        haptics.toggle()
+                                        viewMode = PlayerViewMode.ARTWORK
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+            }
+    ) {
+        if (showCoverQuickActionsSheet) {
+            val currentOptions = SleepTimerOptions(
+                disableBluetooth = disableBt,
+                disableWifi = disableWifi,
+                disableMobileData = disableData
+            )
+
+            CoverQuickActionsSheet(
+                track = track,
+                playbackState = playbackState,
+                downloadStatus = downloadStatus,
+                downloadProgress = downloadProgress,
+                sleepTimerOptions = currentOptions,
+                appLanguage = appLanguage,
+                onDismiss = { showCoverQuickActionsSheet = false },
+                onSeekTo = onSeekTo,
+                onSetSleepTimer = { mins, opts ->
+                    onUpdateSleepTimerOptions?.invoke(opts)
+                    onSetSleepTimer(mins, opts)
+                },
+                onUpdateSleepTimerOptions = onUpdateSleepTimerOptions,
+                onOpenSleepTimerDialog = { showSleepTimerDialog = true },
+                onDownloadTrack = onDownloadTrack,
+                onOpenLyrics = {
+                    viewMode = PlayerViewMode.LYRICS
+                }
+            )
+        }
+
+        if (showSleepTimerDialog) {
+            val currentOptions = SleepTimerOptions(
+                disableBluetooth = disableBt,
+                disableWifi = disableWifi,
+                disableMobileData = disableData
+            )
+
+            AlertDialog(
+                onDismissRequest = { showSleepTimerDialog = false },
+                icon = {
+                    Icon(
+                        imageVector = if (isTimerActive) Icons.Filled.HourglassTop else Icons.Filled.Timer,
+                        contentDescription = null,
+                        tint = if (isTimerActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(28.dp)
+                    )
+                },
+                title = {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = NaviromStrings.get("sleep_timer", appLanguage),
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                            textAlign = TextAlign.Center
+                        )
+                        if (isTimerActive && (playbackState.sleepTimerSecondsLeft ?: 0) > 0) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.padding(top = 2.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary)
+                                    )
+                                    val totalSecs = playbackState.sleepTimerSecondsLeft ?: 0
+                                    val mins = totalSecs / 60
+                                    val secs = totalSecs % 60
+                                    Text(
+                                        text = "${NaviromStrings.get("sleep_timer_active_badge", appLanguage)}: %02d:%02d".format(mins, secs),
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Text(
+                            text = NaviromStrings.get("sleep_timer_desc", appLanguage),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        // Quick Presets Row (scrollable group showing icons only)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            listOf(15, 30, 45, 60).forEach { mins ->
+                                val isSelected = isTimerActive && (playbackState.sleepTimerMinutesLeft == mins)
+                                FilledTonalButton(
+                                    onClick = {
+                                        haptics.click()
+                                        if (disableBt) {
+                                            checkAndRequestBtPermission()
+                                        }
+                                        val opt = currentOptions.copy(
+                                            disableBluetooth = disableBt,
+                                            disableWifi = disableWifi,
+                                            disableMobileData = disableData
+                                        )
+                                        onUpdateSleepTimerOptions?.invoke(opt)
+                                        onSetSleepTimer(mins, opt)
+                                        showSleepTimerDialog = false
+                                    },
+                                    modifier = Modifier.size(42.dp),
+                                    shape = CircleShape,
+                                    contentPadding = PaddingValues(0.dp),
+                                    colors = if (isSelected) {
+                                        ButtonDefaults.filledTonalButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    } else ButtonDefaults.filledTonalButtonColors()
+                                ) {
+                                    Icon(
+                                        imageVector = when (mins) {
+                                            15 -> Icons.Filled.HourglassTop
+                                            30 -> Icons.Filled.HourglassBottom
+                                            45 -> Icons.Filled.HourglassFull
+                                            else -> Icons.Filled.AvTimer
+                                        },
+                                        contentDescription = "${mins}m",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Custom Minutes Input
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = customMinutesText,
+                                onValueChange = { customMinutesText = it.filter { ch -> ch.isDigit() }.take(4) },
+                                label = { Text(NaviromStrings.get("sleep_timer_custom_min", appLanguage)) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.weight(1f)
+                            )
+                            Button(
+                                onClick = {
+                                    val mins = customMinutesText.toIntOrNull()
+                                    if (mins != null && mins > 0) {
+                                        haptics.click()
+                                        if (disableBt) {
+                                            checkAndRequestBtPermission()
+                                        }
+                                        val opt = currentOptions.copy(
+                                            disableBluetooth = disableBt,
+                                            disableWifi = disableWifi,
+                                            disableMobileData = disableData
+                                        )
+                                        onUpdateSleepTimerOptions?.invoke(opt)
+                                        onSetSleepTimer(mins, opt)
+                                        showSleepTimerDialog = false
+                                    }
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.height(56.dp)
+                            ) {
+                                Text(NaviromStrings.get("sleep_timer_set_custom", appLanguage), fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+
+                        // Action Toggles Section Header
+                        Text(
+                            text = NaviromStrings.get("sleep_timer_extra_actions", appLanguage),
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        // Bluetooth Toggle Card
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        haptics.toggle()
+                                        val newBt = !disableBt
+                                        if (newBt) {
+                                            checkAndRequestBtPermission()
+                                        }
+                                        disableBt = newBt
+                                        val opt = currentOptions.copy(disableBluetooth = newBt)
+                                        onUpdateSleepTimerOptions?.invoke(opt)
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (disableBt) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Bluetooth,
+                                            contentDescription = null,
+                                            tint = if (disableBt) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = NaviromStrings.get("sleep_timer_disable_bluetooth", appLanguage),
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = NaviromStrings.get("sleep_timer_disable_bluetooth_desc", appLanguage),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = disableBt,
+                                    onCheckedChange = {
+                                        haptics.toggle()
+                                        if (it) {
+                                            checkAndRequestBtPermission()
+                                        }
+                                        disableBt = it
+                                        val opt = currentOptions.copy(disableBluetooth = it)
+                                        onUpdateSleepTimerOptions?.invoke(opt)
+                                    }
+                                )
+                            }
+                        }
+
+                        // Wi-Fi Toggle Card
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        haptics.toggle()
+                                        val newWifi = !disableWifi
+                                        disableWifi = newWifi
+                                        val opt = currentOptions.copy(disableWifi = newWifi)
+                                        onUpdateSleepTimerOptions?.invoke(opt)
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (disableWifi) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Wifi,
+                                            contentDescription = null,
+                                            tint = if (disableWifi) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = NaviromStrings.get("sleep_timer_disable_wifi", appLanguage),
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = NaviromStrings.get("sleep_timer_disable_wifi_desc", appLanguage),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = disableWifi,
+                                    onCheckedChange = {
+                                        haptics.toggle()
+                                        disableWifi = it
+                                        val opt = currentOptions.copy(disableWifi = it)
+                                        onUpdateSleepTimerOptions?.invoke(opt)
+                                    }
+                                )
+                            }
+                        }
+
+                        // Mobile Data Toggle Card
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        haptics.toggle()
+                                        val newData = !disableData
+                                        disableData = newData
+                                        val opt = currentOptions.copy(disableMobileData = newData)
+                                        onUpdateSleepTimerOptions?.invoke(opt)
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (disableData) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Filled.SignalCellularAlt,
+                                            contentDescription = null,
+                                            tint = if (disableData) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = NaviromStrings.get("sleep_timer_disable_mobile_data", appLanguage),
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = NaviromStrings.get("sleep_timer_disable_mobile_data_desc", appLanguage),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = disableData,
+                                    onCheckedChange = {
+                                        haptics.toggle()
+                                        disableData = it
+                                        val opt = currentOptions.copy(disableMobileData = it)
+                                        onUpdateSleepTimerOptions?.invoke(opt)
+                                    }
+                                )
+                            }
+                        }
+
+                        // Secure Settings / ADB Status & Assistant Launcher Card
+                        val isSecureSettingsGranted = remember(showSleepTimerDialog) {
+                            SecureSettingsManager.isWriteSecureSettingsGranted(context)
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSecureSettingsGranted) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    haptics.click()
+                                    showSecureSettingsAssistant = true
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (isSecureSettingsGranted) Color(0xFF2E7D32).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (isSecureSettingsGranted) Icons.Filled.VerifiedUser else Icons.Filled.AdminPanelSettings,
+                                            contentDescription = null,
+                                            tint = if (isSecureSettingsGranted) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (isSecureSettingsGranted) {
+                                            NaviromStrings.get("secure_settings_badge_granted", appLanguage)
+                                        } else {
+                                            NaviromStrings.get("secure_settings_title", appLanguage)
+                                        },
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = if (isSecureSettingsGranted) {
+                                            "Stilles Abschalten im Hintergrund aktiv"
+                                        } else {
+                                            "ADB / Root-Berechtigung auf Gerät einrichten"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Filled.ChevronRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        // Turn off button if active
+                        if (isTimerActive) {
+                            FilledTonalButton(
+                                onClick = {
+                                    haptics.click()
+                                    onSetSleepTimer(null, currentOptions)
+                                    showSleepTimerDialog = false
+                                },
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                ),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.TimerOff,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = NaviromStrings.get("sleep_timer_turn_off", appLanguage),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showSleepTimerDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        if (showSecureSettingsAssistant) {
+            SecureSettingsAssistantDialog(
+                appLanguage = appLanguage,
+                onDismiss = { showSecureSettingsAssistant = false }
+            )
+        }
+
+        // Multi-artist selection popup
+        val artistList = remember(track.artist) {
+            track.artist.split(Regex("[,&/]|\\bfeat\\.?\\b|\\bft\\.?\\b|\\bwith\\b", RegexOption.IGNORE_CASE))
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+        }
+
+        // Audio Output Routing Dialog (Bluetooth & Device Selection + Sync Control)
+        if (showAudioRoutingDialog) {
+            val p1Device = availableOutputDevices.firstOrNull { it.id == player1DeviceId }
+            val p2Device = availableOutputDevices.firstOrNull { it.id == player2DeviceId }
+
+            AlertDialog(
+                onDismissRequest = { showAudioRoutingDialog = false },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.BluetoothConnected,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Column {
+                                Text(
+                                    text = NaviromStrings.get("audio_routing_title", appLanguage),
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                                Text(
+                                    text = "${availableOutputDevices.size} devices connected",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = {
+                                haptics.click()
+                                onRefreshOutputDevices?.invoke()
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Refresh", modifier = Modifier.size(18.dp))
+                        }
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Deck Sync Mirroring Switch Card
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isDeckSyncEnabled) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isDeckSyncEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        haptics.toggle()
+                                        onToggleDeckSync?.invoke()
+                                    }
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (isDeckSyncEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (isDeckSyncEnabled) Icons.Filled.Sync else Icons.Filled.SyncDisabled,
+                                            contentDescription = null,
+                                            tint = if (isDeckSyncEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(
+                                            text = NaviromStrings.get("sync_decks_title", appLanguage),
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        if (isDeckSyncEnabled) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(vertical = 1.dp)
+                                            ) {
+                                                Text(
+                                                    text = "ACTIVE",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black, fontSize = 9.sp),
+                                                    color = MaterialTheme.colorScheme.onPrimary,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = NaviromStrings.get("sync_decks_desc", appLanguage),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = isDeckSyncEnabled,
+                                    onCheckedChange = {
+                                        haptics.toggle()
+                                        onToggleDeckSync?.invoke()
+                                    }
+                                )
+                            }
+                        }
+
+                        // When Deck Sync is active: Show Dual Speaker Mode, Quality Assurance, and Balance Control
+                        if (isDeckSyncEnabled) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.HighQuality,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Text(
+                                                text = NaviromStrings.get("dual_speaker_sync_status", appLanguage),
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+
+                                        // Re-align Sync Button
+                                        FilledTonalButton(
+                                            onClick = {
+                                                haptics.click()
+                                                onRealignDeckSync?.invoke()
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Icon(Icons.Filled.Autorenew, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = NaviromStrings.get("dual_speaker_realign_btn", appLanguage),
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = NaviromStrings.get("dual_speaker_sync_quality_info", appLanguage),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                                    // Dual Speaker Mode Selector
+                                    Text(
+                                        text = NaviromStrings.get("dual_speaker_mode_title", appLanguage),
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        // Mode 1: Dual Full Stereo
+                                        val isStereoSelected = dualSpeakerMode == DualSpeakerMode.DUAL_STEREO
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isStereoSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                                            border = if (isStereoSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    haptics.tick()
+                                                    onSetDualSpeakerMode?.invoke(DualSpeakerMode.DUAL_STEREO)
+                                                }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                RadioButton(
+                                                    selected = isStereoSelected,
+                                                    onClick = {
+                                                        haptics.tick()
+                                                        onSetDualSpeakerMode?.invoke(DualSpeakerMode.DUAL_STEREO)
+                                                    },
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Column {
+                                                    Text(
+                                                        text = NaviromStrings.get("dual_speaker_mode_stereo", appLanguage),
+                                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                                    )
+                                                    Text(
+                                                        text = NaviromStrings.get("dual_speaker_mode_stereo_desc", appLanguage),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Mode 2: Stereo Pair (Speaker 1 Left / Speaker 2 Right)
+                                        val isPairLrSelected = dualSpeakerMode == DualSpeakerMode.STEREO_PAIR_LR
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isPairLrSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                                            border = if (isPairLrSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    haptics.tick()
+                                                    onSetDualSpeakerMode?.invoke(DualSpeakerMode.STEREO_PAIR_LR)
+                                                }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                RadioButton(
+                                                    selected = isPairLrSelected,
+                                                    onClick = {
+                                                        haptics.tick()
+                                                        onSetDualSpeakerMode?.invoke(DualSpeakerMode.STEREO_PAIR_LR)
+                                                    },
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Text(
+                                                    text = NaviromStrings.get("dual_speaker_mode_pair_lr", appLanguage),
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                                )
+                                            }
+                                        }
+
+                                        // Mode 3: Stereo Pair (Speaker 1 Right / Speaker 2 Left)
+                                        val isPairRlSelected = dualSpeakerMode == DualSpeakerMode.STEREO_PAIR_RL
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isPairRlSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                                            border = if (isPairRlSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    haptics.tick()
+                                                    onSetDualSpeakerMode?.invoke(DualSpeakerMode.STEREO_PAIR_RL)
+                                                }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                RadioButton(
+                                                    selected = isPairRlSelected,
+                                                    onClick = {
+                                                        haptics.tick()
+                                                        onSetDualSpeakerMode?.invoke(DualSpeakerMode.STEREO_PAIR_RL)
+                                                    },
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Text(
+                                                    text = NaviromStrings.get("dual_speaker_mode_pair_rl", appLanguage),
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                                    // Speaker Balance Slider
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = NaviromStrings.get("dual_speaker_balance_title", appLanguage),
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = when {
+                                                    deckSyncBalance < 0.45f -> "Speaker 1 (+${((0.5f - deckSyncBalance) * 200).toInt()}%)"
+                                                    deckSyncBalance > 0.55f -> "Speaker 2 (+${((deckSyncBalance - 0.5f) * 200).toInt()}%)"
+                                                    else -> "Center (Balanced)"
+                                                },
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+
+                                        Slider(
+                                            value = deckSyncBalance,
+                                            onValueChange = { onSetDeckSyncBalance?.invoke(it) },
+                                            valueRange = 0f..1f,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "Speaker 1",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = "Center",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = "Speaker 2",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Player 1 (Deck A) Output Device Selector
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = NaviromStrings.get("audio_routing_deck1", appLanguage),
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            // System default option
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (player1DeviceId == null) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                border = if (player1DeviceId == null) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        haptics.tick()
+                                        onSetPlayer1PreferredDevice?.invoke(null)
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    RadioButton(
+                                        selected = player1DeviceId == null,
+                                        onClick = {
+                                            haptics.tick()
+                                            onSetPlayer1PreferredDevice?.invoke(null)
+                                        }
+                                    )
+                                    Icon(Icons.Filled.Speaker, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = NaviromStrings.get("audio_routing_default", appLanguage),
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                        )
+                                        Text(
+                                            text = "System active output",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Connected devices list for Player 1
+                            availableOutputDevices.forEach { device ->
+                                val isSelected = player1DeviceId == device.id
+                                val deviceIcon = when {
+                                    device.isBluetooth -> Icons.Filled.Bluetooth
+                                    device.isHeadphones -> Icons.Filled.Headphones
+                                    else -> Icons.Filled.Speaker
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    border = if (isSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            haptics.tick()
+                                            onSetPlayer1PreferredDevice?.invoke(device.id)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        RadioButton(
+                                            selected = isSelected,
+                                            onClick = {
+                                                haptics.tick()
+                                                onSetPlayer1PreferredDevice?.invoke(device.id)
+                                            }
+                                        )
+                                        Icon(deviceIcon, contentDescription = null, modifier = Modifier.size(20.dp), tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = device.name,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                            )
+                                            Text(
+                                                text = device.typeName,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Player 2 (Deck B) Output Device Selector (always visible if dual audio or deck sync)
+                        if (isDualAudioEnabled || isDeckSyncEnabled) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = NaviromStrings.get("audio_routing_deck2", appLanguage),
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+
+                                // System default option for Player 2
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (player2DeviceId == null) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    border = if (player2DeviceId == null) BorderStroke(1.5.dp, MaterialTheme.colorScheme.secondary) else null,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            haptics.tick()
+                                            onSetPlayer2PreferredDevice?.invoke(null)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        RadioButton(
+                                            selected = player2DeviceId == null,
+                                            onClick = {
+                                                haptics.tick()
+                                                onSetPlayer2PreferredDevice?.invoke(null)
+                                            },
+                                            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.secondary)
+                                        )
+                                        Icon(Icons.Filled.Speaker, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = NaviromStrings.get("audio_routing_default", appLanguage),
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                            )
+                                            Text(
+                                                text = "System active output",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Connected devices list for Player 2
+                                availableOutputDevices.forEach { device ->
+                                    val isSelected = player2DeviceId == device.id
+                                    val deviceIcon = when {
+                                        device.isBluetooth -> Icons.Filled.Bluetooth
+                                        device.isHeadphones -> Icons.Filled.Headphones
+                                        else -> Icons.Filled.Speaker
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                        border = if (isSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.secondary) else null,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                haptics.tick()
+                                                onSetPlayer2PreferredDevice?.invoke(device.id)
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    haptics.tick()
+                                                    onSetPlayer2PreferredDevice?.invoke(device.id)
+                                                },
+                                                colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.secondary)
+                                            )
+                                            Icon(deviceIcon, contentDescription = null, modifier = Modifier.size(20.dp), tint = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface)
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = device.name,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                                )
+                                                Text(
+                                                    text = device.typeName,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (availableOutputDevices.isEmpty()) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = NaviromStrings.get("audio_routing_bt_hint", appLanguage),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = { showAudioRoutingDialog = false }) {
+                        Text("Done")
+                    }
+                },
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+
+        if (showArtistsDialog) {
+            AlertDialog(
+                onDismissRequest = { showArtistsDialog = false },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.People, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = "Track Artists",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        artistList.forEach { artistName ->
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showArtistsDialog = false
+                                        onArtistClick?.invoke(track.artistId)
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    Icons.Filled.Person,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = artistName,
+                                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Icon(
+                                        Icons.Filled.ChevronRight,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showArtistsDialog = false }) {
+                        Text("Close")
+                    }
+                },
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+
+        if (showTeksteShqipDialog) {
+            AlertDialog(
+                onDismissRequest = { showTeksteShqipDialog = false },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Filled.Language, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Text("TeksteShqip")
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Fetch lyrics from TeksteShqip.com or enter a song URL (e.g. for Leonora Jakupi).",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = teksteShqipUrlInput,
+                            onValueChange = { teksteShqipUrlInput = it },
+                            label = { Text("URL") },
+                            placeholder = { Text("https://teksteshqip.com/leonora-jakupi/teksti/1848928") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Button(
+                            onClick = {
+                                val url = teksteShqipUrlInput.trim().ifBlank { null }
+                                onFetchTeksteShqipLyrics?.invoke(url)
+                                showTeksteShqipDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (teksteShqipUrlInput.isNotBlank()) "Fetch Lyrics" else "Auto-Search TeksteShqip")
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showTeksteShqipDialog = false }) {
+                        Text("Cancel")
+                    }
+                },
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+
+        val maxArtworkSize = (maxHeight * 0.38f).coerceIn(140.dp, 360.dp)
+
+        // 3 major colors of current playing track rendered as 70% blurred background mesh
+        if (primaryCoverColor != null && secondaryCoverColor != null && tertiaryCoverColor != null) {
+            val c1 = primaryCoverColor!!
+            val c2 = secondaryCoverColor!!
+            val c3 = tertiaryCoverColor!!
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(70.dp)
+                    .graphicsLayer { alpha = 0.85f }
+            ) {
+                val w = size.width
+                val h = size.height
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(c1.copy(alpha = 0.8f), Color.Transparent),
+                        center = Offset(w * 0.2f, h * 0.25f),
+                        radius = w * 0.85f
+                    ),
+                    radius = w * 0.85f,
+                    center = Offset(w * 0.2f, h * 0.25f)
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(c2.copy(alpha = 0.75f), Color.Transparent),
+                        center = Offset(w * 0.8f, h * 0.55f),
+                        radius = w * 0.9f
+                    ),
+                    radius = w * 0.9f,
+                    center = Offset(w * 0.8f, h * 0.55f)
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(c3.copy(alpha = 0.7f), Color.Transparent),
+                        center = Offset(w * 0.4f, h * 0.85f),
+                        radius = w * 0.8f
+                    ),
+                    radius = w * 0.8f,
+                    center = Offset(w * 0.4f, h * 0.85f)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = if (isDark) 0.38f else 0.18f))
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .widthIn(max = 680.dp)
+                .align(Alignment.Center)
+        ) {
+            AnimatedContent(
+                targetState = viewMode,
+            transitionSpec = {
+                if (targetState == PlayerViewMode.LYRICS) {
+                    (slideInVertically(
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
+                    ) { it } + fadeIn(animationSpec = tween(300)))
+                        .togetherWith(
+                            slideOutVertically(
+                                animationSpec = tween(240)
+                            ) { -it / 3 } + fadeOut(animationSpec = tween(200))
+                        )
+                } else {
+                    (slideInVertically(
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
+                    ) { -it / 3 } + fadeIn(animationSpec = tween(300)))
+                        .togetherWith(
+                            slideOutVertically(
+                                animationSpec = tween(240)
+                            ) { it } + fadeOut(animationSpec = tween(200))
+                        )
+                }
+            },
+            label = "PlayerViewModeTransition"
+        ) { mode ->
+            if (isAstrolabeModeEnabled && mode != PlayerViewMode.LYRICS) {
+                com.labix.navirom.ui.radial.AstrolabeFullPlayer(
+                    playbackState = playbackState,
+                    isFavorite = isFavorite,
+                    queue = queue,
+                    queueIndex = queueIndex,
+                    appLanguage = appLanguage,
+                    onDismiss = onDismiss,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onNext = onNext,
+                    onPrevious = onPrevious,
+                    onSeekTo = onSeekTo,
+                    onToggleShuffle = onToggleShuffle,
+                    onCycleRepeat = onCycleRepeat,
+                    onToggleFavorite = onToggleFavorite,
+                    onTrackSelect = onTrackSelect,
+                    onOpenWlanCast = onOpenWlanCast,
+                    onToggleClassicView = onToggleAstrolabeMode
+                )
+            } else if (mode == PlayerViewMode.ARTWORK) {
+                val validSyncedLines = remember(lyricsData.syncedLines) {
+                    lyricsData.syncedLines.filter { it.text.isNotBlank() }
+                }
+                val lyricPreviewPair = remember(currentPosMs, validSyncedLines, lyricsData.plainLyrics) {
+                    if (validSyncedLines.isNotEmpty()) {
+                        val idx = validSyncedLines.indexOfLast { (it.timeMs - 400L) <= currentPosMs }
+                        if (idx >= 0) {
+                            val l1 = validSyncedLines.getOrNull(idx)?.text.orEmpty()
+                            val l2 = validSyncedLines.getOrNull(idx + 1)?.text.orEmpty()
+                            Pair(l1, l2)
+                        } else {
+                            val firstLine = validSyncedLines.firstOrNull()?.text.orEmpty()
+                            val firstTime = validSyncedLines.firstOrNull()?.timeMs ?: 0L
+                            if (firstTime - currentPosMs > 2500L) {
+                                Pair("♪ ♪ ♪", firstLine)
+                            } else {
+                                val secondLine = validSyncedLines.getOrNull(1)?.text.orEmpty()
+                                Pair(firstLine, secondLine)
+                            }
+                        }
+                    } else if (lyricsData.plainLyrics.isNotBlank()) {
+                        val nonBlank = lyricsData.plainLyrics.lines().map { it.trim() }.filter { it.isNotBlank() }
+                        val l1 = nonBlank.getOrNull(0).orEmpty()
+                        val l2 = nonBlank.getOrNull(1).orEmpty()
+                        Pair(l1, l2)
+                    } else {
+                        Pair("", "")
+                    }
+                }
+
+                // Main Artwork View
+                Column(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    // Top Card
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        color = cardColor,
+                        shape = RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .statusBarsPadding()
+                                .padding(horizontal = 24.dp, vertical = 16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            // Top Bar: Back | Song Index | Saved (Heart) Button
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(onClick = {
+                                    haptics.click()
+                                    onDismiss()
+                                }) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textOnCard)
+                                }
+                                val songIndexText = remember(queueIndex, queueSize, track.id) {
+                                    val currentNum = if (queueIndex in 0 until queueSize) {
+                                        queueIndex + 1
+                                    } else {
+                                        1
+                                    }
+                                    val totalNum = if (queueSize > 0) queueSize else 1
+                                    "$currentNum/$totalNum"
+                                }
+                                Text(
+                                    text = songIndexText,
+                                    color = textOnCard,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 16.sp
+                                )
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            haptics.click()
+                                            onToggleAstrolabeMode()
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.RotateRight,
+                                            contentDescription = "Astrolabe Wheel View",
+                                            tint = if (isAstrolabeModeEnabled) com.labix.navirom.ui.radial.AstrolabeTheme.AstrolabeGold else textOnCard
+                                        )
+                                    }
+
+                                    // Saved / Favorite Icon at Top Right
+                                    val savedFavScale by animateFloatAsState(
+                                        targetValue = if (isFavorite) 1.25f else 1.0f,
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessMedium
+                                        ),
+                                        label = "topSavedFavScale"
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            haptics.click()
+                                            onToggleFavorite()
+                                        },
+                                        modifier = Modifier.graphicsLayer {
+                                            scaleX = savedFavScale
+                                            scaleY = savedFavScale
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                            contentDescription = "Saved",
+                                            tint = if (isFavorite) Color(0xFFE91E63) else textOnCard,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            // Artwork breathing scale based on playback state
+                            val artworkScale by animateFloatAsState(
+                                targetValue = if (playbackState.isPlaying) 1.0f else 0.92f,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessLow
+                                ),
+                                label = "artworkScale"
+                            )
+
+                            // Artwork with vinyl effect - vinyl rotates cleanly without overlaid text
+                            val artworkShape = if (isVinylEffectEnabled) CircleShape else RoundedCornerShape(32.dp)
+
+                            // Vinyl blur calculation: blurry in the first 10 seconds AND slowly gets blurry in the last 10 seconds of playback
+                            val startBlurFactor = if (currentPosMs < 10_000L) {
+                                (1f - (currentPosMs.toFloat() / 10_000f)).coerceIn(0f, 1f)
+                            } else 0f
+
+                            val remainingMsToEnd = totalDurationMs - currentPosMs
+                            val endBlurFactor = if (totalDurationMs > 10_000L && remainingMsToEnd in 0L..10_000L) {
+                                (1f - (remainingMsToEnd.toFloat() / 10_000f)).coerceIn(0f, 1f)
+                            } else 0f
+
+                            val vinylBlurFactor = maxOf(startBlurFactor, endBlurFactor).coerceIn(0f, 1f)
+                            val animatedVinylBlurDp = (vinylBlurFactor * 26f).dp
+
+                            // Platter depression spring animation while vinyl is being scratched
+                            val vinylPlatterScale by animateFloatAsState(
+                                targetValue = if (isVinylScratching) 0.982f else 1.0f,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMedium
+                                ),
+                                label = "vinylPlatterScale"
+                            )
+
+                            // Bigger circle line breathing pulse when music is actively playing
+                            val infiniteCircleTransition = rememberInfiniteTransition(label = "biggerCirclePulse")
+                            val circlePulseScale by if (playbackState.isPlaying) {
+                                infiniteCircleTransition.animateFloat(
+                                    initialValue = 1.0f,
+                                    targetValue = 1.028f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(2200, easing = FastOutSlowInEasing),
+                                        repeatMode = AnimRepeatMode.Reverse
+                                    ),
+                                    label = "circlePulseScale"
+                                )
+                            } else {
+                                remember { mutableFloatStateOf(1.0f) }
+                            }
+
+                            val currentTrackProgress = remember(currentPosMs, totalDurationMs) {
+                                if (totalDurationMs > 0L) {
+                                    (currentPosMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
+                                } else 0f
+                            }
+
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(maxArtworkSize)
+                                    .aspectRatio(1f)
+                            ) {
+                                // Elegant line of a bigger circle framing the central play-view artwork
+                                val circleLineColor = textOnCard.copy(alpha = if (isDark) 0.22f else 0.16f)
+                                val circleSubtleHaloColor = textOnCard.copy(alpha = if (isDark) 0.08f else 0.05f)
+                                val progressLineColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                                val accentDotColor = textOnCard
+
+                                Canvas(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .graphicsLayer {
+                                            scaleX = circlePulseScale
+                                            scaleY = circlePulseScale
+                                        }
+                                ) {
+                                    val centerOffset = Offset(size.width / 2f, size.height / 2f)
+                                    val baseRadius = (size.minDimension / 2f)
+                                    // Radius for the line of a bigger circle
+                                    val ringRadius = baseRadius + 15.dp.toPx()
+                                    val outerHaloRadius = ringRadius + 6.dp.toPx()
+
+                                    // 1. Ultra-subtle outer ambient dash orbit ring
+                                    drawCircle(
+                                        color = circleSubtleHaloColor,
+                                        radius = outerHaloRadius,
+                                        center = centerOffset,
+                                        style = Stroke(
+                                            width = 1.dp.toPx(),
+                                            pathEffect = PathEffect.dashPathEffect(
+                                                floatArrayOf(4.dp.toPx(), 10.dp.toPx()),
+                                                0f
+                                            )
+                                        )
+                                    )
+
+                                    // 2. Line of the bigger circle
+                                    drawCircle(
+                                        color = circleLineColor,
+                                        radius = ringRadius,
+                                        center = centerOffset,
+                                        style = Stroke(width = 1.5.dp.toPx())
+                                    )
+
+                                    // 3. Four cardinal micro-notch / tick indicators (12, 3, 6, 9 o'clock)
+                                    val tickLength = 5.dp.toPx()
+                                    for (i in 0 until 4) {
+                                        val angleDeg = i * 90f
+                                        val rad = Math.toRadians(angleDeg.toDouble())
+                                        val cosVal = Math.cos(rad).toFloat()
+                                        val sinVal = Math.sin(rad).toFloat()
+                                        val startX = centerOffset.x + (ringRadius - tickLength / 2f) * cosVal
+                                        val startY = centerOffset.y + (ringRadius - tickLength / 2f) * sinVal
+                                        val endX = centerOffset.x + (ringRadius + tickLength / 2f) * cosVal
+                                        val endY = centerOffset.y + (ringRadius + tickLength / 2f) * sinVal
+                                        drawLine(
+                                            color = circleLineColor.copy(alpha = if (isDark) 0.40f else 0.28f),
+                                            start = Offset(startX, startY),
+                                            end = Offset(endX, endY),
+                                            strokeWidth = 1.5.dp.toPx(),
+                                            cap = StrokeCap.Round
+                                        )
+                                    }
+
+                                    // 4. Smooth glowing progress arc along the bigger circle line
+                                    if (currentTrackProgress > 0.001f) {
+                                        val arcRect = androidx.compose.ui.geometry.Rect(
+                                            center = centerOffset,
+                                            radius = ringRadius
+                                        )
+                                        drawArc(
+                                            color = progressLineColor,
+                                            startAngle = -90f,
+                                            sweepAngle = currentTrackProgress * 360f,
+                                            useCenter = false,
+                                            topLeft = arcRect.topLeft,
+                                            size = arcRect.size,
+                                            style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                                        )
+
+                                        // 5. Glowing orbital bead / needle tip at current playback position
+                                        val progressAngleRad = Math.toRadians((-90f + currentTrackProgress * 360f).toDouble())
+                                        val tipX = centerOffset.x + ringRadius * Math.cos(progressAngleRad).toFloat()
+                                        val tipY = centerOffset.y + ringRadius * Math.sin(progressAngleRad).toFloat()
+
+                                        // Soft aura around tip
+                                        drawCircle(
+                                            color = progressLineColor.copy(alpha = 0.35f),
+                                            radius = 5.5.dp.toPx(),
+                                            center = Offset(tipX, tipY)
+                                        )
+                                        // Crisp bead center
+                                        drawCircle(
+                                            color = accentDotColor,
+                                            radius = 3.dp.toPx(),
+                                            center = Offset(tipX, tipY)
+                                        )
+                                    }
+                                }
+
+                                // Stylistic vertical shadow behind the vinyl plane that provides rich elevated depth and turntable feel
+                                if (isVinylEffectEnabled) {
+                                    val verticalShadowAlpha = if (isDark) 0.60f else 0.40f
+                                    Canvas(
+                                        modifier = Modifier
+                                            .size(width = maxArtworkSize * 0.88f, height = maxArtworkSize * 1.22f)
+                                            .align(Alignment.Center)
+                                            .graphicsLayer {
+                                                scaleX = artworkScale * vinylPlatterScale
+                                                scaleY = artworkScale * vinylPlatterScale
+                                            }
+                                    ) {
+                                        val canvasWidth = size.width
+                                        val canvasHeight = size.height
+
+                                        // 1. Broad diffused ambient vertical shadow column
+                                        drawOval(
+                                            brush = Brush.verticalGradient(
+                                                0.0f to Color.Transparent,
+                                                0.16f to Color.Black.copy(alpha = verticalShadowAlpha * 0.20f),
+                                                0.36f to Color.Black.copy(alpha = verticalShadowAlpha * 0.60f),
+                                                0.50f to Color.Black.copy(alpha = verticalShadowAlpha * 0.85f),
+                                                0.64f to Color.Black.copy(alpha = verticalShadowAlpha * 0.60f),
+                                                0.84f to Color.Black.copy(alpha = verticalShadowAlpha * 0.20f),
+                                                1.0f to Color.Transparent
+                                            ),
+                                            topLeft = Offset(0f, 0f),
+                                            size = androidx.compose.ui.geometry.Size(canvasWidth, canvasHeight)
+                                        )
+
+                                        // 2. Focused mid-plane vertical shadow spine for tactile turntable depth
+                                        val coreWidth = canvasWidth * 0.42f
+                                        val coreLeft = (canvasWidth - coreWidth) / 2f
+                                        drawOval(
+                                            brush = Brush.verticalGradient(
+                                                0.0f to Color.Transparent,
+                                                0.20f to Color.Black.copy(alpha = verticalShadowAlpha * 0.35f),
+                                                0.50f to Color.Black.copy(alpha = verticalShadowAlpha * 0.95f),
+                                                0.80f to Color.Black.copy(alpha = verticalShadowAlpha * 0.35f),
+                                                1.0f to Color.Transparent
+                                            ),
+                                            topLeft = Offset(coreLeft, canvasHeight * 0.04f),
+                                            size = androidx.compose.ui.geometry.Size(coreWidth, canvasHeight * 0.92f)
+                                        )
+
+                                        // 3. Stylistic central vertical slit / recess accent
+                                        val slitWidth = 5.dp.toPx()
+                                        val slitLeft = (canvasWidth - slitWidth) / 2f
+                                        drawRoundRect(
+                                            brush = Brush.verticalGradient(
+                                                0.0f to Color.Transparent,
+                                                0.22f to Color.Black.copy(alpha = verticalShadowAlpha * 0.50f),
+                                                0.50f to Color.Black.copy(alpha = verticalShadowAlpha * 0.85f),
+                                                0.78f to Color.Black.copy(alpha = verticalShadowAlpha * 0.50f),
+                                                1.0f to Color.Transparent
+                                            ),
+                                            topLeft = Offset(slitLeft, canvasHeight * 0.08f),
+                                            size = androidx.compose.ui.geometry.Size(slitWidth, canvasHeight * 0.84f),
+                                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(slitWidth / 2f, slitWidth / 2f)
+                                        )
+                                    }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                    .size(maxArtworkSize)
+                                    .aspectRatio(1f)
+                                    .then(
+                                        if (isVinylEffectEnabled) {
+                                            Modifier.pointerInput(Unit) {
+                                                val center = Offset(size.width / 2f, size.height / 2f)
+                                                val maxRadius = size.width / 2f
+                                                awaitEachGesture {
+                                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                                    val downTimeMs = SystemClock.uptimeMillis()
+                                                    val initialDist = (down.position - center).getDistance()
+                                                    if (initialDist <= maxRadius) {
+                                                        var prevPos = down.position
+                                                        var prevAngleRad = kotlin.math.atan2(prevPos.y - center.y, prevPos.x - center.x)
+                                                        var totalAngularTravel = 0f
+                                                        var totalLinearTravel = 0f
+                                                        var isScratchConfirmed = false
+                                                        var lastTimeMs = downTimeMs
+                                                        var currentAngularVelocity = 0f
+                                                        var accumulatedHapticAngle = 0f
+
+                                                        do {
+                                                            val event = awaitPointerEvent()
+                                                            val currentChange = event.changes.firstOrNull { it.id == down.id } ?: break
+                                                            if (currentChange.pressed) {
+                                                                val curPos = currentChange.position
+                                                                val now = SystemClock.uptimeMillis()
+                                                                val dt = (now - lastTimeMs).coerceAtLeast(1) / 1000f
+                                                                lastTimeMs = now
+
+                                                                val distFromCenter = (curPos - center).getDistance()
+                                                                if (distFromCenter > 20f) {
+                                                                    val curAngleRad = kotlin.math.atan2(curPos.y - center.y, curPos.x - center.x)
+                                                                    var deltaRad = curAngleRad - prevAngleRad
+                                                                    while (deltaRad > Math.PI) deltaRad -= (2 * Math.PI).toFloat()
+                                                                    while (deltaRad < -Math.PI) deltaRad += (2 * Math.PI).toFloat()
+                                                                    val deltaDegrees = Math.toDegrees(deltaRad.toDouble()).toFloat()
+
+                                                                    totalAngularTravel += kotlin.math.abs(deltaDegrees)
+                                                                    totalLinearTravel += (curPos - prevPos).getDistance()
+
+                                                                    if (!isScratchConfirmed && (totalAngularTravel > 2.0f || totalLinearTravel > 8f)) {
+                                                                        isScratchConfirmed = true
+                                                                        isVinylScratching = true
+                                                                    }
+
+                                                                    if (isScratchConfirmed) {
+                                                                        currentChange.consume()
+                                                                        vinylRotationAngle = (vinylRotationAngle + deltaDegrees) % 360f
+                                                                        if (vinylRotationAngle < 0f) vinylRotationAngle += 360f
+
+                                                                        val instVelocity = deltaDegrees / dt
+                                                                        currentAngularVelocity = currentAngularVelocity * 0.35f + instVelocity * 0.65f
+
+                                                                        accumulatedHapticAngle += kotlin.math.abs(deltaDegrees)
+                                                                        if (accumulatedHapticAngle >= 14f) {
+                                                                            haptics.tick()
+                                                                            accumulatedHapticAngle = 0f
+                                                                        }
+                                                                    }
+                                                                    prevAngleRad = curAngleRad
+                                                                }
+                                                                prevPos = curPos
+                                                            }
+                                                        } while (event.changes.any { it.pressed })
+
+                                                        if (isScratchConfirmed) {
+                                                            isVinylScratching = false
+                                                            vinylScratchVelocity = currentAngularVelocity.coerceIn(-1800f, 1800f)
+                                                        } else {
+                                                            val durationMs = SystemClock.uptimeMillis() - downTimeMs
+                                                            if (durationMs > 500L && onAlbumClick != null) {
+                                                                haptics.click()
+                                                                onAlbumClick.invoke(track.albumId)
+                                                            } else {
+                                                                haptics.click()
+                                                                showCoverQuickActionsSheet = true
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                                    .graphicsLayer {
+                                        scaleX = artworkScale * (if (isVinylEffectEnabled) vinylPlatterScale else 1.0f)
+                                        scaleY = artworkScale * (if (isVinylEffectEnabled) vinylPlatterScale else 1.0f)
+                                        if (isVinylEffectEnabled) {
+                                            rotationZ = vinylRotationAngle
+                                        }
+                                    }
+                                    .clip(artworkShape)
+                            ) {
+                                SongAlbumCover(
+                                    coverArtUrl = track.coverArtUrl,
+                                    contentDescription = "Album Artwork",
+                                    isAlbum = false,
+                                    shape = RoundedCornerShape(0.dp),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .then(
+                                            if (isVinylEffectEnabled && animatedVinylBlurDp > 0.5.dp) {
+                                                Modifier.blur(radius = animatedVinylBlurDp)
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .then(
+                                            if (!isVinylEffectEnabled) {
+                                                Modifier
+                                                    .testTag("full_player_cover_click")
+                                                    .pointerInput(track.id) {
+                                                        awaitEachGesture {
+                                                            val down = awaitFirstDown(requireUnconsumed = false)
+                                                            val downTime = SystemClock.uptimeMillis()
+                                                            val startX = down.position.x
+                                                            val startY = down.position.y
+                                                            var totalX = 0f
+                                                            var totalY = 0f
+                                                            var isDrag = false
+                                                            var handledSwipe = false
+
+                                                            do {
+                                                                val event = awaitPointerEvent()
+                                                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                                                if (change.pressed) {
+                                                                    totalX = change.position.x - startX
+                                                                    totalY = change.position.y - startY
+                                                                    val dist = kotlin.math.sqrt(totalX * totalX + totalY * totalY)
+                                                                    if (dist > 18f) {
+                                                                        isDrag = true
+                                                                    }
+                                                                    if (isDrag && !handledSwipe) {
+                                                                        val th = 70f
+                                                                        if (kotlin.math.abs(totalX) > kotlin.math.abs(totalY) * 1.3f && kotlin.math.abs(totalX) > th) {
+                                                                            change.consume()
+                                                                            handledSwipe = true
+                                                                            if (totalX < -th) {
+                                                                                haptics.click()
+                                                                                onNext()
+                                                                            } else if (totalX > th) {
+                                                                                haptics.click()
+                                                                                onPrevious()
+                                                                            }
+                                                                        } else if (kotlin.math.abs(totalY) > kotlin.math.abs(totalX) * 1.3f && kotlin.math.abs(totalY) > th) {
+                                                                            change.consume()
+                                                                            handledSwipe = true
+                                                                            if (totalY < -th) {
+                                                                                haptics.toggle()
+                                                                                viewMode = PlayerViewMode.LYRICS
+                                                                            } else if (totalY > th) {
+                                                                                haptics.click()
+                                                                                onDismiss()
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            } while (event.changes.any { it.pressed })
+
+                                                            val durationMs = SystemClock.uptimeMillis() - downTime
+                                                            if (!isDrag && !handledSwipe) {
+                                                                if (durationMs > 500L && onAlbumClick != null) {
+                                                                    haptics.click()
+                                                                    onAlbumClick.invoke(track.albumId)
+                                                                } else {
+                                                                    haptics.click()
+                                                                    showCoverQuickActionsSheet = true
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                )
+
+                                // Soft diffused scrim that unblurs steadily in the first 10 seconds for the vinyl image
+                                if (isVinylEffectEnabled && vinylBlurFactor > 0.01f) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.White.copy(alpha = vinylBlurFactor * 0.16f))
+                                            .background(Color.Black.copy(alpha = vinylBlurFactor * 0.30f))
+                                    )
+                                }
+
+                                // Subtle Countdown Timer Badge on cover if timer is running
+                                if (isTimerActive) {
+                                    val secsLeft = playbackState.sleepTimerSecondsLeft ?: ((playbackState.sleepTimerMinutesLeft ?: 0) * 60)
+                                    val formattedLeft = if (secsLeft > 0) "%02d:%02d".format(secsLeft / 60, secsLeft % 60) else ""
+                                    if (formattedLeft.isNotEmpty()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(10.dp)
+                                                .clickable {
+                                                    haptics.click()
+                                                    showCoverQuickActionsSheet = true
+                                                }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.HourglassTop,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Text(
+                                                    text = formattedLeft,
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (isVinylEffectEnabled) {
+                                    // Concentric micro-groove ring 1
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize(0.80f)
+                                            .align(Alignment.Center)
+                                            .border(
+                                                BorderStroke(0.75.dp, Color.White.copy(alpha = 0.12f)),
+                                                CircleShape
+                                            )
+                                    )
+                                    // Concentric micro-groove ring 2
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize(0.60f)
+                                            .align(Alignment.Center)
+                                            .border(
+                                                BorderStroke(0.75.dp, Color.White.copy(alpha = 0.09f)),
+                                                CircleShape
+                                            )
+                                    )
+                                    // Subtle rim edge ring
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .border(
+                                                BorderStroke(3.dp, Color.Black.copy(alpha = 0.35f)),
+                                                CircleShape
+                                            )
+                                    )
+                                    // Center spindle hole & label ring
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.Center)
+                                            .size(48.dp)
+                                            .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                                            .border(BorderStroke(2.dp, Color.White.copy(alpha = 0.75f)), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .background(if (isDark) Color.Black else Color(0xFF1E1E1E), CircleShape)
+                                                .border(BorderStroke(1.5.dp, Color.White.copy(alpha = 0.9f)), CircleShape)
+                                        )
+                                    }
+                                }
+                            }
+                            }
+
+                            Spacer(modifier = Modifier.height(24.dp))
+
+                            // Title & Artist (Full Width)
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.Start
+                            ) {
+                                AnimatedContent(
+                                    targetState = track.id,
+                                    transitionSpec = {
+                                        (fadeIn(tween(240)) + slideInVertically(tween(240)) { it / 3 })
+                                            .togetherWith(fadeOut(tween(140)) + slideOutVertically(tween(140)) { -it / 3 })
+                                    },
+                                    label = "fullPlayerTrackTitleAnim",
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { _ ->
+                                    Column {
+                                        Text(
+                                            text = track.title,
+                                            color = textOnCard,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 22.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = track.artist,
+                                            color = textMutedOnCard,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.clickable {
+                                                if (artistList.size > 1) {
+                                                    showArtistsDialog = true
+                                                } else {
+                                                    onArtistClick?.invoke(track.artistId)
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(18.dp))
+
+                            // Seekbar
+                            Slider(
+                                value = currentPosMs.toFloat(),
+                                onValueChange = {
+                                    isDraggingSlider = true
+                                    dragPositionMs = it.toLong()
+                                },
+                                onValueChangeFinished = {
+                                    isDraggingSlider = false
+                                    onSeekTo(dragPositionMs)
+                                },
+                                valueRange = 0f..(totalDurationMs.toFloat().takeIf { it > 0f } ?: 100f),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = textOnCard,
+                                    activeTrackColor = textOnCard,
+                                    inactiveTrackColor = Color(0xFFE0E0E0)
+                                ),
+                                modifier = Modifier.fillMaxWidth().height(24.dp)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(text = formatTime(currentPosMs), color = textMutedOnCard, fontSize = 12.sp)
+                                Text(text = formatTime(totalDurationMs), color = textMutedOnCard, fontSize = 12.sp)
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Playback Controls
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(onClick = onCycleRepeat) {
+                                    Icon(
+                                        imageVector = if (playbackState.repeatMode == RepeatMode.ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                                        contentDescription = "Repeat",
+                                        tint = if (playbackState.repeatMode == RepeatMode.OFF) textMutedOnCard else textOnCard
+                                    )
+                                }
+                                HoldablePlaybackButton(
+                                    onClick = onPrevious,
+                                    onHoldTick = {
+                                        haptics.tick()
+                                        if (onSeekRelative != null) {
+                                            onSeekRelative(-5000L)
+                                        } else {
+                                            onSeekTo((playbackState.currentPositionMs - 5000L).coerceAtLeast(0L))
+                                        }
+                                    },
+                                    modifier = Modifier.size(48.dp)
+                                ) { isHolding ->
+                                    Icon(
+                                        imageVector = if (isHolding) Icons.Filled.FastRewind else Icons.Filled.SkipPrevious,
+                                        contentDescription = "Previous",
+                                        tint = if (isHolding) MaterialTheme.colorScheme.primary else textOnCard,
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .graphicsLayer {
+                                                scaleX = if (isHolding) 1.25f else 1.0f
+                                                scaleY = if (isHolding) 1.25f else 1.0f
+                                            }
+                                    )
+                                }
+                                
+                                // Play/Pause Button (Circle outline)
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.White,
+                                    border = androidx.compose.foundation.BorderStroke(2.dp, textOnCard),
+                                    modifier = Modifier.size(64.dp).clickable { onTogglePlayPause() }
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        AnimatedContent(
+                                            targetState = playbackState.isPlaying,
+                                            transitionSpec = {
+                                                (scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(tween(160)))
+                                                    .togetherWith(scaleOut() + fadeOut(tween(100)))
+                                            },
+                                            label = "fullPlayPauseAnim"
+                                        ) { isPlaying ->
+                                            Icon(
+                                                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                                contentDescription = "Play/Pause",
+                                                tint = textOnCard,
+                                                modifier = Modifier.size(32.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                HoldablePlaybackButton(
+                                    onClick = onNext,
+                                    onHoldTick = {
+                                        haptics.tick()
+                                        if (onSeekRelative != null) {
+                                            onSeekRelative(5000L)
+                                        } else {
+                                            onSeekTo((playbackState.currentPositionMs + 5000L).coerceAtMost(playbackState.durationMs))
+                                        }
+                                    },
+                                    modifier = Modifier.size(48.dp)
+                                ) { isHolding ->
+                                    Icon(
+                                        imageVector = if (isHolding) Icons.Filled.FastForward else Icons.Filled.SkipNext,
+                                        contentDescription = "Next",
+                                        tint = if (isHolding) MaterialTheme.colorScheme.primary else textOnCard,
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .graphicsLayer {
+                                                scaleX = if (isHolding) 1.25f else 1.0f
+                                                scaleY = if (isHolding) 1.25f else 1.0f
+                                            }
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        haptics.toggle()
+                                        val toastMsg = when {
+                                            !playbackState.isShuffle -> NaviromStrings.get("shuffle_standard_toast", appLanguage)
+                                            !playbackState.isSmartShuffle -> NaviromStrings.get("smart_shuffle_toast", appLanguage)
+                                            else -> NaviromStrings.get("shuffle_off_toast", appLanguage)
+                                        }
+                                        Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+                                        onToggleShuffle()
+                                    },
+                                    modifier = Modifier.testTag("player_toggle_shuffle_btn")
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (playbackState.isSmartShuffle) Icons.Filled.AutoAwesome else Icons.Filled.Shuffle,
+                                            contentDescription = if (playbackState.isSmartShuffle) "Smart Shuffle" else "Shuffle",
+                                            tint = when {
+                                                playbackState.isSmartShuffle -> MaterialTheme.colorScheme.primary
+                                                playbackState.isShuffle -> textOnCard
+                                                else -> textMutedOnCard
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        if (playbackState.isSmartShuffle) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .align(Alignment.TopEnd)
+                                                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Dual Audio Deck B (when enabled) OR 2-Line Lyric Preview below control buttons
+                            if (isDualAudioEnabled) {
+                                val p2Device = availableOutputDevices.firstOrNull { it.id == player2DeviceId }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                SecondaryPlayerDeckView(
+                                    state = secondaryPlaybackState,
+                                    isDark = isDark,
+                                    textOnCard = textOnCard,
+                                    textMutedOnCard = textMutedOnCard,
+                                    appLanguage = appLanguage,
+                                    isDeckSyncEnabled = isDeckSyncEnabled,
+                                    onToggleDeckSync = { onToggleDeckSync?.invoke() },
+                                    onOpenAudioRouting = { showAudioRoutingDialog = true },
+                                    player2DeviceName = p2Device?.name,
+                                    onTogglePlayPause = { onToggleSecondaryPlayPause?.invoke() },
+                                    onPlayNext = { onPlaySecondaryNext?.invoke() },
+                                    onPlayPrevious = { onPlaySecondaryPrevious?.invoke() },
+                                    onSeekTo = { onSeekSecondaryTo?.invoke(it) },
+                                    onSeekRelative = { onSeekSecondaryRelative?.invoke(it) },
+                                    onSetVolume = { onSetSecondaryVolume?.invoke(it) },
+                                    onStopTrack = { onStopSecondaryTrack?.invoke() }
+                                )
+                            } else if (lyricPreviewPair.first.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = if (isDark) Color(0xFF161616) else Color(0xFFF3F4F6),
+                                    border = BorderStroke(1.dp, if (isDark) Color(0xFF2E2E2E) else Color(0xFFE5E7EB)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            haptics.toggle()
+                                            viewMode = PlayerViewMode.LYRICS
+                                        }
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        AnimatedContent(
+                                            targetState = lyricPreviewPair,
+                                            transitionSpec = {
+                                                (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 3 })
+                                                    .togetherWith(fadeOut(tween(160)) + slideOutVertically(tween(160)) { -it / 3 })
+                                            },
+                                            label = "LyricPreviewBelowControls",
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) { (currentLine, nextLine) ->
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Text(
+                                                    text = currentLine,
+                                                    color = textOnCard,
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    textAlign = TextAlign.Center,
+                                                    maxLines = if (nextLine.isBlank()) 2 else 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                if (nextLine.isNotBlank()) {
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Text(
+                                                        text = nextLine,
+                                                        color = textMutedOnCard,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        textAlign = TextAlign.Center,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Bottom Grouped & Scrollable Action Bar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Group 1: Lyrics Mic Button
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFF3D959), // Yellow
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clickable {
+                                    haptics.toggle()
+                                    viewMode = PlayerViewMode.LYRICS
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Filled.Mic, contentDescription = "Lyrics", tint = Color.Black)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        // Group 2: Context Cluster (Artist & Album)
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = Color(0xFF222222),
+                            border = BorderStroke(1.dp, Color(0xFF333333))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // 1. Artist Action Button
+                                IconButton(
+                                    onClick = {
+                                        haptics.click()
+                                        if (artistList.size > 1) {
+                                            showArtistsDialog = true
+                                        } else {
+                                            onArtistClick?.invoke(track.artistId)
+                                        }
+                                    },
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (artistList.size > 1) Icons.Filled.People else Icons.Filled.Person,
+                                        contentDescription = "Artist",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                // 2. Album Action Button
+                                IconButton(
+                                    onClick = {
+                                        haptics.click()
+                                        onAlbumClick?.invoke(track.albumId)
+                                    },
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Album,
+                                        contentDescription = "Album",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        // Group 3: Audio Deck & Utilities Cluster (Sleep Timer, Sync Decks, Audio Routing)
+                        val isTimerActive = (playbackState.sleepTimerSecondsLeft != null && playbackState.sleepTimerSecondsLeft > 0) ||
+                                (playbackState.sleepTimerMinutesLeft != null && playbackState.sleepTimerMinutesLeft > 0)
+
+                        val timerCountdownText = remember(playbackState.sleepTimerSecondsLeft, playbackState.sleepTimerMinutesLeft) {
+                            val totalSecs = playbackState.sleepTimerSecondsLeft ?: (playbackState.sleepTimerMinutesLeft?.times(60) ?: 0)
+                            if (totalSecs <= 0) ""
+                            else {
+                                val mins = totalSecs / 60
+                                val secs = totalSecs % 60
+                                "%02d:%02d".format(mins, secs)
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = Color(0xFF222222),
+                            border = BorderStroke(1.dp, Color(0xFF333333))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Sleep Timer Button
+                                Surface(
+                                    shape = if (isTimerActive) RoundedCornerShape(18.dp) else CircleShape,
+                                    color = if (isTimerActive) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    modifier = Modifier
+                                        .height(38.dp)
+                                        .then(if (isTimerActive) Modifier.padding(horizontal = 2.dp) else Modifier.width(38.dp))
+                                        .clickable {
+                                            haptics.click()
+                                            showSleepTimerDialog = true
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = if (isTimerActive) 10.dp else 0.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isTimerActive) Icons.Filled.HourglassTop else Icons.Filled.Timer,
+                                            contentDescription = "Sleep Timer",
+                                            tint = if (isTimerActive) MaterialTheme.colorScheme.onPrimary else Color.White,
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                        if (isTimerActive && timerCountdownText.isNotBlank()) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = timerCountdownText,
+                                                color = MaterialTheme.colorScheme.onPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Sync Decks (Mirror Playback) Button
+                                if (isDualAudioEnabled) {
+                                    Surface(
+                                        shape = if (isDeckSyncEnabled) RoundedCornerShape(18.dp) else CircleShape,
+                                        color = if (isDeckSyncEnabled) MaterialTheme.colorScheme.secondary else Color.Transparent,
+                                        modifier = Modifier
+                                            .height(38.dp)
+                                            .then(if (isDeckSyncEnabled) Modifier.padding(horizontal = 2.dp) else Modifier.width(38.dp))
+                                            .clickable {
+                                                haptics.toggle()
+                                                onToggleDeckSync?.invoke()
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = if (isDeckSyncEnabled) 10.dp else 0.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isDeckSyncEnabled) Icons.Filled.Sync else Icons.Filled.SyncDisabled,
+                                                contentDescription = "Sync Decks",
+                                                tint = if (isDeckSyncEnabled) MaterialTheme.colorScheme.onSecondary else Color.White,
+                                                modifier = Modifier.size(19.dp)
+                                            )
+                                            if (isDeckSyncEnabled) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "SYNC",
+                                                    color = MaterialTheme.colorScheme.onSecondary,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Black
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Audio Routing (Bluetooth / Speakers) Button
+                                IconButton(
+                                    onClick = {
+                                        haptics.click()
+                                        showAudioRoutingDialog = true
+                                    },
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    BadgedBox(
+                                        badge = {
+                                            if (availableOutputDevices.isNotEmpty()) {
+                                                Badge(
+                                                    containerColor = MaterialTheme.colorScheme.primary,
+                                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                                    modifier = Modifier.size(14.dp)
+                                                ) {
+                                                    Text("${availableOutputDevices.size}", fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.BluetoothAudio,
+                                            contentDescription = "Audio Routing",
+                                            tint = if (player1DeviceId != null || player2DeviceId != null) MaterialTheme.colorScheme.primary else Color.White,
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                    }
+                                }
+
+                                // WLAN Receiver Speaker Cast Button
+                                val isWlanActive = wlanSpeakerState?.selectedDevice != null
+                                Surface(
+                                    shape = if (isWlanActive) RoundedCornerShape(18.dp) else CircleShape,
+                                    color = if (isWlanActive) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    modifier = Modifier
+                                        .height(38.dp)
+                                        .then(if (isWlanActive) Modifier.padding(horizontal = 2.dp) else Modifier.width(38.dp))
+                                        .clickable {
+                                            haptics.click()
+                                            onOpenWlanCast?.invoke()
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = if (isWlanActive) 8.dp else 0.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isWlanActive) Icons.Filled.CastConnected else Icons.Filled.Cast,
+                                            contentDescription = "WLAN Speaker",
+                                            tint = if (isWlanActive) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                        if (isWlanActive) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "WLAN",
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        // Group 4: Queue Button
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF2C2C2C),
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clickable {
+                                    haptics.click()
+                                    onOpenQueue()
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Filled.QueueMusic, contentDescription = "Queue", tint = Color.White)
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Lyrics View
+                val listState = rememberLazyListState()
+                val plainScrollState = rememberScrollState()
+
+                val validSyncedLines = remember(lyricsData.syncedLines) {
+                    lyricsData.syncedLines.filter { it.text.isNotBlank() }
+                }
+                val hasAnyLyrics = validSyncedLines.isNotEmpty() || lyricsData.plainLyrics.isNotBlank()
+                val isLyricsAvailable = !lyricsData.isLoading && lyricsData.error == null && hasAnyLyrics
+
+                var accumulatedDownwardDrag by remember { mutableFloatStateOf(0f) }
+
+                val lyricsNestedScrollConnection = remember {
+                    object : NestedScrollConnection {
+                        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                            if (available.y < 0f && accumulatedDownwardDrag > 0f) {
+                                val consumed = (-available.y).coerceAtMost(accumulatedDownwardDrag)
+                                accumulatedDownwardDrag -= consumed
+                                return Offset(0f, -consumed)
+                            }
+                            return Offset.Zero
+                        }
+
+                        override fun onPostScroll(
+                            consumed: Offset,
+                            available: Offset,
+                            source: NestedScrollSource
+                        ): Offset {
+                            // When child scrollable is at the top and cannot scroll down any further, available.y > 0
+                            if (available.y > 0f) {
+                                accumulatedDownwardDrag += available.y
+                                if (accumulatedDownwardDrag > 45f) {
+                                    accumulatedDownwardDrag = 0f
+                                    haptics.toggle()
+                                    viewMode = PlayerViewMode.ARTWORK
+                                    return available
+                                }
+                            }
+                            return Offset.Zero
+                        }
+
+                        override suspend fun onPreFling(available: Velocity): Velocity {
+                            accumulatedDownwardDrag = 0f
+                            return Velocity.Zero
+                        }
+
+                        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                            accumulatedDownwardDrag = 0f
+                            if (available.y > 150f) {
+                                haptics.toggle()
+                                viewMode = PlayerViewMode.ARTWORK
+                            }
+                            return Velocity.Zero
+                        }
+                    }
+                }
+
+                val noLyricsDragModifier = if (!isLyricsAvailable) {
+                    Modifier.pointerInput(Unit) {
+                        var totalY = 0f
+                        var handled = false
+                        detectDragGestures(
+                            onDragStart = { totalY = 0f; handled = false },
+                            onDragEnd = { totalY = 0f; handled = false },
+                            onDragCancel = { totalY = 0f; handled = false },
+                            onDrag = { change, dragAmount ->
+                                if (!handled) {
+                                    totalY += dragAmount.y
+                                    if (totalY > 35f) {
+                                        change.consume()
+                                        handled = true
+                                        haptics.toggle()
+                                        viewMode = PlayerViewMode.ARTWORK
+                                    }
+                                }
+                            }
+                        )
+                    }
+                } else {
+                    Modifier
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    // Top Persistent Mini Player Card (always visible on top of lyrics)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(Unit) {
+                                var totalX = 0f
+                                var totalY = 0f
+                                var handled = false
+                                detectDragGestures(
+                                    onDragStart = { totalX = 0f; totalY = 0f; handled = false },
+                                    onDragEnd = { totalX = 0f; totalY = 0f; handled = false },
+                                    onDragCancel = { totalX = 0f; totalY = 0f; handled = false },
+                                    onDrag = { change, dragAmount ->
+                                        if (!handled) {
+                                            totalX += dragAmount.x
+                                            totalY += dragAmount.y
+                                            val th = 50f
+                                            if (kotlin.math.abs(totalX) > kotlin.math.abs(totalY) * 1.2f && kotlin.math.abs(totalX) > th) {
+                                                change.consume()
+                                                handled = true
+                                                if (totalX < -th) {
+                                                    haptics.click()
+                                                    onNext()
+                                                } else if (totalX > th) {
+                                                    haptics.click()
+                                                    onPrevious()
+                                                }
+                                            } else if (totalY > th) {
+                                                change.consume()
+                                                handled = true
+                                                haptics.toggle()
+                                                viewMode = PlayerViewMode.ARTWORK
+                                            }
+                                        }
+                                    }
+                                )
+                            },
+                        color = cardColor,
+                        shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+                        shadowElevation = 8.dp
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(
+                                    onClick = {
+                                        haptics.click()
+                                        viewMode = PlayerViewMode.ARTWORK
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back to Player",
+                                        tint = textOnCard,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+
+                                SongAlbumCover(
+                                    coverArtUrl = track.coverArtUrl,
+                                    contentDescription = "Cover",
+                                    isAlbum = false,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clickable {
+                                            haptics.click()
+                                            viewMode = PlayerViewMode.ARTWORK
+                                        }
+                                )
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            haptics.click()
+                                            viewMode = PlayerViewMode.ARTWORK
+                                        }
+                                ) {
+                                    Text(
+                                        text = track.title,
+                                        color = textOnCard,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = track.artist,
+                                        color = textMutedOnCard,
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+
+                                // Playback controls in the top player header
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    HoldablePlaybackButton(
+                                        onClick = {
+                                            haptics.click()
+                                            onPrevious()
+                                        },
+                                        onHoldTick = {
+                                            haptics.tick()
+                                            if (onSeekRelative != null) {
+                                                onSeekRelative(-5000L)
+                                            } else {
+                                                onSeekTo((playbackState.currentPositionMs - 5000L).coerceAtLeast(0L))
+                                            }
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) { isHolding ->
+                                        Icon(
+                                            imageVector = if (isHolding) Icons.Filled.FastRewind else Icons.Filled.SkipPrevious,
+                                            contentDescription = "Previous",
+                                            tint = if (isHolding) MaterialTheme.colorScheme.primary else textOnCard,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = textOnCard,
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                haptics.click()
+                                                onTogglePlayPause()
+                                            }
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                                contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
+                                                tint = cardColor,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+
+                                    HoldablePlaybackButton(
+                                        onClick = {
+                                            haptics.click()
+                                            onNext()
+                                        },
+                                        onHoldTick = {
+                                            haptics.tick()
+                                            if (onSeekRelative != null) {
+                                                onSeekRelative(5000L)
+                                            } else {
+                                                onSeekTo((playbackState.currentPositionMs + 5000L).coerceAtMost(playbackState.durationMs))
+                                            }
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) { isHolding ->
+                                        Icon(
+                                            imageVector = if (isHolding) Icons.Filled.FastForward else Icons.Filled.SkipNext,
+                                            contentDescription = "Next",
+                                            tint = if (isHolding) MaterialTheme.colorScheme.primary else textOnCard,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = onToggleFavorite,
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                            contentDescription = "Favorite",
+                                            tint = if (isFavorite) Color(0xFF1DB954) else textMutedOnCard,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    Box {
+                                        IconButton(
+                                            onClick = {
+                                                haptics.click()
+                                                showMenu = true
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.MoreVert,
+                                                contentDescription = "More",
+                                                tint = textMutedOnCard,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = showMenu,
+                                            onDismissRequest = { showMenu = false }
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("Reload Lyrics") },
+                                                onClick = {
+                                                    showMenu = false
+                                                    onRefetchLyrics()
+                                                },
+                                                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Go to Artist") },
+                                                onClick = {
+                                                    showMenu = false
+                                                    onArtistClick?.invoke(track.artistId)
+                                                },
+                                                leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Go to Album") },
+                                                onClick = {
+                                                    showMenu = false
+                                                    onAlbumClick?.invoke(track.albumId)
+                                                },
+                                                leadingIcon = { Icon(Icons.Filled.Album, contentDescription = null) }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Sleep Timer") },
+                                                onClick = {
+                                                    showMenu = false
+                                                    showSleepTimerDialog = true
+                                                },
+                                                leadingIcon = { Icon(Icons.Filled.Timer, contentDescription = null) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Subtle progress indicator
+                            val progressFraction = if (totalDurationMs > 0L) {
+                                (currentPosMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
+                            } else 0f
+                            LinearProgressIndicator(
+                                progress = { progressFraction },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .clip(RoundedCornerShape(2.dp)),
+                                color = Color(0xFFF3D959),
+                                trackColor = textMutedOnCard.copy(alpha = 0.2f)
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Drag handle to slide back down
+                            Box(
+                                modifier = Modifier
+                                    .width(36.dp)
+                                    .height(3.5.dp)
+                                    .clip(CircleShape)
+                                    .background(textMutedOnCard.copy(alpha = 0.35f))
+                                    .clickable {
+                                        haptics.toggle()
+                                        viewMode = PlayerViewMode.ARTWORK
+                                    }
+                            )
+                        }
+                    }
+                    // Lyrics Area
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .nestedScroll(lyricsNestedScrollConnection)
+                            .then(noLyricsDragModifier)
+                    ) {
+                        if (lyricsData.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.align(Alignment.Center),
+                                color = Color.White
+                            )
+                        } else if (lyricsData.error != null || (lyricsData.plainLyrics.isEmpty() && lyricsData.syncedLines.isEmpty())) {
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .padding(horizontal = 32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.MusicOff,
+                                    contentDescription = null,
+                                    tint = Color.Gray,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "Lyrics not available",
+                                    color = Color.LightGray,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedButton(
+                                        onClick = onRefetchLyrics,
+                                        shape = CircleShape,
+                                        contentPadding = PaddingValues(0.dp),
+                                        modifier = Modifier.size(42.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.Gray.copy(alpha = 0.5f))
+                                    ) {
+                                        Icon(Icons.Filled.Refresh, contentDescription = "Retry", modifier = Modifier.size(20.dp))
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            if (teksteShqipUrlInput.isBlank()) {
+                                                if (track.artist.contains("leonora", ignoreCase = true) ||
+                                                    track.title.contains("vritet", ignoreCase = true)
+                                                ) {
+                                                    teksteShqipUrlInput = "https://teksteshqip.com/leonora-jakupi/teksti/1848928"
+                                                }
+                                            }
+                                            showTeksteShqipDialog = true
+                                        },
+                                        shape = CircleShape,
+                                        contentPadding = PaddingValues(0.dp),
+                                        modifier = Modifier.size(42.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFFD54F)),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD54F).copy(alpha = 0.6f))
+                                    ) {
+                                        Icon(Icons.Filled.Language, contentDescription = "TeksteShqip", modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                            }
+                        } else {
+                            // Top indicator bar with source and TeksteShqip button
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.Black.copy(alpha = 0.45f),
+                                    modifier = Modifier.padding(2.dp)
+                                ) {
+                                    val srcText = when (lyricsData.source) {
+                                        LyricsSource.EMBEDDED_FILE -> "Embedded in File"
+                                        LyricsSource.NAVIDROME_SERVER -> "Navidrome Server"
+                                        LyricsSource.ONLINE_LRCLIB -> "LrcLib Synced"
+                                        LyricsSource.ONLINE_TEKSTESHQIP -> "TeksteShqip"
+                                        LyricsSource.NOT_FOUND -> ""
+                                    }
+                                    Text(
+                                        text = srcText,
+                                        color = Color.LightGray,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.Black.copy(alpha = 0.45f),
+                                    modifier = Modifier.clickable {
+                                        if (teksteShqipUrlInput.isBlank()) {
+                                            if (track.artist.contains("leonora", ignoreCase = true) ||
+                                                track.title.contains("vritet", ignoreCase = true)
+                                            ) {
+                                                teksteShqipUrlInput = "https://teksteshqip.com/leonora-jakupi/teksti/1848928"
+                                            }
+                                        }
+                                        showTeksteShqipDialog = true
+                                    }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Language,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFFD54F),
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            "TeksteShqip",
+                                            color = Color(0xFFFFD54F),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            }
+                            val validSyncedLines = remember(lyricsData.syncedLines) {
+                                lyricsData.syncedLines.filter { it.text.isNotBlank() }
+                            }
+
+                            if (validSyncedLines.isNotEmpty()) {
+                                // Find active line with 0.5s anticipation
+                                val activeLineIndex = validSyncedLines.indexOfLast { (it.timeMs - 500L) <= currentPosMs }.coerceAtLeast(0)
+                                
+                                LaunchedEffect(activeLineIndex) {
+                                    if (activeLineIndex >= 0 && validSyncedLines.isNotEmpty()) {
+                                        listState.animateScrollToItem(index = activeLineIndex, scrollOffset = 0)
+                                    }
+                                }
+
+                                BoxWithConstraints(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 20.dp)
+                                ) {
+                                    val verticalPadding = (maxHeight / 2 - 36.dp).coerceAtLeast(60.dp)
+
+                                    LazyColumn(
+                                        state = listState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentPadding = PaddingValues(top = verticalPadding, bottom = verticalPadding),
+                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        itemsIndexed(validSyncedLines) { index, line ->
+                                            val isActive = index == activeLineIndex
+                                            val isPast = index < activeLineIndex
+
+                                            val textColor by animateColorAsState(
+                                                targetValue = when {
+                                                    isActive -> Color.White
+                                                    isPast -> Color.White.copy(alpha = 0.55f)
+                                                    else -> Color.White.copy(alpha = 0.35f)
+                                                },
+                                                animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+                                                label = "modal_lyric_color"
+                                            )
+
+                                            val bgColor by animateColorAsState(
+                                                targetValue = if (isActive) Color.White.copy(alpha = 0.16f) else Color.Transparent,
+                                                animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+                                                label = "modal_lyric_bg"
+                                            )
+
+                                            val scale by animateFloatAsState(
+                                                targetValue = if (isActive) 1.03f else 1.0f,
+                                                animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+                                                label = "modal_lyric_scale"
+                                            )
+
+                                            Surface(
+                                                color = bgColor,
+                                                shape = RoundedCornerShape(14.dp),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .graphicsLayer {
+                                                        scaleX = scale
+                                                        scaleY = scale
+                                                    }
+                                                    .clickable {
+                                                        haptics.click()
+                                                        onSeekTo(line.timeMs)
+                                                    }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    AnimatedVisibility(
+                                                        visible = isActive,
+                                                        enter = fadeIn(tween(300)),
+                                                        exit = fadeOut(tween(200))
+                                                    ) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.PlayArrow,
+                                                                contentDescription = "Current",
+                                                                tint = Color(0xFFF3D959), // Yellow play icon
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(8.dp))
+                                                        }
+                                                    }
+                                                    if (!isActive) {
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                    }
+                                                    Text(
+                                                        text = line.text,
+                                                        color = textColor,
+                                                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                                                        fontSize = if (isActive) 21.sp else 16.sp,
+                                                        lineHeight = if (isActive) 28.sp else 22.sp,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Plain lyrics
+                                Box(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 48.dp).verticalScroll(plainScrollState)) {
+                                    Text(
+                                        text = lyricsData.plainLyrics,
+                                        color = Color.White,
+                                        fontSize = 18.sp,
+                                        lineHeight = 28.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Bottom Controls
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White,
+                            modifier = Modifier.size(48.dp).clickable { onTogglePlayPause() }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    contentDescription = "Play/Pause",
+                                    tint = Color.Black
+                                )
+                            }
+                        }
+                        
+                        Slider(
+                            value = currentPosMs.toFloat(),
+                            onValueChange = {
+                                isDraggingSlider = true
+                                dragPositionMs = it.toLong()
+                            },
+                            onValueChangeFinished = {
+                                isDraggingSlider = false
+                                onSeekTo(dragPositionMs)
+                            },
+                            valueRange = 0f..(totalDurationMs.toFloat().takeIf { it > 0f } ?: 100f),
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color.White,
+                                activeTrackColor = Color.White,
+                                inactiveTrackColor = Color.Gray
+                            ),
+                            modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
+                        )
+
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF2C2C2C),
+                            modifier = Modifier.size(48.dp).clickable { onOpenQueue() }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Filled.QueueMusic, contentDescription = "Queue", tint = Color.White)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        }
+    }
+}
+
+@Composable
+private fun AutoResizingSingleLineLyric(
+    text: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    maxFontSize: androidx.compose.ui.unit.TextUnit = 18.sp,
+    minFontSize: androidx.compose.ui.unit.TextUnit = 9.sp
+) {
+    val estimatedSize = remember(text) {
+        val len = text.length
+        when {
+            len <= 16 -> maxFontSize
+            len <= 26 -> 16.sp
+            len <= 38 -> 14.5.sp
+            len <= 52 -> 13.sp
+            len <= 70 -> 11.sp
+            else -> minFontSize
+        }
+    }
+    var fontSize by remember(text) { mutableStateOf(estimatedSize) }
+
+    Text(
+        text = text,
+        color = color,
+        fontSize = fontSize,
+        fontWeight = FontWeight.Bold,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        maxLines = 1,
+        softWrap = false,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+        onTextLayout = { layoutResult ->
+            if (layoutResult.hasVisualOverflow && fontSize > minFontSize) {
+                fontSize = (fontSize.value - 0.8f).coerceAtLeast(minFontSize.value).sp
+            }
+        },
+        modifier = modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+private fun SecondaryPlayerDeckView(
+    state: SecondaryPlaybackState,
+    isDark: Boolean,
+    textOnCard: Color,
+    textMutedOnCard: Color,
+    appLanguage: AppLanguage,
+    isDeckSyncEnabled: Boolean = false,
+    onToggleDeckSync: (() -> Unit)? = null,
+    onOpenAudioRouting: (() -> Unit)? = null,
+    player2DeviceName: String? = null,
+    onTogglePlayPause: () -> Unit,
+    onPlayNext: () -> Unit = {},
+    onPlayPrevious: () -> Unit = {},
+    onSeekTo: (Long) -> Unit,
+    onSeekRelative: (Long) -> Unit,
+    onSetVolume: (Float) -> Unit,
+    onStopTrack: () -> Unit
+) {
+    val haptics = rememberNaviromHaptics()
+    val track = state.currentTrack
+
+    val formatTime: (Long) -> String = { ms ->
+        val totalSec = (ms / 1000).coerceAtLeast(0)
+        val min = totalSec / 60
+        val sec = totalSec % 60
+        "%d:%02d".format(min, sec)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (isDark) Color(0xFF141414) else Color(0xFFF3F4F6),
+        border = BorderStroke(1.dp, if (isDark) Color(0xFF2E2E2E) else Color(0xFFE5E7EB)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("secondary_player_deck")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            // Header Row: Deck Badge + Sync Pill + Audio Device + Title/Artist + Stop Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (state.isPlaying) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    ) {
+                        val badgeText = if (state.queue.size > 1) {
+                            "P2 (${state.currentIndex + 1}/${state.queue.size})"
+                        } else {
+                            "PLAYER 2"
+                        }
+                        Text(
+                            text = badgeText,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Black,
+                                fontSize = 10.sp,
+                                letterSpacing = 0.5.sp
+                            ),
+                            color = if (state.isPlaying) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    // Sync Indicator Button
+                    if (onToggleDeckSync != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isDeckSyncEnabled) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = if (isDeckSyncEnabled) BorderStroke(1.dp, MaterialTheme.colorScheme.secondary) else null,
+                            modifier = Modifier
+                                .clickable {
+                                    haptics.toggle()
+                                    onToggleDeckSync()
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isDeckSyncEnabled) Icons.Filled.Sync else Icons.Filled.SyncDisabled,
+                                    contentDescription = "Deck Sync",
+                                    tint = if (isDeckSyncEnabled) MaterialTheme.colorScheme.secondary else textMutedOnCard,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = if (isDeckSyncEnabled) "SYNC" else "ASYNC",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
+                                    color = if (isDeckSyncEnabled) MaterialTheme.colorScheme.secondary else textMutedOnCard
+                                )
+                            }
+                        }
+                    }
+
+                    // Audio Output Device Indicator / Switcher
+                    if (onOpenAudioRouting != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier
+                                .clickable {
+                                    haptics.click()
+                                    onOpenAudioRouting()
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Bluetooth,
+                                    contentDescription = "Output Device",
+                                    tint = textMutedOnCard,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Text(
+                                    text = player2DeviceName ?: "System",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    color = textMutedOnCard,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    if (track != null) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = track.title,
+                                color = textOnCard,
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = track.artist,
+                                color = textMutedOnCard,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = NaviromStrings.get("dual_audio_deck_empty", appLanguage),
+                            color = textMutedOnCard,
+                            style = MaterialTheme.typography.bodySmall.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                if (track != null) {
+                    IconButton(
+                        onClick = {
+                            haptics.toggle()
+                            onStopTrack()
+                        },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Stop Player 2",
+                            tint = textMutedOnCard,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            if (track != null) {
+                val totalDurationMs = if (state.durationMs > 0) state.durationMs else (track.durationSeconds * 1000L)
+                val currentPosMs = state.currentPositionMs.coerceIn(0L, totalDurationMs.coerceAtLeast(1L))
+                val progress = if (totalDurationMs > 0) (currentPosMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f) else 0f
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Progress scrub bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = formatTime(currentPosMs),
+                        color = textMutedOnCard,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
+                    )
+
+                    var isDraggingDeck2Slider by remember { mutableStateOf(false) }
+                    var dragDeck2PositionMs by remember { mutableLongStateOf(0L) }
+                    val sliderVal = if (isDraggingDeck2Slider) {
+                        if (totalDurationMs > 0) (dragDeck2PositionMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f) else 0f
+                    } else {
+                        progress
+                    }
+
+                    Slider(
+                        value = sliderVal,
+                        onValueChange = {
+                            isDraggingDeck2Slider = true
+                            dragDeck2PositionMs = (it * totalDurationMs).toLong()
+                        },
+                        onValueChangeFinished = {
+                            isDraggingDeck2Slider = false
+                            onSeekTo(dragDeck2PositionMs)
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(24.dp)
+                            .testTag("deck2_slider"),
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.secondary,
+                            activeTrackColor = MaterialTheme.colorScheme.secondary,
+                            inactiveTrackColor = if (isDark) Color(0xFF333333) else Color(0xFFE5E7EB)
+                        )
+                    )
+
+                    Text(
+                        text = formatTime(totalDurationMs),
+                        color = textMutedOnCard,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Controls: Previous | Play/Pause | Next | Volume Balance
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        if (state.queue.size > 1) {
+                            IconButton(
+                                onClick = {
+                                    haptics.click()
+                                    onPlayPrevious()
+                                },
+                                enabled = state.hasPrevious,
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.SkipPrevious,
+                                    contentDescription = "Previous Track Player 2",
+                                    tint = if (state.hasPrevious) textOnCard else textMutedOnCard.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        } else {
+                            IconButton(
+                                onClick = {
+                                    haptics.click()
+                                    onSeekRelative(-10000L)
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Replay10,
+                                    contentDescription = "Rewind 10s",
+                                    tint = textOnCard,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        FilledTonalIconButton(
+                            onClick = {
+                                haptics.toggle()
+                                onTogglePlayPause()
+                            },
+                            modifier = Modifier.size(36.dp),
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        ) {
+                            if (state.isBuffering) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    contentDescription = if (state.isPlaying) "Pause Deck 2" else "Play Deck 2",
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+
+                        if (state.queue.size > 1) {
+                            IconButton(
+                                onClick = {
+                                    haptics.click()
+                                    onPlayNext()
+                                },
+                                enabled = state.hasNext,
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.SkipNext,
+                                    contentDescription = "Next Track Player 2",
+                                    tint = if (state.hasNext) textOnCard else textMutedOnCard.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        } else {
+                            IconButton(
+                                onClick = {
+                                    haptics.click()
+                                    onSeekRelative(10000L)
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Forward10,
+                                    contentDescription = "Forward 10s",
+                                    tint = textOnCard,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Independent Volume slider for Player 2
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.widthIn(max = 130.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (state.volume <= 0.01f) Icons.Filled.VolumeMute else Icons.Filled.VolumeUp,
+                            contentDescription = "Player 2 Volume",
+                            tint = textMutedOnCard,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Slider(
+                            value = state.volume,
+                            onValueChange = { onSetVolume(it) },
+                            valueRange = 0f..1f,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(20.dp)
+                                .testTag("deck2_volume_slider"),
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.secondary,
+                                activeTrackColor = MaterialTheme.colorScheme.secondary,
+                                inactiveTrackColor = if (isDark) Color(0xFF333333) else Color(0xFFE5E7EB)
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
