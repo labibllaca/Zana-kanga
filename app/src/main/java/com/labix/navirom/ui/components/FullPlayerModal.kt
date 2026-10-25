@@ -1716,6 +1716,7 @@ fun FullPlayerModal(
                     queue = queue,
                     queueIndex = queueIndex,
                     appLanguage = appLanguage,
+                    lyricsData = lyricsData,
                     onDismiss = onDismiss,
                     onTogglePlayPause = onTogglePlayPause,
                     onNext = onNext,

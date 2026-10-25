@@ -6,7 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,6 +44,9 @@ enum class AstrolabeSearchFilter {
 
 /**
  * Astrolabe Concentric Radial Search Screen with 360° A–Z Alphabet Scrubber Ring.
+ * Redesigned in editorial monochrome style matching zoom-kal.jpg:
+ * Pure white background, solid black borders, serif typography, shelf ticks,
+ * and 4.5dp solid black vertical accent bars.
  */
 @Composable
 fun AstrolabeSearchScreen(
@@ -101,7 +104,7 @@ fun AstrolabeSearchScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(AstrolabeTheme.DeepSpaceMidnight)
+            .background(Color.White)
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(16.dp)
@@ -116,49 +119,68 @@ fun AstrolabeSearchScreen(
         ) {
             Column {
                 Text(
-                    text = "A–Z ASTROLABE SCRUBBER",
+                    text = "ALPHABETIC ASTROLABE",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp
+                        letterSpacing = 2.sp
                     ),
-                    color = AstrolabeTheme.ParchmentRim
+                    color = Color.Black
                 )
                 Text(
-                    text = "ROTATIONAL ALPHABET NAVIGATION",
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.5.sp),
-                    color = AstrolabeTheme.StarCyan.copy(alpha = 0.8f)
+                    text = "A–Z SCRUBBER & MANUSCRIPT SEARCH",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Serif,
+                        letterSpacing = 1.sp,
+                        fontSize = 10.sp
+                    ),
+                    color = Color(0xFF666666)
                 )
             }
 
-            FilledTonalButton(
-                onClick = {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
+                modifier = Modifier.clickable {
                     haptics.click()
                     onToggleClassicView()
-                },
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = AstrolabeTheme.EngravedSlate,
-                    contentColor = AstrolabeTheme.AstrolabeGold
-                ),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                }
             ) {
-                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Classic", style = MaterialTheme.typography.labelMedium)
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.Filled.Search, contentDescription = null, tint = Color.Black, modifier = Modifier.size(15.dp))
+                    Text(
+                        "Classic",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Color.Black
+                    )
+                }
             }
         }
 
-        // Search Input Field
+        // Search Input Field with solid black border on white
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
-            placeholder = { Text("Search by letter or keywords...", color = AstrolabeTheme.ParchmentRim.copy(alpha = 0.5f)) },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = AstrolabeTheme.AstrolabeGold) },
+            placeholder = {
+                Text(
+                    "Search manuscripts or keywords...",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif),
+                    color = Color(0xFF888888)
+                )
+            },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Color.Black) },
             trailingIcon = {
                 if (query.isNotBlank()) {
                     IconButton(onClick = { onQueryChange("") }) {
-                        Icon(Icons.Filled.Clear, contentDescription = "Clear", tint = AstrolabeTheme.ParchmentRim)
+                        Icon(Icons.Filled.Clear, contentDescription = "Clear", tint = Color.Black)
                     }
                 }
             },
@@ -166,14 +188,16 @@ fun AstrolabeSearchScreen(
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = AstrolabeTheme.AstrolabeGold,
-                unfocusedBorderColor = AstrolabeTheme.CelestialGrid,
-                focusedTextColor = AstrolabeTheme.ParchmentRim,
-                unfocusedTextColor = AstrolabeTheme.ParchmentRim
+                focusedBorderColor = Color.Black,
+                unfocusedBorderColor = Color(0xFF666666),
+                focusedTextColor = Color.Black,
+                unfocusedTextColor = Color.Black,
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White
             )
         )
 
-        // Filter Chips Row
+        // Filter Chips Row in monochrome serif style
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -182,7 +206,8 @@ fun AstrolabeSearchScreen(
                 val isSelected = activeFilter == filter
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = if (isSelected) AstrolabeTheme.AstrolabeGold else AstrolabeTheme.EngravedSlate.copy(alpha = 0.6f),
+                    color = if (isSelected) Color.Black else Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
                     modifier = Modifier
                         .weight(1f)
                         .clickable {
@@ -197,10 +222,12 @@ fun AstrolabeSearchScreen(
                         Text(
                             text = filter.name,
                             style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Serif,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
+                                letterSpacing = 1.sp,
+                                fontSize = 10.sp
                             ),
-                            color = if (isSelected) AstrolabeTheme.DeepSpaceMidnight else AstrolabeTheme.ParchmentRim
+                            color = if (isSelected) Color.White else Color.Black
                         )
                     }
                 }
@@ -210,18 +237,15 @@ fun AstrolabeSearchScreen(
         // Concentric A–Z Alphabet Dial Area
         Box(
             modifier = Modifier
-                .height(180.dp)
+                .height(170.dp)
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            var centerOffset by remember { mutableStateOf(Offset.Zero) }
-
             BoxWithConstraints(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 val dialSize = minOf(maxWidth, maxHeight)
-                centerOffset = Offset(dialSize.value * 1.2f, dialSize.value * 1.2f)
 
                 Canvas(
                     modifier = Modifier
@@ -240,67 +264,67 @@ fun AstrolabeSearchScreen(
                 ) {
                     val center = Offset(size.width / 2f, size.height / 2f)
                     val outerR = size.width * 0.46f
-                    val innerR = size.width * 0.28f
 
-                    // Bezel
-                    drawAstrolabeBezel(center = center, outerRadius = outerR, innerRadius = innerR)
-
-                    // 12 o'clock needle marker
-                    val topNeedle = RadialMath.toCartesian(center, outerR + 5f, -90f)
-                    val bottomNeedle = RadialMath.toCartesian(center, innerR - 2f, -90f)
-                    drawLine(
-                        color = AstrolabeTheme.ActivePointerGlow,
-                        start = topNeedle,
-                        end = bottomNeedle,
-                        strokeWidth = 3f,
-                        cap = StrokeCap.Round
-                    )
-
-                    // Draw center core
-                    drawCelestialCore(
+                    // Draw concentric wheel rings with pure monochrome lines
+                    drawEditorialConcentricWheel(
                         center = center,
-                        radius = innerR,
-                        pulseEnergy = 1.0f,
-                        rotationDeg = 0f,
-                        isPlaying = false
+                        outerRadius = outerR,
+                        progressFraction = (alphabet.indexOf(selectedLetter).toFloat() / alphabet.size.toFloat()),
+                        trackCount = alphabet.size,
+                        currentTrackIndex = alphabet.indexOf(selectedLetter),
+                        listCount = 4,
+                        activeListIndex = 0,
+                        rotationDeg = alphabetDialState.angle
                     )
                 }
 
                 // Center Display: Large Illuminated Active Letter
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable {
-                        // Advance to next letter on tap
-                        haptics.tick()
-                        val nextIdx = (alphabet.indexOf(selectedLetter) + 1) % alphabet.size
-                        selectedLetter = alphabet[nextIdx]
-                        scope.launch {
-                            alphabetDialState.rotateBy(-alphabetStep)
-                        }
-                    }
+                    modifier = Modifier
+                        .size(dialSize * 0.30f)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .border(1.5.dp, Color.Black, CircleShape)
+                        .clickable {
+                            // Advance to next letter on tap
+                            haptics.tick()
+                            val nextIdx = (alphabet.indexOf(selectedLetter) + 1) % alphabet.size
+                            selectedLetter = alphabet[nextIdx]
+                            scope.launch {
+                                alphabetDialState.rotateBy(-alphabetStep)
+                            }
+                        },
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Text(
                         text = selectedLetter.toString(),
-                        style = MaterialTheme.typography.displaySmall.copy(
+                        style = MaterialTheme.typography.titleLarge.copy(
                             fontFamily = FontFamily.Serif,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 26.sp
                         ),
-                        color = AstrolabeTheme.AstrolabeGold
+                        color = Color.Black
                     )
                     Text(
                         text = "SCRUB",
-                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp, fontSize = 9.sp),
-                        color = AstrolabeTheme.StarCyan.copy(alpha = 0.8f)
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Serif,
+                            letterSpacing = 1.sp,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Color(0xFF666666)
                     )
                 }
             }
         }
 
-        // Results Section
+        // Results Section formatted with editorial shelf ticks and 4.5dp black accent bars
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = AstrolabeTheme.EngravedSlate.copy(alpha = 0.4f),
-            border = androidx.compose.foundation.BorderStroke(1.dp, AstrolabeTheme.CelestialGrid),
+            color = Color.White,
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
@@ -308,35 +332,56 @@ fun AstrolabeSearchScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 // Artists section if filter allows
                 if (activeFilter == AstrolabeSearchFilter.ALL || activeFilter == AstrolabeSearchFilter.ARTISTS) {
                     if (displayedArtists.isNotEmpty()) {
                         item {
                             Text(
-                                text = "ARTISTS (${displayedArtists.size})",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
-                                color = AstrolabeTheme.AstrolabeGold,
-                                modifier = Modifier.padding(vertical = 4.dp)
+                                text = "ARTISTS • ${displayedArtists.size} CATALOGED",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.5.sp
+                                ),
+                                color = Color.Black,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                             )
+                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.Black))
+                            Spacer(modifier = Modifier.height(4.dp))
                         }
-                        items(displayedArtists) { artist ->
+                        itemsIndexed(displayedArtists) { index, artist ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                    .padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Filled.Person, contentDescription = null, tint = AstrolabeTheme.StarCyan, modifier = Modifier.size(18.dp))
+                                Column(modifier = Modifier.width(36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = (index + 1).toString().padStart(2, '0'),
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold),
+                                        color = Color.Black
+                                    )
+                                    Box(modifier = Modifier.width(22.dp).height(1.dp).background(Color(0xFFCCCCCC)))
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(modifier = Modifier.width(4.5.dp).height(32.dp).background(Color.Black))
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = artist.name,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = AstrolabeTheme.ParchmentRim
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = artist.name,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold),
+                                        color = Color.Black
+                                    )
+                                    Text(
+                                        text = "Cataloged Celestial Artist",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = Color(0xFF666666)
+                                    )
+                                }
                             }
                         }
                     }
@@ -346,37 +391,56 @@ fun AstrolabeSearchScreen(
                 if (activeFilter == AstrolabeSearchFilter.ALL || activeFilter == AstrolabeSearchFilter.ALBUMS) {
                     if (displayedAlbums.isNotEmpty()) {
                         item {
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "ALBUMS (${displayedAlbums.size})",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
-                                color = AstrolabeTheme.AstrolabeGold,
-                                modifier = Modifier.padding(vertical = 4.dp)
+                                text = "ALBUMS • ${displayedAlbums.size} ARCHIVED",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.5.sp
+                                ),
+                                color = Color.Black,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                             )
+                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.Black))
+                            Spacer(modifier = Modifier.height(4.dp))
                         }
-                        items(displayedAlbums) { album ->
+                        itemsIndexed(displayedAlbums) { index, album ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
                                     .clickable {
                                         haptics.click()
                                         onSelectAlbum(album.id)
                                     }
-                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                    .padding(vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Filled.Album, contentDescription = null, tint = AstrolabeTheme.StarCyan, modifier = Modifier.size(18.dp))
+                                Column(modifier = Modifier.width(36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = (index + 1).toString().padStart(2, '0'),
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold),
+                                        color = Color.Black
+                                    )
+                                    Box(modifier = Modifier.width(22.dp).height(1.dp).background(Color(0xFFCCCCCC)))
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(modifier = Modifier.width(4.5.dp).height(32.dp).background(Color.Black))
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = album.name,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = AstrolabeTheme.ParchmentRim
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold),
+                                        color = Color.Black,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = album.artist,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = AstrolabeTheme.ParchmentRim.copy(alpha = 0.6f)
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = Color(0xFF666666),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -388,55 +452,58 @@ fun AstrolabeSearchScreen(
                 if (activeFilter == AstrolabeSearchFilter.ALL || activeFilter == AstrolabeSearchFilter.SONGS) {
                     if (displayedTracks.isNotEmpty()) {
                         item {
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "TRACKS (${displayedTracks.size})",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
-                                color = AstrolabeTheme.AstrolabeGold,
-                                modifier = Modifier.padding(vertical = 4.dp)
+                                text = "TRACKS • ${displayedTracks.size} MANUSCRIPTS",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.5.sp
+                                ),
+                                color = Color.Black,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                             )
+                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.Black))
+                            Spacer(modifier = Modifier.height(4.dp))
                         }
-                        items(displayedTracks) { track ->
+                        itemsIndexed(displayedTracks) { index, track ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
                                     .clickable {
                                         haptics.click()
                                         onTrackClick(track, displayedTracks)
                                     }
-                                    .padding(vertical = 6.dp, horizontal = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(Icons.Filled.MusicNote, contentDescription = null, tint = AstrolabeTheme.StarCyan, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = track.title,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = AstrolabeTheme.ParchmentRim,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = track.artist,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = AstrolabeTheme.ParchmentRim.copy(alpha = 0.6f),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
+                                Column(modifier = Modifier.width(36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = (index + 1).toString().padStart(2, '0'),
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold),
+                                        color = Color.Black
+                                    )
+                                    Box(modifier = Modifier.width(22.dp).height(1.dp).background(Color(0xFFCCCCCC)))
                                 }
-
-                                Text(
-                                    text = formatDuration(track.durationSeconds),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = AstrolabeTheme.ParchmentRim.copy(alpha = 0.6f)
-                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(modifier = Modifier.width(4.5.dp).height(34.dp).background(Color.Black))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = track.title,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold),
+                                        color = Color.Black,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "${track.artist} • ${formatDuration(track.durationSeconds)}",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = Color(0xFF666666),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
@@ -451,9 +518,9 @@ fun AstrolabeSearchScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Rotate the alphabet scrubber to explore",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = AstrolabeTheme.ParchmentRim.copy(alpha = 0.5f)
+                                text = "Rotate the alphabet scrubber to explore manuscripts",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Serif),
+                                color = Color(0xFF888888)
                             )
                         }
                     }

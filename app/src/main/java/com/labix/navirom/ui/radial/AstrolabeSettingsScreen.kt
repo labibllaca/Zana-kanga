@@ -39,6 +39,9 @@ import kotlin.math.sin
 
 /**
  * Astrolabe Concentric Radial Settings & Circular Equalizer.
+ * Redesigned in editorial monochrome style matching zoom-kal.jpg:
+ * Pure white background, solid black borders, serif typography, shelf ticks,
+ * and 4.5dp solid black vertical accent bars.
  */
 @Composable
 fun AstrolabeSettingsScreen(
@@ -61,25 +64,20 @@ fun AstrolabeSettingsScreen(
     var band3600Hz by remember { mutableFloatStateOf(0.5f) }
     var band14000Hz by remember { mutableFloatStateOf(0.3f) }
 
-    // Bitrate Rotary Dial (128k, 192k, 256k, 320k, Lossless)
+    // Bitrate Selection
     val bitrates = listOf("128k", "192k", "256k", "320k", "FLAC / RAW")
     var selectedBitrateIndex by remember { mutableIntStateOf(3) } // default 320k
-    val bitrateStep = 360f / bitrates.size
-    val bitrateDialState = rememberRadialDialState(
-        initialAngle = selectedBitrateIndex * bitrateStep,
-        stepSizeDegrees = bitrateStep
-    )
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(AstrolabeTheme.DeepSpaceMidnight)
+            .background(Color.White)
             .statusBarsPadding()
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp)
+            .padding(16.dp)
             .testTag("astrolabe_settings_screen"),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Header Row
         Row(
@@ -90,181 +88,244 @@ fun AstrolabeSettingsScreen(
             Column {
                 Text(
                     text = "RADIAL SETTINGS",
-                    style = MaterialTheme.typography.titleLarge.copy(
+                    style = MaterialTheme.typography.titleMedium.copy(
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 2.sp
                     ),
-                    color = AstrolabeTheme.ParchmentRim
+                    color = Color.Black
                 )
                 Text(
                     text = "CONCENTRIC GAUGES & CELESTIAL EQ",
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
-                    color = AstrolabeTheme.StarCyan.copy(alpha = 0.8f)
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Serif,
+                        letterSpacing = 1.sp,
+                        fontSize = 10.sp
+                    ),
+                    color = Color(0xFF666666)
                 )
             }
 
-            FilledTonalButton(
-                onClick = {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
+                modifier = Modifier.clickable {
                     haptics.click()
                     onToggleClassicView()
-                },
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = AstrolabeTheme.EngravedSlate,
-                    contentColor = AstrolabeTheme.AstrolabeGold
-                ),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                }
             ) {
-                Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Classic", style = MaterialTheme.typography.labelMedium)
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.Filled.Tune, contentDescription = null, tint = Color.Black, modifier = Modifier.size(15.dp))
+                    Text(
+                        "Classic",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Color.Black
+                    )
+                }
             }
         }
 
-        // Section 1: Server Status Concentric Dial & Latency Gauge
+        // Section 1: Server Status Concentric Block with Editorial Styling
         Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = AstrolabeTheme.EngravedSlate.copy(alpha = 0.5f),
-            border = androidx.compose.foundation.BorderStroke(1.dp, AstrolabeTheme.CelestialGrid),
+            shape = RoundedCornerShape(20.dp),
+            color = Color.White,
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(12.dp)
-                                .clip(CircleShape)
-                                .background(if (serverState.isConnected) Color(0xFF2D7A4F) else MaterialTheme.colorScheme.error)
+                    Column {
+                        Text(
+                            text = "SERVER INFRASTRUCTURE",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Serif,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.5.sp
+                            ),
+                            color = Color.Black
                         )
                         Text(
-                            text = if (serverState.isConnected) "Subsonic / Navidrome Online" else "Server Offline / Standby",
-                            style = MaterialTheme.typography.titleMedium.copy(
+                            text = if (serverState.isConnected) "Subsonic Online • Ready" else "Server Offline • Standby",
+                            style = MaterialTheme.typography.bodyMedium.copy(
                                 fontFamily = FontFamily.Serif,
                                 fontWeight = FontWeight.SemiBold
                             ),
-                            color = AstrolabeTheme.ParchmentRim
+                            color = Color.Black
                         )
                     }
 
-                    FilledTonalButton(
-                        onClick = {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (serverState.isConnected) Color.Black else Color.White,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
+                        modifier = Modifier.clickable {
                             haptics.click()
                             onConnectServer()
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = AstrolabeTheme.AstrolabeGold,
-                            contentColor = AstrolabeTheme.DeepSpaceMidnight
-                        )
+                        }
                     ) {
-                        Text("Connect", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                        Text(
+                            text = if (serverState.isConnected) "CONNECTED" else "CONNECT",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Serif,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            ),
+                            color = if (serverState.isConnected) Color.White else Color.Black,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
                     }
                 }
 
-                Text(
-                    text = if (serverState.serverUrl.isNotBlank()) serverState.serverUrl else "http://your-server.local:4533",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = AstrolabeTheme.StarCyan.copy(alpha = 0.8f)
-                )
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.Black))
+
+                // Server URL row with 4.5dp black accent bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.width(4.5.dp).height(24.dp).background(Color.Black))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = if (serverState.serverUrl.isNotBlank()) serverState.serverUrl else "http://your-server.local:4533",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = Color(0xFF444444)
+                    )
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // Sync Library button
-                    OutlinedButton(
-                        onClick = {
-                            haptics.toggle()
-                            onSyncLibrary()
-                        },
+                    Surface(
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, AstrolabeTheme.CelestialGrid)
+                        color = Color.White,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable {
+                                haptics.toggle()
+                                onSyncLibrary()
+                            }
                     ) {
-                        Icon(Icons.Filled.Sync, contentDescription = null, tint = AstrolabeTheme.StarCyan, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Sync Astrolabe", color = AstrolabeTheme.ParchmentRim, fontSize = 12.sp)
+                        Row(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.Sync, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Sync Library",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color.Black
+                            )
+                        }
                     }
 
                     // Clear Cache button
-                    OutlinedButton(
-                        onClick = {
-                            haptics.click()
-                            onClearAllCache()
-                        },
+                    Surface(
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, AstrolabeTheme.CelestialGrid)
+                        color = Color.White,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable {
+                                haptics.click()
+                                onClearAllCache()
+                            }
                     ) {
-                        Icon(Icons.Filled.DeleteSweep, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        val cacheMb = totalCacheSizeBytes / (1024 * 1024)
-                        Text("${cacheMb}MB Clear", color = AstrolabeTheme.ParchmentRim, fontSize = 12.sp)
+                        Row(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.DeleteSweep, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            val cacheMb = totalCacheSizeBytes / (1024 * 1024)
+                            Text(
+                                "${cacheMb}MB Clear",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color.Black
+                            )
+                        }
                     }
                 }
             }
         }
 
-        // Section 2: Circular Astrolabe Equalizer (EQ Rose)
+        // Section 2: Circular Astrolabe Equalizer (monochrome geometric radar)
         Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = AstrolabeTheme.EngravedSlate.copy(alpha = 0.5f),
-            border = androidx.compose.foundation.BorderStroke(1.dp, AstrolabeTheme.CelestialGrid),
+            shape = RoundedCornerShape(20.dp),
+            color = Color.White,
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(18.dp),
+                    .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "CELESTIAL EQUALIZER ROSE",
-                    style = MaterialTheme.typography.titleMedium.copy(
+                    text = "ACOUSTIC SPECTRUM ROSE",
+                    style = MaterialTheme.typography.titleSmall.copy(
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp
+                        letterSpacing = 2.sp
                     ),
-                    color = AstrolabeTheme.AstrolabeGold
+                    color = Color.Black
                 )
                 Text(
-                    text = "5-BAND RADIAL ACOUSTIC SCULPTING",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = AstrolabeTheme.StarCyan.copy(alpha = 0.8f)
+                    text = "5-BAND RADIAL HARMONIC MATRIX",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Serif,
+                        letterSpacing = 1.sp,
+                        fontSize = 10.sp
+                    ),
+                    color = Color(0xFF666666)
                 )
 
-                // Canvas rendering the 5-point radial polygon
+                // Canvas rendering the 5-point radial polygon in black lines
                 val bands = listOf(band60Hz, band230Hz, band910Hz, band3600Hz, band14000Hz)
                 val labels = listOf("60Hz", "230Hz", "910Hz", "3.6k", "14k")
 
                 Canvas(
                     modifier = Modifier
-                        .size(240.dp)
-                        .padding(12.dp)
+                        .size(200.dp)
+                        .padding(8.dp)
                 ) {
                     val center = Offset(size.width / 2f, size.height / 2f)
-                    val maxR = size.width * 0.45f
+                    val maxR = size.width * 0.44f
 
-                    // Concentric dB guide circles
+                    // Concentric dB guide circles in clean black lines
                     listOf(0.33f, 0.66f, 1.0f).forEach { fraction ->
                         drawCircle(
-                            color = AstrolabeTheme.CelestialGrid.copy(alpha = 0.3f),
+                            color = Color(0xFFDDDDDD),
                             radius = maxR * fraction,
                             center = center,
                             style = Stroke(width = 1f)
@@ -277,17 +338,16 @@ fun AstrolabeSettingsScreen(
 
                     bands.forEachIndexed { i, value ->
                         val angleDeg = -90f + (i * angleStep)
-                        // value is -1..1, mapped to radius 0.2..1.0
                         val normR = ((value + 1f) / 2f).coerceIn(0.15f, 1.0f) * maxR
                         val spokeEnd = RadialMath.toCartesian(center, maxR, angleDeg)
                         val point = RadialMath.toCartesian(center, normR, angleDeg)
 
                         // Draw spoke line
                         drawLine(
-                            color = AstrolabeTheme.EngravedSlate,
+                            color = Color(0xFFCCCCCC),
                             start = center,
                             end = spokeEnd,
-                            strokeWidth = 1.5f
+                            strokeWidth = 1f
                         )
 
                         // Add point to polygon
@@ -295,8 +355,8 @@ fun AstrolabeSettingsScreen(
 
                         // Draw node point
                         drawCircle(
-                            color = AstrolabeTheme.AstrolabeGold,
-                            radius = 6f,
+                            color = Color.Black,
+                            radius = 5f,
                             center = point
                         )
                     }
@@ -305,12 +365,12 @@ fun AstrolabeSettingsScreen(
                     // Draw the filled and stroked equalizer polygon
                     drawPath(
                         path = polygonPath,
-                        color = AstrolabeTheme.StarCyan.copy(alpha = 0.25f)
+                        color = Color.Black.copy(alpha = 0.10f)
                     )
                     drawPath(
                         path = polygonPath,
-                        color = AstrolabeTheme.StarCyan,
-                        style = Stroke(width = 2.5f, cap = StrokeCap.Round)
+                        color = Color.Black,
+                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
                     )
                 }
 
@@ -328,44 +388,47 @@ fun AstrolabeSettingsScreen(
             }
         }
 
-        // Section 3: Bitrate Rotary Transcoding Dial
+        // Section 3: Bitrate Rotary Transcoding Block
         Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = AstrolabeTheme.EngravedSlate.copy(alpha = 0.5f),
-            border = androidx.compose.foundation.BorderStroke(1.dp, AstrolabeTheme.CelestialGrid),
+            shape = RoundedCornerShape(20.dp),
+            color = Color.White,
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(18.dp),
+                    .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "ROTARY BITRATE SELECTOR",
-                    style = MaterialTheme.typography.titleMedium.copy(
+                    text = "STREAMING BITRATE",
+                    style = MaterialTheme.typography.titleSmall.copy(
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp
+                        letterSpacing = 2.sp
                     ),
-                    color = AstrolabeTheme.AstrolabeGold
+                    color = Color.Black
                 )
                 Text(
-                    text = "Current: ${bitrates[selectedBitrateIndex]}",
+                    text = "Selected Master: ${bitrates[selectedBitrateIndex]}",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = AstrolabeTheme.StarCyan
+                    color = Color(0xFF444444)
                 )
+
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.Black))
 
                 // Bitrate options chips
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     bitrates.forEachIndexed { index, rate ->
                         val isSelected = selectedBitrateIndex == index
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) AstrolabeTheme.AstrolabeGold else AstrolabeTheme.DeepSpaceMidnight,
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) Color.Black else Color.White,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable {
@@ -379,8 +442,12 @@ fun AstrolabeSettingsScreen(
                             ) {
                                 Text(
                                     text = rate,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = if (isSelected) AstrolabeTheme.DeepSpaceMidnight else AstrolabeTheme.ParchmentRim
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = FontFamily.Serif,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp
+                                    ),
+                                    color = if (isSelected) Color.White else Color.Black
                                 )
                             }
                         }
@@ -404,7 +471,7 @@ private fun BandSlider(
         Text(
             text = "${if (value > 0f) "+" else ""}${(value * 12).toInt()}dB",
             style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 9.sp),
-            color = AstrolabeTheme.StarCyan
+            color = Color.Black
         )
         Slider(
             value = value,
@@ -414,15 +481,19 @@ private fun BandSlider(
                 .height(110.dp)
                 .width(28.dp),
             colors = SliderDefaults.colors(
-                thumbColor = AstrolabeTheme.AstrolabeGold,
-                activeTrackColor = AstrolabeTheme.StarCyan,
-                inactiveTrackColor = AstrolabeTheme.EngravedSlate
+                thumbColor = Color.Black,
+                activeTrackColor = Color.Black,
+                inactiveTrackColor = Color(0xFFCCCCCC)
             )
         )
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
-            color = AstrolabeTheme.ParchmentRim
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp
+            ),
+            color = Color.Black
         )
     }
 }

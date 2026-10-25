@@ -256,6 +256,7 @@ fun NaviromApp(
                         queue = queue,
                         queueIndex = queueIndex,
                         appLanguage = appLanguage,
+                        lyricsData = currentLyrics,
                         onDismiss = {},
                         onTogglePlayPause = { viewModel.togglePlayPause() },
                         onNext = { viewModel.next() },
@@ -603,7 +604,7 @@ private fun AppTopBar(
                         Icon(
                             imageVector = Icons.Filled.Menu,
                             contentDescription = "Menu",
-                            tint = MaterialTheme.colorScheme.onSurface,
+                            tint = Color.Black,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -613,10 +614,10 @@ private fun AppTopBar(
                     text = "ZANA",
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
-                        fontWeight = FontWeight.Normal,
-                        letterSpacing = 4.sp
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 5.sp
                     ),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = Color.Black,
                     modifier = Modifier
                         .align(Alignment.Center)
                         .testTag("app_brand_title")
@@ -635,7 +636,7 @@ private fun AppTopBar(
                         Icon(
                             imageVector = Icons.Filled.RotateRight,
                             contentDescription = if (isAstrolabeModeEnabled) "Switch to Classic Mode" else "Switch to Astrolabe Mode",
-                            tint = if (isAstrolabeModeEnabled) com.labix.navirom.ui.radial.AstrolabeTheme.AstrolabeGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = Color.Black,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -649,7 +650,7 @@ private fun AppTopBar(
                         Icon(
                             imageVector = Icons.Filled.Close,
                             contentDescription = "Close",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = Color.Black,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -657,8 +658,8 @@ private fun AppTopBar(
             }
 
             HorizontalDivider(
-                thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant
+                thickness = 1.dp,
+                color = Color.Black
             )
         }
     }

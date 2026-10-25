@@ -30,6 +30,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.labix.navirom.data.lyrics.LyricsData
+import com.labix.navirom.data.lyrics.LyricLine
 import com.labix.navirom.data.model.NaviromTrack
 import com.labix.navirom.data.model.PlaybackState
 import com.labix.navirom.data.model.RepeatMode
@@ -53,8 +55,8 @@ data class EditorialSectorItem(
  * Restructured to faithfully recreate the calendar/wheel design of zoom-kal.jpg:
  * - Concentric wheel at top with starry night center, track grooves, album ticks, list arcs,
  *   and radiating stepped arcs, shelf rays, and constellation stars around the wheel.
- * - Symmetrical editorial sectors (September, October, November, Virgo) arranged directly around
- *   and below the wheel with numbers, solid 4.5dp black vertical bar, and serif typography.
+ * - Symmetrical editorial sectors arranged directly around and below the wheel with numbers,
+ *   solid 4.5dp black vertical bar, serif typography, full queue list, and lyrics below.
  * - Docked playback controls bar with stark monochrome borders.
  */
 @Composable
@@ -64,6 +66,7 @@ fun AstrolabeFullPlayer(
     queue: List<NaviromTrack>,
     queueIndex: Int,
     appLanguage: AppLanguage,
+    lyricsData: LyricsData? = null,
     onDismiss: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -363,102 +366,207 @@ fun AstrolabeFullPlayer(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // ==========================================
-                // EDITORIAL SECTORS AROUND AND BELOW THE WHEEL
-                // (Arranged in the exact style of zoom-kal.jpg)
+                // REAL-TIME ROTATIONAL TARGET TELEMETRY BANNER
+                // (Direct visual feedback of what changes next as the wheel is turned)
                 // ==========================================
+                val targetedIndex = remember(latheState.angle, trackCount) {
+                    val normalizedAngle = RadialMath.normalizeDegrees(-latheState.angle)
+                    val idx = (normalizedAngle / stepAngle).toInt() % trackCount
+                    idx.coerceIn(0, (queue.size - 1).coerceAtLeast(0))
+                }
+                val targetedTrack = queue.getOrNull(targetedIndex)
 
-                // Sector 1: SEPTEMBER (Now Playing Context)
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (latheState.isDragging) Color.Black else Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.RotateRight,
+                                contentDescription = null,
+                                tint = if (latheState.isDragging) Color.White else Color.Black,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = if (latheState.isDragging) "ROTATING DIAL • TARGET NEXT TRACK" else "DIAL SELECTION • CUED",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = FontFamily.Serif,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.5.sp,
+                                        fontSize = 9.sp
+                                    ),
+                                    color = if (latheState.isDragging) Color.White.copy(alpha = 0.8f) else Color(0xFF666666)
+                                )
+                                Text(
+                                    text = if (targetedTrack != null) {
+                                        "${(targetedIndex + 1).toString().padStart(2, '0')}. ${targetedTrack.title} — ${targetedTrack.artist}"
+                                    } else {
+                                        "Turn concentric circle to change track"
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontFamily = FontFamily.Serif,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    ),
+                                    color = if (latheState.isDragging) Color.White else Color.Black,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "${RadialMath.normalizeDegrees(-latheState.angle).toInt()}°",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            ),
+                            color = if (latheState.isDragging) Color.White else Color.Black
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // ==========================================
+                // EDITORIAL SECTOR 1: CURRENT PLAYING LIST / QUEUE
+                // (Full playing list arranged with numbers, shelf ticks & 4.5dp black bar)
+                // ==========================================
+                val queueSectorItems = queue.mapIndexed { idx, track ->
+                    val isCurrent = (idx == queueIndex || track.id == currentTrack?.id)
+                    val isTargeted = (idx == targetedIndex && latheState.isDragging)
+                    EditorialSectorItem(
+                        indexLabel = (idx + 1).toString().padStart(2, '0'),
+                        title = track.title + if (isCurrent && playbackState.isPlaying) "  ▶" else "",
+                        description = "${track.artist} • ${formatMs(track.durationSeconds * 1000L)}" +
+                            if (isTargeted) " • [TARGETED NEXT ON RELEASE]" else if (isCurrent) " • [CURRENTLY PLAYING]" else "",
+                        isSelected = isCurrent || isTargeted,
+                        onClick = {
+                            haptics.click()
+                            onTrackSelect(track, queue)
+                        }
+                    )
+                }
+
                 EditorialSectorBlock(
-                    sectorTitle = "SEPTEMBER",
-                    sectorSubTitle = "NOW PLAYING • ORBITAL FOCUS",
+                    sectorTitle = "CURRENT PLAYING LIST",
+                    sectorSubTitle = "${queue.size} TRACKS IN ORBIT • TAP OR TURN WHEEL TO SELECT",
+                    items = if (queueSectorItems.isNotEmpty()) queueSectorItems else listOf(
+                        EditorialSectorItem(
+                            indexLabel = "01",
+                            title = currentTrack?.title ?: "No track queued",
+                            description = currentTrack?.artist ?: "Unknown artist"
+                        )
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // ==========================================
+                // EDITORIAL SECTOR 2: LYRICS (LOWER BELOW THE QUEUE)
+                // (Displays synchronized or plain lyrics with serif typography)
+                // ==========================================
+                val hasSyncedLyrics = lyricsData?.syncedLines?.isNotEmpty() == true
+                val hasPlainLyrics = lyricsData?.plainLyrics?.isNotBlank() == true
+
+                if (hasSyncedLyrics) {
+                    val syncedLines = lyricsData?.syncedLines ?: emptyList()
+                    val activeLyricIdx = remember(currentPosMs, syncedLines) {
+                        syncedLines.indexOfLast { (it.timeMs - 350L) <= currentPosMs }
+                    }
+
+                    // Display synced lyrics formatted as editorial sector items
+                    val lyricItems = syncedLines.mapIndexed { idx, line ->
+                        val isLineActive = (idx == activeLyricIdx)
+                        EditorialSectorItem(
+                            indexLabel = formatMs(line.timeMs),
+                            title = line.text.ifBlank { "• • •" },
+                            description = if (isLineActive) "Active vocal phase • tap line to cue playback" else "Synchronized stanza line",
+                            isSelected = isLineActive,
+                            onClick = {
+                                haptics.click()
+                                onSeekTo(line.timeMs)
+                            }
+                        )
+                    }
+
+                    EditorialSectorBlock(
+                        sectorTitle = "MANUSCRIPT LYRICS",
+                        sectorSubTitle = "SYNCHRONIZED VOCAL TRANSCRIPT",
+                        items = lyricItems
+                    )
+                } else if (hasPlainLyrics) {
+                    val plainLines = lyricsData?.plainLyrics.orEmpty()
+                        .lines()
+                        .filter { it.isNotBlank() }
+                        .take(40)
+
+                    val plainItems = plainLines.mapIndexed { idx, line ->
+                        EditorialSectorItem(
+                            indexLabel = (idx + 1).toString().padStart(2, '0'),
+                            title = line,
+                            description = "Unsynchronized lyric verse",
+                            isSelected = false
+                        )
+                    }
+
+                    EditorialSectorBlock(
+                        sectorTitle = "MANUSCRIPT LYRICS",
+                        sectorSubTitle = "POETIC TEXT ARCHIVE",
+                        items = plainItems
+                    )
+                } else {
+                    EditorialSectorBlock(
+                        sectorTitle = "MANUSCRIPT LYRICS",
+                        sectorSubTitle = "ASTRONOMICAL POETRY NOT FOUND",
+                        items = listOf(
+                            EditorialSectorItem(
+                                indexLabel = "—",
+                                title = "Transcript Unavailable",
+                                description = "No synchronized lyrics or text registered for ${currentTrack?.title ?: "this celestial piece"}."
+                            )
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // ==========================================
+                // EDITORIAL SECTOR 3: NOW PLAYING CONTEXT & MATRIX
+                // ==========================================
+                EditorialSectorBlock(
+                    sectorTitle = "ASTRONOMICAL SPECTRUM",
+                    sectorSubTitle = "LOSSLESS ACOUSTIC HARMONICS",
                     items = listOf(
                         EditorialSectorItem(
                             indexLabel = "21",
                             title = currentTrack?.title ?: "Select a Track",
-                            description = "World Peace Day • ${currentTrack?.artist ?: "Unknown Artist"} • A time of warmth and long joyous days."
+                            description = "${currentTrack?.artist ?: "Unknown"} • ${currentTrack?.album ?: "Unknown Album"} • 24-bit / 96.0 kHz Master."
                         ),
                         EditorialSectorItem(
                             indexLabel = "22",
                             title = "Temporal Equinox",
-                            description = "${formatMs(currentPosMs)} / ${formatMs(totalDurationMs)} • Equal amounts of sound and silence across the spectrum."
-                        ),
-                        EditorialSectorItem(
-                            indexLabel = "29",
-                            title = "Opposition Horizon",
-                            description = "Lossless FLAC Master • 24-bit / 96.0 kHz • Dynamic Range +14.2 LUFS."
-                        )
-                    )
-                )
-
-                // Sector 2: OCTOBER (Album Tracklist & Queue)
-                val queueItems = mutableListOf<EditorialSectorItem>()
-                val upcomingTracks = queue.drop(queueIndex).take(4)
-                val labels = listOf("17", "21/22", "31", "04")
-                upcomingTracks.forEachIndexed { idx, track ->
-                    queueItems.add(
-                        EditorialSectorItem(
-                            indexLabel = labels.getOrElse(idx) { "${idx + 1}" },
-                            title = track.title,
-                            description = "${track.artist} • ${formatMs(track.durationSeconds * 1000L)} • Shukaku Harvest selection",
-                            isSelected = (track.id == currentTrack?.id),
-                            onClick = {
-                                haptics.click()
-                                onTrackSelect(track, queue)
-                            }
-                        )
-                    )
-                }
-                if (queueItems.isEmpty()) {
-                    queueItems.add(
-                        EditorialSectorItem(
-                            indexLabel = "17",
-                            title = "Shukaku Matsuri",
-                            description = "Shinto rite offering thanks to first fruits of rice harvest."
-                        )
-                    )
-                }
-
-                EditorialSectorBlock(
-                    sectorTitle = "OCTOBER",
-                    sectorSubTitle = "ALBUM TRACKLIST & UP NEXT",
-                    items = queueItems
-                )
-
-                // Sector 3: NOVEMBER (Astronomical Archive & Collections)
-                EditorialSectorBlock(
-                    sectorTitle = "NOVEMBER",
-                    sectorSubTitle = "ASTRONOMICAL ARCHIVE & COLLECTIONS",
-                    items = listOf(
-                        EditorialSectorItem(
-                            indexLabel = "13",
-                            title = "Total Solar Eclipse",
-                            description = "Visible in Australasia and southern Pacific • High-fidelity master tapes."
-                        ),
-                        EditorialSectorItem(
-                            indexLabel = "13",
-                            title = "Autumn Equinox Resonance",
-                            description = "Analogue tape transfers • Natural room acoustics Salle Pleyel."
-                        ),
-                        EditorialSectorItem(
-                            indexLabel = "28",
-                            title = "Midnight Constellations",
-                            description = "Curated ambient nocturnal sequence • Continuous phase alignment."
-                        )
-                    )
-                )
-
-                // Sector 4: VIRGO (Celestial Harmonic Audio Matrix)
-                EditorialSectorBlock(
-                    sectorTitle = "VIRGO",
-                    sectorSubTitle = "A 23 - S 22 • HARMONIC MATRIX",
-                    items = listOf(
-                        EditorialSectorItem(
-                            indexLabel = "LIB",
-                            title = "Celestial Equilibrium",
-                            description = "The music's goal is balance and perfection. Frequency response is flat, transparent, and organic across all registers."
+                            description = "${formatMs(currentPosMs)} / ${formatMs(totalDurationMs)} • Balance across acoustic registers."
                         )
                     )
                 )

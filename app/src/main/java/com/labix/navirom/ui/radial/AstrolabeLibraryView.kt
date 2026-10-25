@@ -260,17 +260,28 @@ fun AstrolabeLibraryView(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = selectedAlbum?.name ?: "Discography",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontFamily = FontFamily.Serif,
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            color = AstrolabeTheme.ParchmentRim,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = selectedAlbum?.name ?: "DISCOGRAPHY ARCHIVE",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.5.sp
+                                ),
+                                color = Color.Black,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${albumTracks.size} MANUSCRIPTS • ${currentArtist?.name ?: "ALL ARTISTS"}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    letterSpacing = 1.sp,
+                                    fontSize = 10.sp
+                                ),
+                                color = Color(0xFF666666)
+                            )
+                        }
 
                         if (albumTracks.isNotEmpty()) {
                             IconButton(
@@ -278,16 +289,30 @@ fun AstrolabeLibraryView(
                                     haptics.toggle()
                                     onPlayAll(albumTracks)
                                 },
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black)
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.PlayArrow,
                                     contentDescription = "Play Album",
-                                    tint = AstrolabeTheme.AstrolabeGold
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Horizontal sector line
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.5.dp)
+                            .background(Color.Black)
+                    )
 
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -299,8 +324,11 @@ fun AstrolabeLibraryView(
                         ) {
                             Text(
                                 text = "Rotate the sphere to discover tracks",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = AstrolabeTheme.ParchmentRim.copy(alpha = 0.6f)
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontSize = 12.sp
+                                ),
+                                color = Color(0xFF666666)
                             )
                         }
                     } else {
@@ -309,50 +337,75 @@ fun AstrolabeLibraryView(
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             itemsIndexed(albumTracks) { index, track ->
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color.Transparent,
+                                Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
                                             haptics.click()
                                             onTrackClick(track, albumTracks)
                                         }
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    // Left Column: Track Number with shelf tick
+                                    Column(
+                                        modifier = Modifier.width(44.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Text(
-                                                text = (index + 1).toString().padStart(2, '0'),
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontFamily = FontFamily.Monospace
-                                                ),
-                                                color = AstrolabeTheme.StarCyan.copy(alpha = 0.7f)
-                                            )
-                                            Text(
-                                                text = track.title,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = AstrolabeTheme.ParchmentRim,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-
                                         Text(
-                                            text = formatSecs(track.durationSeconds),
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontFamily = FontFamily.Monospace
+                                            text = (index + 1).toString().padStart(2, '0'),
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontFamily = FontFamily.Serif,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp
                                             ),
-                                            color = AstrolabeTheme.ParchmentRim.copy(alpha = 0.6f)
+                                            color = Color.Black
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .width(28.dp)
+                                                .height(1.dp)
+                                                .background(Color(0xFFCCCCCC))
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(6.dp))
+
+                                    // Signature 4.5dp Solid Black Vertical Accent Bar (from zoom-kal.jpg)
+                                    Box(
+                                        modifier = Modifier
+                                            .width(4.5.dp)
+                                            .height(36.dp)
+                                            .background(Color.Black)
+                                    )
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    // Right Column: Title + Metadata
+                                    Column(
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            text = track.title,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontFamily = FontFamily.Serif,
+                                                fontWeight = FontWeight.SemiBold,
+                                                letterSpacing = 0.4.sp,
+                                                fontSize = 13.sp
+                                            ),
+                                            color = Color.Black,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "${track.artist} • ${formatSecs(track.durationSeconds)}",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontSize = 11.sp,
+                                                lineHeight = 14.sp
+                                            ),
+                                            color = Color(0xFF444444),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
