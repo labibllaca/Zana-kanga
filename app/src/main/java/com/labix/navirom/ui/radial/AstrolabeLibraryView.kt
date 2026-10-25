@@ -51,6 +51,7 @@ fun AstrolabeLibraryView(
     onTrackClick: (NaviromTrack, List<NaviromTrack>) -> Unit,
     onPlayAll: (List<NaviromTrack>) -> Unit,
     onToggleClassicView: () -> Unit,
+    userName: String = "",
     modifier: Modifier = Modifier
 ) {
     val haptics = rememberNaviromHaptics()
@@ -101,7 +102,8 @@ fun AstrolabeLibraryView(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Header: Concentric Mode Indicator & Switcher
+            // Header: Personalized User Greeting & Switcher
+            val greeting = if (userName.isNotBlank()) "WELCOME, ${userName.uppercase()}" else "WELCOME, LISTENER"
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -111,20 +113,23 @@ fun AstrolabeLibraryView(
             ) {
                 Column {
                     Text(
-                        text = "PLANISPHERE LIBRARY",
+                        text = greeting,
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontFamily = FontFamily.Serif,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 2.sp
+                            letterSpacing = 2.sp,
+                            fontSize = 15.sp
                         ),
                         color = Color.Black
                     )
                     Text(
-                        text = "CONCENTRIC ARTIST & ALBUM SPHERES",
+                        text = "PLANISPHERE LIBRARY • ARCHIVES READY",
                         style = MaterialTheme.typography.labelSmall.copy(
-                            letterSpacing = 1.sp
+                            fontFamily = FontFamily.Serif,
+                            letterSpacing = 1.sp,
+                            fontSize = 10.sp
                         ),
-                        color = Color(0xFF444444)
+                        color = Color(0xFF666666)
                     )
                 }
 

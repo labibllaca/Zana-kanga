@@ -1727,7 +1727,12 @@ fun FullPlayerModal(
                     onToggleFavorite = onToggleFavorite,
                     onTrackSelect = onTrackSelect,
                     onOpenWlanCast = onOpenWlanCast,
-                    onToggleClassicView = onToggleAstrolabeMode
+                    onToggleClassicView = onToggleAstrolabeMode,
+                    onSetSleepTimer = { mins -> onSetSleepTimer(mins, sleepTimerOptions) },
+                    isDualAudioEnabled = isDualAudioEnabled,
+                    dualSpeakerMode = dualSpeakerMode,
+                    onSetDualSpeakerMode = onSetDualSpeakerMode,
+                    isVinylEffectEnabled = isVinylEffectEnabled
                 )
             } else if (mode == PlayerViewMode.ARTWORK) {
                 val validSyncedLines = remember(lyricsData.syncedLines) {

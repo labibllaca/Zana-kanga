@@ -76,6 +76,7 @@ fun NaviromApp(
     val isVinylEffectEnabled by viewModel.isVinylEffectEnabled.collectAsStateWithLifecycle()
     val isAstrolabeModeEnabled by viewModel.isAstrolabeModeEnabled.collectAsStateWithLifecycle()
     val focusUsernameTrigger by viewModel.focusUsernameTrigger.collectAsStateWithLifecycle()
+    val userName by viewModel.userName.collectAsStateWithLifecycle()
 
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val librarySubTab by viewModel.librarySubTab.collectAsStateWithLifecycle()
@@ -234,45 +235,32 @@ fun NaviromApp(
             }
         )
     ) {
-        val pagerState = rememberPagerState(initialPage = 1) { 3 }
-        
-        Box(modifier = modifier.fillMaxSize().background(Color.White)) {
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize()
-        ) { page ->
-            val backgroundColor = Color.White
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(backgroundColor)
-            ) {
-            when (page) {
-                0 -> {
-                    // Player Zone
-                    AstrolabeFullPlayer(
-                        playbackState = playbackState,
-                        isFavorite = favoriteIds.contains(playbackState.currentTrack?.id),
-                        queue = queue,
-                        queueIndex = queueIndex,
-                        appLanguage = appLanguage,
-                        lyricsData = currentLyrics,
-                        onDismiss = {},
-                        onTogglePlayPause = { viewModel.togglePlayPause() },
-                        onNext = { viewModel.next() },
-                        onPrevious = { viewModel.previous() },
-                        onSeekTo = { viewModel.seekTo(it) },
-                        onToggleShuffle = { viewModel.toggleShuffle() },
-                        onCycleRepeat = { viewModel.cycleRepeatMode() },
-                        onToggleFavorite = { playbackState.currentTrack?.let { viewModel.toggleFavorite(it.id) } },
-                        onTrackSelect = { track, list -> viewModel.playTrack(track, list) },
-                        onToggleClassicView = { viewModel.toggleAstrolabeMode() }
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                // Drawer content
+            }
+        ) {
+            Scaffold(
+                topBar = {
+                    AppTopBar(
+                        serverConnected = serverState.isConnected,
+                        onOpenSearch = { viewModel.setTab(NaviromTab.SEARCH) },
+                        onOpenSettings = { viewModel.setTab(NaviromTab.SETTINGS) },
+                        onCloseApp = { showExitDialog = true },
+                        onOpenSidebar = { scope.launch { drawerState.open() } },
+                        isAstrolabeModeEnabled = isAstrolabeModeEnabled,
+                        onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() }
                     )
-                }
-                1 -> {
-                    // Library Zone
-                    LibraryScreen(
-                        subTab = librarySubTab,
+                },
+                containerColor = Color.White
+            ) { paddingValues ->
+                Box(modifier = Modifier.fillMaxSize().padding(paddingValues).background(Color.White)) {
+                    TabContent(
+                        currentTab = currentTab,
+                        isAstrolabeModeEnabled = isAstrolabeModeEnabled,
+                        onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() },
+                        librarySubTab = librarySubTab,
                         onSubTabSelected = { viewModel.setLibrarySubTab(it) },
                         albums = albums,
                         newestAlbums = newestAlbums,
@@ -282,6 +270,7 @@ fun NaviromApp(
                         profileName = serverState.username,
                         newestTracks = newestTracks,
                         artists = artists,
+                        playlists = playlists,
                         quickMixTracks = quickMixTracks,
                         recentlyPlayedTracks = recentlyPlayedTracks,
                         librarySongs = librarySongs,
@@ -290,59 +279,32 @@ fun NaviromApp(
                         onSetSongSortOrder = { viewModel.setSongSortOrder(it) },
                         selectedAlbumId = selectedAlbumId,
                         selectedAlbumTracks = currentAlbumTracks,
-                        currentTrack = playbackState.currentTrack,
-                        isPlaying = playbackState.isPlaying,
-                        downloadStatuses = downloadStatuses,
-                        downloadProgresses = downloadProgresses,
-                        favoriteIds = favoriteIds,
-                        favoriteTracks = favoriteTracks,
-                        appLanguage = appLanguage,
-                        musicFolders = serverState.musicFolders,
-                        selectedMusicFolderId = serverState.selectedMusicFolderId,
-                        selectedMusicFolderIds = serverState.selectedMusicFolderIds,
-                        onSelectMusicFolder = { viewModel.selectMusicFolder(it) },
-                        onToggleMusicFolder = { viewModel.toggleMusicFolder(it) },
-                        onSelectAllMusicFolders = { viewModel.selectAllMusicFolders() },
-                        onSyncLibrary = { viewModel.syncLibrary() },
-                        onSelectAlbum = { viewModel.selectAlbum(it) },
-                        onTrackClick = { track, list -> viewModel.playTrack(track, list) },
-                        onPlayAll = { viewModel.playAll(it) },
-                        onShuffleAll = { viewModel.shuffleAll(it) },
-                        onSmartShuffle = { viewModel.smartShuffle(it) },
-                        onPlayTracksNext = { viewModel.playTracksNext(it) },
-                        onAddTracksToQueue = { viewModel.addTracksToQueue(it) },
-                        onDownloadTracks = { viewModel.downloadTracks(it) },
-                        onToggleFavorite = { viewModel.toggleFavorite(it) },
-                        onDownloadTrack = { viewModel.downloadTrack(it) },
-                        onPlayNext = { viewModel.playNext(it) },
-                        onAddToQueue = { viewModel.addToQueue(it) },
-                        onGoToSettings = { pagerState.requestScrollToPage(2) },
-                        onScanNetwork = { viewModel.startAutoScanAndFocusUsername() },
-                        onOpenSidebar = { /* No-op */ },
+                        selectedPlaylistId = selectedPlaylistId,
+                        selectedPlaylistTracks = currentPlaylistTracks,
                         selectedArtistId = selectedArtistId,
                         currentArtist = currentArtist,
                         currentArtistAlbums = currentArtistAlbums,
                         currentArtistSongs = currentArtistSongs,
                         isLoadingArtistDetails = isLoadingArtistDetails,
                         onSelectArtist = { viewModel.selectArtist(it) },
-                        localTracks = localTracks,
-                        localFolders = localFolders,
-                        disabledLocalFolderIds = disabledLocalFolderIds,
-                        onToggleLocalFolder = { viewModel.toggleLocalFolder(it) },
-                        onSetLocalFolderEnabled = { id, enabled -> viewModel.setLocalFolderEnabled(id, enabled) },
-                        onSelectAllLocalFolders = { viewModel.selectAllLocalFolders() },
-                        onDeselectAllLocalFolders = { viewModel.deselectAllLocalFolders() },
-                        isScanningLocalAudio = isScanningLocalAudio,
-                        onScanLocalAudio = { viewModel.scanLocalAudio() }
-                    )
-                }
-                2 -> {
-                    // Settings Zone
-                    ServerSettingsScreen(
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = { viewModel.onSearchQueryChange(it) },
+                        searchFocusTrigger = searchFocusTrigger,
+                        isSearching = isSearching,
+                        searchResults = searchResults,
+                        searchHistory = searchHistory,
+                        onRemoveSearchHistory = { viewModel.removeSearchHistoryItem(it) },
+                        onClearSearchHistory = { viewModel.clearSearchHistory() },
+                        cachedTracks = cachedTracks,
+                        totalCacheSizeBytes = totalCacheSizeBytes,
+                        isOfflineOnlyMode = isOfflineOnlyMode,
                         serverState = serverState,
                         allServers = allServers,
-                        onSelectServer = { viewModel.setServerConfig(it) },
-                        onDeleteServer = { viewModel.deleteServerConfig(it) },
+                        favoriteIds = favoriteIds,
+                        favoriteTracks = favoriteTracks,
+                        downloadStatuses = downloadStatuses,
+                        downloadProgresses = downloadProgresses,
+                        playbackState = playbackState,
                         appLanguage = appLanguage,
                         appThemeMode = appThemeMode,
                         statsSummary = listeningStats,
@@ -359,22 +321,38 @@ fun NaviromApp(
                         onViewStats = { viewModel.setStatsScreenVisible(true) },
                         onSetLanguage = { viewModel.setLanguage(it) },
                         onSetThemeMode = { viewModel.setThemeMode(it) },
-                        onUpdateConfig = { protocol, host, port, user, p, t, altHost -> viewModel.updateServerConfig(protocol, host, port, user, p, t, altHost) },
-                        onConnect = { viewModel.connectServer() },
+                        onSelectAlbum = { viewModel.selectAlbum(it) },
+                        onSelectPlaylist = { viewModel.selectPlaylist(it) },
+                        onCreatePlaylist = { viewModel.createPlaylist(it) },
+                        onDeletePlaylist = { viewModel.deletePlaylist(it) },
+                        onTrackClick = { track, list -> viewModel.playTrack(track, list) },
+                        onPlayAll = { viewModel.playAll(it) },
+                        onShuffleAll = { viewModel.shuffleAll(it) },
+                        onSmartShuffle = { viewModel.smartShuffle(it) },
+                        onPlayTracksNext = { viewModel.playTracksNext(it) },
+                        onAddTracksToQueue = { viewModel.addTracksToQueue(it) },
+                        onPlayFolderNext = { viewModel.playFolderNext(it) },
+                        onAddFolderToQueue = { viewModel.addFolderToQueue(it) },
+                        onDownloadTracks = { viewModel.downloadTracks(it) },
+                        onToggleFavorite = { viewModel.toggleFavorite(it) },
+                        onDownloadTrack = { viewModel.downloadTrack(it) },
+                        onPlayNext = { viewModel.playNext(it) },
+                        onAddToQueue = { viewModel.addToQueue(it) },
+                        onToggleOfflineOnly = { viewModel.setOfflineOnlyMode(it) },
+                        onDeleteCachedTrack = { viewModel.deleteCachedTrack(it) },
+                        onClearAllCache = { viewModel.clearAllCache() },
+                        onUpdateServerConfig = { p, h, po, u, pw, t, ah -> viewModel.updateServerConfig(p, h, po, u, pw, t, ah) },
+                        onConnectServer = { viewModel.connectServer() },
                         onSyncLibrary = { viewModel.syncLibrary() },
                         onScanNetwork = { viewModel.startAutoScanAndFocusUsername() },
                         onSelectMusicFolder = { viewModel.selectMusicFolder(it) },
                         onToggleMusicFolder = { viewModel.toggleMusicFolder(it) },
                         onSelectAllMusicFolders = { viewModel.selectAllMusicFolders() },
-                        allDiscoveredLocalFolders = allDiscoveredLocalFolders,
-                        settingsEnabledLocalFolderIds = settingsEnabledLocalFolderIds,
-                        onToggleSettingsLocalFolder = { viewModel.toggleSettingsLocalFolder(it) },
-                        onSetSettingsLocalFolderEnabled = { id, enabled -> viewModel.setSettingsLocalFolderEnabled(id, enabled) },
-                        onSelectAllSettingsLocalFolders = { viewModel.selectAllSettingsLocalFolders() },
-                        onDeselectAllSettingsLocalFolders = { viewModel.deselectAllSettingsLocalFolders() },
-                        isScanningLocalAudio = isScanningLocalAudio,
-                        onScanLocalAudio = { viewModel.scanLocalAudio() },
                         focusUsernameTrigger = focusUsernameTrigger,
+                        onSelectServer = { viewModel.setServerConfig(it) },
+                        onDeleteServer = { viewModel.deleteServerConfig(it) },
+                        onGoToSettings = { viewModel.setTab(NaviromTab.SETTINGS) },
+                        onOpenSidebar = { scope.launch { drawerState.open() } },
                         updateState = updateState,
                         autoCheckUpdates = autoCheckUpdates,
                         githubRepo = updateGithubRepo,
@@ -383,34 +361,51 @@ fun NaviromApp(
                         onDownloadAndInstallUpdate = { viewModel.downloadAndInstallUpdate(it) },
                         onSetAutoCheckUpdates = { viewModel.setAutoCheckUpdates(it) },
                         onSetGithubRepo = { viewModel.setUpdateGithubRepo(it) },
-                        onDismissUpdate = { viewModel.dismissAppUpdate() }
+                        onDismissUpdate = { viewModel.dismissAppUpdate() },
+                        localTracks = localTracks,
+                        localFolders = localFolders,
+                        disabledLocalFolderIds = disabledLocalFolderIds,
+                        onToggleLocalFolder = { viewModel.toggleLocalFolder(it) },
+                        onSetLocalFolderEnabled = { id, enabled -> viewModel.setLocalFolderEnabled(id, enabled) },
+                        onSelectAllLocalFolders = { viewModel.selectAllLocalFolders() },
+                        onDeselectAllLocalFolders = { viewModel.deselectAllLocalFolders() },
+                        allDiscoveredLocalFolders = allDiscoveredLocalFolders,
+                        settingsEnabledLocalFolderIds = settingsEnabledLocalFolderIds,
+                        onToggleSettingsLocalFolder = { viewModel.toggleSettingsLocalFolder(it) },
+                        onSetSettingsLocalFolderEnabled = { id, enabled -> viewModel.setSettingsLocalFolderEnabled(id, enabled) },
+                        onSelectAllSettingsLocalFolders = { viewModel.selectAllSettingsLocalFolders() },
+                        onDeselectAllSettingsLocalFolders = { viewModel.deselectAllSettingsLocalFolders() },
+                        isScanningLocalAudio = isScanningLocalAudio,
+                        onScanLocalAudio = { viewModel.scanLocalAudio() },
+                        currentMusicFolderPath = currentMusicFolderPath,
+                        onNavigateToMusicFolder = { viewModel.navigateToMusicFolder(it) },
+                        onNavigateUpMusicFolder = { viewModel.navigateUpMusicFolder() },
+                        onPlayFolder = { path, shuffle -> viewModel.playFolder(path, shuffle) },
+                        userName = userName,
+                        onSetUserName = { viewModel.setUserName(it) }
                     )
+
+                    // Persistent MiniPlayerBar
+                    if (playbackState.currentTrack != null && !isFullPlayerVisible) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .padding(bottom = 6.dp)
+                        ) {
+                            MiniPlayerBar(
+                                playbackState = playbackState,
+                                onExpandPlayer = { viewModel.setFullPlayerVisible(true) },
+                                onTogglePlayPause = { viewModel.togglePlayPause() },
+                                onNext = { viewModel.next() },
+                                onPrevious = { viewModel.previous() }
+                            )
+                        }
+                    }
                 }
             }
         }
-        }
-
-        // Persistent MiniPlayerBar for browsing zones (Library & Settings)
-        if (pagerState.currentPage != 0 && playbackState.currentTrack != null && !isFullPlayerVisible) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(bottom = 6.dp)
-            ) {
-                MiniPlayerBar(
-                    playbackState = playbackState,
-                    onExpandPlayer = {
-                        scope.launch { pagerState.animateScrollToPage(0) }
-                    },
-                    onTogglePlayPause = { viewModel.togglePlayPause() },
-                    onNext = { viewModel.next() },
-                    onPrevious = { viewModel.previous() }
-                )
-            }
-        }
-    }
 
         // Full Screen Player Modal
         if (isFullPlayerVisible && playbackState.currentTrack != null) {
@@ -574,7 +569,7 @@ fun NaviromApp(
 }
 
 @Composable
-private fun AppTopBar(
+fun AppTopBar(
     serverConnected: Boolean,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -666,7 +661,7 @@ private fun AppTopBar(
 }
 
 @Composable
-private fun TabContent(
+fun TabContent(
     currentTab: NaviromTab,
     isAstrolabeModeEnabled: Boolean = false,
     onToggleAstrolabeMode: () -> Unit = {},
@@ -790,7 +785,9 @@ private fun TabContent(
     currentMusicFolderPath: String = "",
     onNavigateToMusicFolder: (String) -> Unit = {},
     onNavigateUpMusicFolder: () -> Boolean = { false },
-    onPlayFolder: (String, Boolean) -> Unit = { _, _ -> }
+    onPlayFolder: (String, Boolean) -> Unit = { _, _ -> },
+    userName: String = "",
+    onSetUserName: (String) -> Unit = {}
 ) {
     AnimatedContent(
         targetState = currentTab,
@@ -816,7 +813,8 @@ private fun TabContent(
                     onSelectAlbum = onSelectAlbum,
                     onTrackClick = onTrackClick,
                     onPlayAll = onPlayAll,
-                    onToggleClassicView = onToggleAstrolabeMode
+                    onToggleClassicView = onToggleAstrolabeMode,
+                    userName = userName
                 )
             } else {
                 LibraryScreen(
@@ -981,7 +979,9 @@ private fun TabContent(
                     onConnectServer = onConnectServer,
                     onSyncLibrary = onSyncLibrary,
                     onClearAllCache = onClearAllCache,
-                    onToggleClassicView = onToggleAstrolabeMode
+                    onToggleClassicView = onToggleAstrolabeMode,
+                    userName = userName,
+                    onSetUserName = onSetUserName
                 )
             } else {
                 ServerSettingsScreen(

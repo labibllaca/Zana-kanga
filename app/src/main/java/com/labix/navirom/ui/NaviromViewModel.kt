@@ -150,6 +150,17 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
     private val _currentTab = MutableStateFlow(NaviromTab.LIBRARY)
     val currentTab: StateFlow<NaviromTab> = _currentTab.asStateFlow()
 
+    // User / Listener Display Name (Customizable in settings, greeted in library view)
+    private val _userName = MutableStateFlow(
+        prefs.getString("user_custom_name", "") ?: ""
+    )
+    val userName: StateFlow<String> = _userName.asStateFlow()
+
+    fun setUserName(name: String) {
+        _userName.value = name
+        prefs.edit().putString("user_custom_name", name).apply()
+    }
+
     // Initial Setup & Onboarding State
     private val _hasCompletedInitialSetup = MutableStateFlow(
         prefs.getBoolean("has_completed_initial_setup", false)

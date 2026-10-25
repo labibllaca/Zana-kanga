@@ -52,6 +52,8 @@ fun AstrolabeSettingsScreen(
     onSyncLibrary: () -> Unit,
     onClearAllCache: () -> Unit,
     onToggleClassicView: () -> Unit,
+    userName: String = "",
+    onSetUserName: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val haptics = rememberNaviromHaptics()
@@ -128,6 +130,143 @@ fun AstrolabeSettingsScreen(
                             fontWeight = FontWeight.Bold
                         ),
                         color = Color.Black
+                    )
+                }
+            }
+        }
+
+        // Listener Profile & Personal Identity Section
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color.White,
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(4.5.dp)
+                                .height(28.dp)
+                                .background(Color.Black)
+                        )
+                        Column {
+                            Text(
+                                text = "LISTENER IDENTITY",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 2.sp,
+                                    fontSize = 15.sp
+                                ),
+                                color = Color.Black
+                            )
+                            Text(
+                                text = "CUSTOM NAME & ARCHIVE GREETING",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    letterSpacing = 1.sp,
+                                    fontSize = 10.sp
+                                ),
+                                color = Color(0xFF666666)
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = Icons.Filled.Person,
+                        contentDescription = null,
+                        tint = Color.Black,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(Color(0xFFDDDDDD))
+                )
+
+                var localNameInput by remember(userName) { mutableStateOf(userName) }
+
+                OutlinedTextField(
+                    value = localNameInput,
+                    onValueChange = {
+                        localNameInput = it
+                        onSetUserName(it)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("listener_name_input"),
+                    label = {
+                        Text(
+                            text = "Listener Name / Alias",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Serif)
+                        )
+                    },
+                    placeholder = {
+                        Text(
+                            text = "e.g. Johannes Kepler or your name",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Serif,
+                                color = Color.Gray
+                            )
+                        )
+                    },
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = Color.Black
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Black,
+                        unfocusedBorderColor = Color.Black.copy(alpha = 0.5f),
+                        cursorColor = Color.Black,
+                        focusedLabelColor = Color.Black,
+                        unfocusedLabelColor = Color(0xFF666666)
+                    ),
+                    singleLine = true
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = "GREETING IN LIST-VIEW: WELCOME, ${localNameInput.ifBlank { "LISTENER" }.uppercase()}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp,
+                            fontSize = 10.sp
+                        ),
+                        color = Color.White
                     )
                 }
             }
