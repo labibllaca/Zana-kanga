@@ -236,16 +236,16 @@ fun NaviromApp(
     ) {
         val pagerState = rememberPagerState(initialPage = 1) { 3 }
         
-        Box(modifier = modifier.fillMaxSize()) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize()
-            ) { page ->
-
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize()
         ) { page ->
+            val backgroundColor = if (page == 0) Color.White else Color.Black
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(backgroundColor)
+            ) {
             when (page) {
                 0 -> {
                     // Player Zone
@@ -385,6 +385,7 @@ fun NaviromApp(
                     )
                 }
             }
+        }
         }
 
         // Full Screen Player Modal
@@ -546,8 +547,6 @@ fun NaviromApp(
             )
         }
     }
-    }
-}
 }
 
 @Composable
