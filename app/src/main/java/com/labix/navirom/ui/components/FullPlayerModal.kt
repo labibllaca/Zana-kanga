@@ -1729,6 +1729,8 @@ fun FullPlayerModal(
                     onOpenWlanCast = onOpenWlanCast,
                     onToggleClassicView = onToggleAstrolabeMode,
                     onSetSleepTimer = { mins -> onSetSleepTimer(mins, sleepTimerOptions) },
+                    sleepTimerOptions = sleepTimerOptions,
+                    onUpdateSleepTimerOptions = onUpdateSleepTimerOptions,
                     isDualAudioEnabled = isDualAudioEnabled,
                     dualSpeakerMode = dualSpeakerMode,
                     onSetDualSpeakerMode = onSetDualSpeakerMode,

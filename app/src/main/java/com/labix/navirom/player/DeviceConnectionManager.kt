@@ -422,6 +422,30 @@ class DeviceConnectionManager(private val context: Context) {
         }
     }
 
+    suspend fun disableGps() = withContext(Dispatchers.IO) {
+        val commands = listOf(
+            "settings put secure location_mode 0",
+            "cmd location set-location-enabled false"
+        )
+        for (cmd in commands) {
+            if (runCommand(cmd)) {
+                Log.d(TAG, "GPS disabled via shell: $cmd")
+                return@withContext
+            }
+        }
+        Handler(Looper.getMainLooper()).post {
+            try {
+                val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                context.startActivity(intent)
+                Toast.makeText(context, "Sleep timer: Please toggle Location / GPS off", Toast.LENGTH_SHORT).show()
+            } catch (e: Throwable) {
+                Log.w(TAG, "Failed opening Location settings", e)
+            }
+        }
+    }
+
     suspend fun executeSleepTimerActions(options: SleepTimerOptions) = withContext(Dispatchers.IO) {
         if (options.disableBluetooth) {
             disableBluetooth()
@@ -431,6 +455,9 @@ class DeviceConnectionManager(private val context: Context) {
         }
         if (options.disableMobileData) {
             disableMobileData()
+        }
+        if (options.disableGps) {
+            disableGps()
         }
     }
 }

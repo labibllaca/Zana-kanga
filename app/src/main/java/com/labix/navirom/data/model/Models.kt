@@ -83,7 +83,8 @@ enum class RepeatMode {
 data class SleepTimerOptions(
     val disableBluetooth: Boolean = false,
     val disableWifi: Boolean = false,
-    val disableMobileData: Boolean = false
+    val disableMobileData: Boolean = false,
+    val disableGps: Boolean = false
 )
 
 data class PlaybackState(

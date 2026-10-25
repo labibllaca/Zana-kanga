@@ -44,6 +44,7 @@ import com.labix.navirom.data.model.NaviromTrack
 import com.labix.navirom.data.model.PlaybackState
 import com.labix.navirom.data.model.RepeatMode
 import com.labix.navirom.data.model.DualSpeakerMode
+import com.labix.navirom.data.model.SleepTimerOptions
 import com.labix.navirom.ui.AppLanguage
 import com.labix.navirom.ui.util.rememberNaviromHaptics
 import kotlinx.coroutines.delay
@@ -91,6 +92,8 @@ fun AstrolabeFullPlayer(
     onOpenWlanCast: (() -> Unit)? = null,
     onToggleClassicView: () -> Unit,
     onSetSleepTimer: ((Int?) -> Unit)? = null,
+    sleepTimerOptions: SleepTimerOptions = SleepTimerOptions(),
+    onUpdateSleepTimerOptions: ((SleepTimerOptions) -> Unit)? = null,
     isDualAudioEnabled: Boolean = false,
     onToggleDualAudio: (() -> Unit)? = null,
     dualSpeakerMode: DualSpeakerMode = DualSpeakerMode.DUAL_STEREO,
@@ -652,7 +655,7 @@ fun AstrolabeFullPlayer(
                     val lyricItems = syncedLines.mapIndexed { idx, line ->
                         val isLineActive = (idx == activeLyricIdx)
                         EditorialSectorItem(
-                            indexLabel = formatMs(line.timeMs),
+                            indexLabel = "",
                             title = line.text.ifBlank { "• • •" },
                             description = if (isLineActive) "Active vocal phase • tap line to cue playback" else "Synchronized stanza line",
                             isSelected = isLineActive,
@@ -666,7 +669,8 @@ fun AstrolabeFullPlayer(
                     EditorialSectorBlock(
                         sectorTitle = "MANUSCRIPT LYRICS",
                         sectorSubTitle = "SYNCHRONIZED VOCAL TRANSCRIPT",
-                        items = lyricItems
+                        items = lyricItems,
+                        isManuscriptList = true
                     )
                 } else if (hasPlainLyrics) {
                     val plainLines = lyricsData?.plainLyrics.orEmpty()
@@ -676,7 +680,7 @@ fun AstrolabeFullPlayer(
 
                     val plainItems = plainLines.mapIndexed { idx, line ->
                         EditorialSectorItem(
-                            indexLabel = (idx + 1).toString().padStart(2, '0'),
+                            indexLabel = "",
                             title = line,
                             description = "Unsynchronized lyric verse",
                             isSelected = false
@@ -686,7 +690,8 @@ fun AstrolabeFullPlayer(
                     EditorialSectorBlock(
                         sectorTitle = "MANUSCRIPT LYRICS",
                         sectorSubTitle = "POETIC TEXT ARCHIVE",
-                        items = plainItems
+                        items = plainItems,
+                        isManuscriptList = true
                     )
                 } else {
                     EditorialSectorBlock(
@@ -694,11 +699,12 @@ fun AstrolabeFullPlayer(
                         sectorSubTitle = "ASTRONOMICAL POETRY NOT FOUND",
                         items = listOf(
                             EditorialSectorItem(
-                                indexLabel = "—",
+                                indexLabel = "",
                                 title = "Transcript Unavailable",
                                 description = "No synchronized lyrics or text registered for ${currentTrack?.title ?: "this celestial piece"}."
                             )
-                        )
+                        ),
+                        isManuscriptList = true
                     )
                 }
 
@@ -873,6 +879,8 @@ fun AstrolabeFullPlayer(
             AstrolabeOptionsModal(
                 playbackState = playbackState,
                 onSetSleepTimer = onSetSleepTimer,
+                sleepTimerOptions = sleepTimerOptions,
+                onUpdateSleepTimerOptions = onUpdateSleepTimerOptions,
                 isDualAudioEnabled = isDualAudioEnabled,
                 onToggleDualAudio = onToggleDualAudio,
                 dualSpeakerMode = dualSpeakerMode,
@@ -899,6 +907,8 @@ fun AstrolabeFullPlayer(
 fun AstrolabeOptionsModal(
     playbackState: PlaybackState,
     onSetSleepTimer: ((Int?) -> Unit)?,
+    sleepTimerOptions: SleepTimerOptions = SleepTimerOptions(),
+    onUpdateSleepTimerOptions: ((SleepTimerOptions) -> Unit)? = null,
     isDualAudioEnabled: Boolean,
     onToggleDualAudio: (() -> Unit)?,
     dualSpeakerMode: DualSpeakerMode,
@@ -1077,6 +1087,67 @@ fun AstrolabeOptionsModal(
                                 )
                             }
                         }
+                    }
+
+                    // Connectivity Deactivation Switch (Wi-Fi, Bluetooth, GPS)
+                    var disableConnectivity by remember(playbackState.sleepTimerOptions, sleepTimerOptions) {
+                        mutableStateOf(
+                            sleepTimerOptions.disableWifi ||
+                            sleepTimerOptions.disableBluetooth ||
+                            sleepTimerOptions.disableGps ||
+                            playbackState.sleepTimerOptions.disableWifi ||
+                            playbackState.sleepTimerOptions.disableBluetooth ||
+                            playbackState.sleepTimerOptions.disableGps
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "DEACTIVATE WIFI / BT / GPS",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp
+                                ),
+                                color = Color.Black
+                            )
+                            Text(
+                                text = if (disableConnectivity) "Deactivates Wi-Fi, Bluetooth & GPS on timer end" else "Keep wireless radios active",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontSize = 9.sp
+                                ),
+                                color = Color(0xFF666666)
+                            )
+                        }
+
+                        Switch(
+                            checked = disableConnectivity,
+                            onCheckedChange = { checked ->
+                                haptics.toggle()
+                                disableConnectivity = checked
+                                val newOpts = SleepTimerOptions(
+                                    disableWifi = checked,
+                                    disableBluetooth = checked,
+                                    disableGps = checked,
+                                    disableMobileData = checked
+                                )
+                                onUpdateSleepTimerOptions?.invoke(newOpts)
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color.Black,
+                                uncheckedThumbColor = Color.Black,
+                                uncheckedTrackColor = Color.White
+                            )
+                        )
                     }
                 }
 
@@ -1416,32 +1487,47 @@ fun EditorialSectorBlock(
     items: List<EditorialSectorItem>,
     lazyListState: LazyListState? = null,
     maxHeight: androidx.compose.ui.unit.Dp? = null,
+    isManuscriptList: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    var isCollapsed by remember { mutableStateOf(false) }
+    val haptics = rememberNaviromHaptics()
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
     ) {
-        // Sector Header
+        // Sector Header (Clicking header minimizes the list)
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    haptics.click()
+                    isCollapsed = !isCollapsed
+                }
+                .padding(vertical = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Bottom
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = sectorTitle,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontFamily = FontFamily.Serif,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.5.sp,
-                    fontSize = 15.sp
-                ),
-                color = Color.Black
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = if (isCollapsed) "▶ " + sectorTitle else "▼ " + sectorTitle,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.5.sp,
+                        fontSize = 15.sp
+                    ),
+                    color = Color.Black
+                )
+            }
             if (sectorSubTitle != null) {
                 Text(
-                    text = sectorSubTitle,
+                    text = if (isCollapsed) (if (isManuscriptList) "[ACTIVE LYRIC SHOWN]" else "[MINIMIZED]") else sectorSubTitle,
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = FontFamily.Serif,
                         letterSpacing = 1.sp,
@@ -1464,21 +1550,33 @@ fun EditorialSectorBlock(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        if (lazyListState != null) {
-            LazyColumn(
-                state = lazyListState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 140.dp, max = maxHeight ?: 260.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                itemsIndexed(items) { _, item ->
-                    EditorialSectorItemRow(item = item)
+        if (isCollapsed) {
+            if (isManuscriptList) {
+                // "except the manuscript list there show only the current line of lyric"
+                val activeOrFirst = items.firstOrNull { it.isSelected } ?: items.firstOrNull()
+                if (activeOrFirst != null) {
+                    EditorialSectorItemRow(item = activeOrFirst)
                 }
+            } else {
+                // Minimized block
             }
         } else {
-            items.forEach { item ->
-                EditorialSectorItemRow(item = item)
+            if (lazyListState != null) {
+                LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 120.dp, max = maxHeight ?: 260.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    itemsIndexed(items) { _, item ->
+                        EditorialSectorItemRow(item = item)
+                    }
+                }
+            } else {
+                items.forEach { item ->
+                    EditorialSectorItemRow(item = item)
+                }
             }
         }
     }
@@ -1509,29 +1607,31 @@ fun EditorialSectorItemRow(
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Left Column: Track Number with shelf tick
-        Column(
-            modifier = Modifier.width(44.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = item.indexLabel,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = FontFamily.Serif,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                    fontSize = 14.sp
-                ),
-                color = if (isSelected) Color.White else Color.Black
-            )
-            Box(
-                modifier = Modifier
-                    .width(28.dp)
-                    .height(1.dp)
-                    .background(if (isSelected) Color.White.copy(alpha = 0.6f) else Color(0xFFCCCCCC))
-            )
-        }
+        // Left Column: Track Number with shelf tick (only rendered if indexLabel is not blank)
+        if (item.indexLabel.isNotBlank()) {
+            Column(
+                modifier = Modifier.width(44.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = item.indexLabel,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        fontSize = 14.sp
+                    ),
+                    color = if (isSelected) Color.White else Color.Black
+                )
+                Box(
+                    modifier = Modifier
+                        .width(28.dp)
+                        .height(1.dp)
+                        .background(if (isSelected) Color.White.copy(alpha = 0.6f) else Color(0xFFCCCCCC))
+                )
+            }
 
-        Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+        }
 
         // Signature 4.5dp Solid Black / White Vertical Accent Bar
         Box(
@@ -1557,17 +1657,19 @@ fun EditorialSectorItemRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = item.description,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp
-                ),
-                color = if (isSelected) Color.White.copy(alpha = 0.85f) else Color(0xFF555555),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (item.description.isNotBlank()) {
+                Text(
+                    text = item.description,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp
+                    ),
+                    color = if (isSelected) Color.White.copy(alpha = 0.85f) else Color(0xFF555555),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
