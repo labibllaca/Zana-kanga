@@ -101,7 +101,7 @@ jobs:
           mkdir -p build-outputs
           echo "=== Searching for generated APKs ==="
           find app/build/outputs/ -name "*.apk" || true
-          APK_PATH=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+          APK_PATH=$(find app/build/outputs -name "*.apk" | head -n 1)
           if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
             echo "Error: No APK found in app/build/outputs/apk!"
             exit 1

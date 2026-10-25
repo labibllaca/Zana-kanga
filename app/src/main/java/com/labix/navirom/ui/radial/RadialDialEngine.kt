@@ -314,6 +314,11 @@ object AstrolabeTheme {
     val ParchmentRim = Color(0xFFD4C5B0)
     val CelestialGrid = Color(0x337FE5D9)
     val ActivePointerGlow = Color(0xFFFFB703)
+
+    // Light Theme for Astrolabe Wheel System
+    val BackgroundWhite = Color(0xFFFFFFFF)
+    val TextBlack = Color(0xFF000000)
+    val TextDarkGray = Color(0xFF333333)
 }
 
 /**

@@ -5,6 +5,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -232,518 +234,43 @@ fun NaviromApp(
             }
         )
     ) {
-        ModalNavigationDrawer(
-        drawerState = drawerState,
-        gesturesEnabled = !isFullPlayerVisible && !isQueueSheetVisible && !isStatsScreenVisible,
-        drawerContent = {
-            LibrariesSidebarContent(
-                musicFolders = serverState.musicFolders,
-                selectedMusicFolderIds = serverState.selectedMusicFolderIds,
-                onSelectMusicFolder = { viewModel.selectMusicFolder(it) },
-                onToggleMusicFolder = { viewModel.toggleMusicFolder(it) },
-                onSelectAllMusicFolders = { viewModel.selectAllMusicFolders() },
-                onDeselectAllMusicFolders = { viewModel.deselectAllMusicFolders() },
-                localFolders = localFolders,
-                disabledLocalFolderIds = disabledLocalFolderIds,
-                onToggleLocalFolder = { viewModel.toggleLocalFolder(it) },
-                onSelectAllLocalFolders = { viewModel.selectAllLocalFolders() },
-                onDeselectAllLocalFolders = { viewModel.deselectAllLocalFolders() },
-                onGoToSettings = { viewModel.setTab(NaviromTab.SETTINGS) },
-                onSyncLibrary = { viewModel.syncLibrary() },
-                onCloseSidebar = { scope.launch { drawerState.close() } },
-                wlanSpeakerState = wlanSpeakerState,
-                onOpenWlanCast = { viewModel.showWlanCastSheet() },
-                profileName = serverState.username,
-                serverConnected = serverState.isConnected,
-                isAstrolabeModeEnabled = isAstrolabeModeEnabled,
-                onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() },
-                onNavigateToTab = { tab -> viewModel.setTab(tab) },
-                currentTab = currentTab,
-                str = ::str
-            )
-        }
-    ) {
-        BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val isWideScreen = maxWidth >= 600.dp || (maxWidth >= 480.dp && maxHeight < 520.dp)
+        val pagerState = rememberPagerState(initialPage = 1) { 3 }
+        
+        Box(modifier = modifier.fillMaxSize()) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
 
-        if (isWideScreen) {
-            // Big Screen / Tablet Layout: Side Navigation Rail + Content Area
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-            ) {
-                NavigationRail(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.testTag("tablet_nav_rail"),
-                    header = {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(vertical = 16.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.primaryContainer),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.MusicNote,
-                                    contentDescription = "Navirom",
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                    }
-                ) {
-                    Spacer(modifier = Modifier.weight(1f))
-                    NavigationRailItem(
-                        selected = currentTab == NaviromTab.LIBRARY,
-                        onClick = {
-                            haptics.tick()
-                            viewModel.setTab(NaviromTab.LIBRARY)
-                        },
-                        icon = { Icon(if (currentTab == NaviromTab.LIBRARY) Icons.Filled.Home else Icons.Outlined.Home, contentDescription = str("tab_home")) },
-                        label = { Text(str("tab_home")) },
-                        modifier = Modifier.testTag("rail_item_library"),
-                        colors = NavigationRailItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.onSurface
-                        )
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            when (page) {
+                0 -> {
+                    // Player Zone
+                    AstrolabeFullPlayer(
+                        playbackState = playbackState,
+                        isFavorite = favoriteIds.contains(playbackState.currentTrack?.id),
+                        queue = queue,
+                        queueIndex = queueIndex,
+                        appLanguage = appLanguage,
+                        onDismiss = {},
+                        onTogglePlayPause = { viewModel.togglePlayPause() },
+                        onNext = { viewModel.next() },
+                        onPrevious = { viewModel.previous() },
+                        onSeekTo = { viewModel.seekTo(it) },
+                        onToggleShuffle = { viewModel.toggleShuffle() },
+                        onCycleRepeat = { viewModel.cycleRepeatMode() },
+                        onToggleFavorite = { playbackState.currentTrack?.let { viewModel.toggleFavorite(it.id) } },
+                        onTrackSelect = { track, list -> viewModel.playTrack(track, list) },
+                        onToggleClassicView = { viewModel.toggleAstrolabeMode() }
                     )
-                    NavigationRailItem(
-                        selected = currentTab == NaviromTab.PLAYLISTS,
-                        onClick = {
-                            haptics.tick()
-                            viewModel.setTab(NaviromTab.PLAYLISTS)
-                        },
-                        icon = { Icon(if (currentTab == NaviromTab.PLAYLISTS) Icons.Filled.QueueMusic else Icons.Outlined.QueueMusic, contentDescription = str("tab_playlists")) },
-                        label = { Text(str("tab_playlists")) },
-                        modifier = Modifier.testTag("rail_item_playlists"),
-                        colors = NavigationRailItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.onSurface
-                        )
-                    )
-                    NavigationRailItem(
-                        selected = currentTab == NaviromTab.SEARCH,
-                        onClick = {
-                            haptics.tick()
-                            if (currentTab == NaviromTab.SEARCH) {
-                                viewModel.triggerSearchFocus()
-                            } else {
-                                viewModel.setTab(NaviromTab.SEARCH)
-                            }
-                        },
-                        icon = { Icon(Icons.Filled.Search, contentDescription = str("tab_search")) },
-                        label = { Text(str("tab_search")) },
-                        modifier = Modifier.testTag("rail_item_search"),
-                        colors = NavigationRailItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.onSurface
-                        )
-                    )
-                    NavigationRailItem(
-                        selected = currentTab == NaviromTab.FOLDERS,
-                        onClick = {
-                            haptics.tick()
-                            viewModel.setTab(NaviromTab.FOLDERS)
-                        },
-                        icon = { Icon(if (currentTab == NaviromTab.FOLDERS) Icons.Filled.Folder else Icons.Outlined.Folder, contentDescription = str("tab_music")) },
-                        label = { Text(str("tab_music")) },
-                        modifier = Modifier.testTag("rail_item_folders"),
-                        colors = NavigationRailItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.onSurface
-                        )
-                    )
-                    NavigationRailItem(
-                        selected = currentTab == NaviromTab.SETTINGS,
-                        onClick = {
-                            haptics.tick()
-                            viewModel.setTab(NaviromTab.SETTINGS)
-                        },
-                        icon = { Icon(if (currentTab == NaviromTab.SETTINGS) Icons.Filled.Settings else Icons.Outlined.Settings, contentDescription = str("tab_settings")) },
-                        label = { Text(str("tab_settings")) },
-                        modifier = Modifier.testTag("rail_item_settings"),
-                        colors = NavigationRailItemDefaults.colors(
-                            indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.onSurface
-                        )
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    IconButton(
-                        onClick = {
-                            haptics.click()
-                            onCloseApp()
-                        },
-                        modifier = Modifier
-                            .padding(bottom = 16.dp)
-                            .size(48.dp)
-                            .testTag("tablet_close_app_btn")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Close App",
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                    }
                 }
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                ) {
-                    // Top App Header
-                    AppTopBar(
-                        serverConnected = serverState.isConnected,
-                        isAstrolabeModeEnabled = isAstrolabeModeEnabled,
-                        onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() },
-                        onOpenSearch = {
-                            haptics.tick()
-                            viewModel.setTab(NaviromTab.SEARCH)
-                        },
-                        onOpenSettings = {
-                            haptics.tick()
-                            viewModel.setTab(NaviromTab.SETTINGS)
-                        },
-                        onCloseApp = {
-                            haptics.click()
-                            onCloseApp()
-                        },
-                        onOpenSidebar = {
-                            haptics.tick()
-                            scope.launch { drawerState.open() }
-                        }
-                    )
-
-                    // Tab Content
-                    Box(modifier = Modifier.weight(1f)) {
-                        TabContent(
-                            currentTab = currentTab,
-                            isAstrolabeModeEnabled = isAstrolabeModeEnabled,
-                            onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() },
-                            librarySubTab = librarySubTab,
-                            onSubTabSelected = { viewModel.setLibrarySubTab(it) },
-                            albums = albums,
-                            newestAlbums = newestAlbums,
-                            mostPlayedAlbums = mostPlayedAlbums,
-                            randomAlbums = randomAlbums,
-                            onRefreshRandomAlbums = { viewModel.refreshRandomAlbums() },
-                            profileName = serverState.username,
-                            newestTracks = newestTracks,
-                            artists = artists,
-                            playlists = playlists,
-                            quickMixTracks = quickMixTracks,
-                            recentlyPlayedTracks = recentlyPlayedTracks,
-                            librarySongs = librarySongs,
-                            songSortOrder = songSortOrder,
-                            isSongSortReversed = isSongSortReversed,
-                            onSetSongSortOrder = { viewModel.setSongSortOrder(it) },
-                            selectedAlbumId = selectedAlbumId,
-                            selectedAlbumTracks = currentAlbumTracks,
-                            selectedPlaylistId = selectedPlaylistId,
-                            selectedPlaylistTracks = currentPlaylistTracks,
-                            searchQuery = searchQuery,
-                            onSearchQueryChange = { viewModel.onSearchQueryChange(it) },
-                            isSearching = isSearching,
-                            searchResults = searchResults,
-                            searchHistory = searchHistory,
-                            onRemoveSearchHistory = { viewModel.removeSearchHistoryItem(it) },
-                            onClearSearchHistory = { viewModel.clearSearchHistory() },
-                            cachedTracks = cachedTracks,
-                            totalCacheSizeBytes = totalCacheSizeBytes,
-                            isOfflineOnlyMode = isOfflineOnlyMode,
-                            serverState = serverState,
-                            allServers = allServers,
-                            favoriteIds = favoriteIds,
-                            downloadStatuses = downloadStatuses,
-                            downloadProgresses = downloadProgresses,
-                            playbackState = playbackState,
-                            appLanguage = appLanguage,
-                            appThemeMode = appThemeMode,
-                            statsSummary = listeningStats,
-                            isCrossfadeEnabled = isCrossfadeEnabled,
-                            crossfadeDurationSeconds = crossfadeDurationSeconds,
-                            isVinylEffectEnabled = isVinylEffectEnabled,
-                            onSetCrossfadeEnabled = { viewModel.setCrossfadeEnabled(it) },
-                            onSetCrossfadeDurationSeconds = { viewModel.setCrossfadeDurationSeconds(it) },
-                            onSetVinylEffectEnabled = { viewModel.setVinylEffectEnabled(it) },
-                            onViewStats = { viewModel.setStatsScreenVisible(true) },
-                            onSetLanguage = { viewModel.setLanguage(it) },
-                            onSetThemeMode = { viewModel.setThemeMode(it) },
-                            onSelectAlbum = { albumId ->
-                                viewModel.selectAlbum(albumId)
-                                viewModel.setTab(NaviromTab.LIBRARY) // Open and switch to library tab to view the album details
-                            },
-                            searchFocusTrigger = searchFocusTrigger,
-                            onSelectPlaylist = { viewModel.selectPlaylist(it) },
-                            onCreatePlaylist = { viewModel.createPlaylist(it) },
-                            onDeletePlaylist = { viewModel.deletePlaylist(it) },
-                            onTrackClick = { track, list -> viewModel.playTrack(track, list) },
-                            onPlayAll = { viewModel.playAll(it) },
-                            onShuffleAll = { viewModel.shuffleAll(it) },
-                            onSmartShuffle = { viewModel.smartShuffle(it) },
-                            onPlayTracksNext = { viewModel.playTracksNext(it) },
-                            onAddTracksToQueue = { viewModel.addTracksToQueue(it) },
-                            onDownloadTracks = { viewModel.downloadTracks(it) },
-                            onToggleFavorite = { viewModel.toggleFavorite(it) },
-                            onDownloadTrack = { viewModel.downloadTrack(it) },
-                            onPlayNext = { viewModel.playNext(it) },
-                            onAddToQueue = { viewModel.addToQueue(it) },
-                            onToggleOfflineOnly = { viewModel.setOfflineOnlyMode(it) },
-                            onDeleteCachedTrack = { viewModel.deleteCachedTrack(it) },
-                            onClearAllCache = { viewModel.clearAllCache() },
-                            onUpdateServerConfig = { protocol, host, port, user, p, t, altHost -> viewModel.updateServerConfig(protocol, host, port, user, p, t, altHost) },
-                            onConnectServer = { viewModel.connectServer() },
-                            onSyncLibrary = { viewModel.syncLibrary() },
-                            onScanNetwork = { viewModel.startAutoScanAndFocusUsername() },
-                            onSelectMusicFolder = { viewModel.selectMusicFolder(it) },
-                            onToggleMusicFolder = { viewModel.toggleMusicFolder(it) },
-                            onSelectAllMusicFolders = { viewModel.selectAllMusicFolders() },
-                            focusUsernameTrigger = focusUsernameTrigger,
-                            onSelectServer = { viewModel.setServerConfig(it) },
-                            onDeleteServer = { viewModel.deleteServerConfig(it) },
-                            onGoToSettings = { viewModel.setTab(NaviromTab.SETTINGS) },
-                            onOpenSidebar = { scope.launch { drawerState.open() } },
-                            updateState = updateState,
-                            autoCheckUpdates = autoCheckUpdates,
-                            githubRepo = updateGithubRepo,
-                            lastUpdateCheckedTime = lastUpdateCheckedTime,
-                            onCheckForUpdates = { viewModel.checkForAppUpdates(isManual = true) },
-                            onDownloadAndInstallUpdate = { viewModel.downloadAndInstallUpdate(it) },
-                            onSetAutoCheckUpdates = { viewModel.setAutoCheckUpdates(it) },
-                            onSetGithubRepo = { viewModel.setUpdateGithubRepo(it) },
-                            onDismissUpdate = { viewModel.dismissAppUpdate() },
-                            localTracks = localTracks,
-                            localFolders = localFolders,
-                            disabledLocalFolderIds = disabledLocalFolderIds,
-                            onToggleLocalFolder = { viewModel.toggleLocalFolder(it) },
-                            onSetLocalFolderEnabled = { id, enabled -> viewModel.setLocalFolderEnabled(id, enabled) },
-                            onSelectAllLocalFolders = { viewModel.selectAllLocalFolders() },
-                            onDeselectAllLocalFolders = { viewModel.deselectAllLocalFolders() },
-                            allDiscoveredLocalFolders = allDiscoveredLocalFolders,
-                            settingsEnabledLocalFolderIds = settingsEnabledLocalFolderIds,
-                            onToggleSettingsLocalFolder = { viewModel.toggleSettingsLocalFolder(it) },
-                            onSetSettingsLocalFolderEnabled = { id, enabled -> viewModel.setSettingsLocalFolderEnabled(id, enabled) },
-                            onSelectAllSettingsLocalFolders = { viewModel.selectAllSettingsLocalFolders() },
-                            onDeselectAllSettingsLocalFolders = { viewModel.deselectAllSettingsLocalFolders() },
-                            isScanningLocalAudio = isScanningLocalAudio,
-                            onScanLocalAudio = { viewModel.scanLocalAudio() },
-                            currentMusicFolderPath = currentMusicFolderPath,
-                            onNavigateToMusicFolder = { viewModel.navigateToMusicFolder(it) },
-                            onNavigateUpMusicFolder = { viewModel.navigateUpMusicFolder() },
-                            onPlayFolder = { path, shuffle -> viewModel.playFolder(path, shuffle) },
-                            onPlayFolderNext = { viewModel.playFolderNext(it) },
-                            onAddFolderToQueue = { viewModel.addFolderToQueue(it) }
-                        )
-                    }
-
-                    // Bottom Persistent Mini Player on Tablet
-                    if (playbackState.currentTrack != null) {
-                        MiniPlayerBar(
-                            playbackState = playbackState,
-                            onExpandPlayer = { viewModel.setFullPlayerVisible(true) },
-                            onTogglePlayPause = { viewModel.togglePlayPause() },
-                            onNext = { viewModel.next() },
-                            onPrevious = { viewModel.previous() },
-                            onSeekRelative = { viewModel.seekRelative(it) },
-                            onClose = { viewModel.clearQueue() }
-                        )
-                    }
-                }
-            }
-        } else {
-            // Small Screen / Phone Layout: Top Bar + Content + Floating Mini Player + Bottom Navigation Bar
-            Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
-                topBar = {
-                    AppTopBar(
-                        serverConnected = serverState.isConnected,
-                        isAstrolabeModeEnabled = isAstrolabeModeEnabled,
-                        onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() },
-                        onOpenSearch = {
-                            haptics.tick()
-                            viewModel.setTab(NaviromTab.SEARCH)
-                        },
-                        onOpenSettings = {
-                            haptics.tick()
-                            viewModel.setTab(NaviromTab.SETTINGS)
-                        },
-                        onCloseApp = {
-                            haptics.click()
-                            onCloseApp()
-                        },
-                        onOpenSidebar = {
-                            haptics.tick()
-                            scope.launch { drawerState.open() }
-                        }
-                    )
-                },
-                bottomBar = {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                    ) {
-                        // Floating Mini Player
-                        AnimatedVisibility(
-                            visible = playbackState.currentTrack != null,
-                            enter = slideInVertically { it } + fadeIn(),
-                            exit = slideOutVertically { it } + fadeOut()
-                        ) {
-                            MiniPlayerBar(
-                                playbackState = playbackState,
-                                onExpandPlayer = {
-                                    haptics.click()
-                                    viewModel.setFullPlayerVisible(true)
-                                },
-                                onTogglePlayPause = {
-                                    haptics.toggle()
-                                    viewModel.togglePlayPause()
-                                },
-                                onNext = {
-                                    haptics.click()
-                                    viewModel.next()
-                                },
-                                onPrevious = {
-                                    haptics.click()
-                                    viewModel.previous()
-                                },
-                                onSeekRelative = { viewModel.seekRelative(it) },
-                                onClose = {
-                                    viewModel.clearQueue()
-                                }
-                            )
-                        }
-
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(22.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 2.dp,
-                            shadowElevation = 4.dp,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                        ) {
-                            NavigationBar(
-                                containerColor = Color.Transparent,
-                                tonalElevation = 0.dp,
-                                modifier = Modifier.testTag("bottom_nav_bar")
-                            ) {
-                            NavigationBarItem(
-                                selected = currentTab == NaviromTab.LIBRARY,
-                                onClick = {
-                                    haptics.tick()
-                                    viewModel.setTab(NaviromTab.LIBRARY)
-                                },
-                                icon = { Icon(if (currentTab == NaviromTab.LIBRARY) Icons.Filled.Home else Icons.Outlined.Home, contentDescription = str("tab_library")) },
-                                label = { Text(str("tab_library"), fontWeight = if (currentTab == NaviromTab.LIBRARY) FontWeight.Bold else FontWeight.Medium) },
-                                modifier = Modifier.testTag("nav_item_library"),
-                                colors = NavigationBarItemDefaults.colors(
-                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            )
-                            NavigationBarItem(
-                                selected = currentTab == NaviromTab.PLAYLISTS,
-                                onClick = {
-                                    haptics.tick()
-                                    viewModel.setTab(NaviromTab.PLAYLISTS)
-                                },
-                                icon = { Icon(if (currentTab == NaviromTab.PLAYLISTS) Icons.Filled.QueueMusic else Icons.Outlined.QueueMusic, contentDescription = str("tab_playlists")) },
-                                label = { Text(str("tab_playlists"), fontWeight = if (currentTab == NaviromTab.PLAYLISTS) FontWeight.Bold else FontWeight.Medium) },
-                                modifier = Modifier.testTag("nav_item_playlists"),
-                                colors = NavigationBarItemDefaults.colors(
-                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            )
-                            NavigationBarItem(
-                                selected = currentTab == NaviromTab.FOLDERS,
-                                onClick = {
-                                    haptics.tick()
-                                    viewModel.setTab(NaviromTab.FOLDERS)
-                                },
-                                icon = { Icon(if (currentTab == NaviromTab.FOLDERS) Icons.Filled.Folder else Icons.Outlined.Folder, contentDescription = str("tab_music")) },
-                                label = { Text(str("tab_music"), fontWeight = if (currentTab == NaviromTab.FOLDERS) FontWeight.Bold else FontWeight.Medium) },
-                                modifier = Modifier.testTag("nav_item_folders"),
-                                colors = NavigationBarItemDefaults.colors(
-                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            )
-                            NavigationBarItem(
-                                selected = currentTab == NaviromTab.SEARCH,
-                                onClick = {
-                                    haptics.tick()
-                                    if (currentTab == NaviromTab.SEARCH) {
-                                        viewModel.triggerSearchFocus()
-                                    } else {
-                                        viewModel.setTab(NaviromTab.SEARCH)
-                                    }
-                                },
-                                icon = { Icon(Icons.Filled.Search, contentDescription = str("tab_search")) },
-                                label = { Text(str("tab_search"), fontWeight = if (currentTab == NaviromTab.SEARCH) FontWeight.Bold else FontWeight.Medium) },
-                                modifier = Modifier.testTag("nav_item_search"),
-                                colors = NavigationBarItemDefaults.colors(
-                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            )
-                            NavigationBarItem(
-                                selected = currentTab == NaviromTab.SETTINGS,
-                                onClick = {
-                                    haptics.tick()
-                                    viewModel.setTab(NaviromTab.SETTINGS)
-                                },
-                                icon = { Icon(if (currentTab == NaviromTab.SETTINGS) Icons.Filled.Settings else Icons.Outlined.Settings, contentDescription = str("tab_settings")) },
-                                label = { Text(str("tab_settings"), fontWeight = if (currentTab == NaviromTab.SETTINGS) FontWeight.Bold else FontWeight.Medium) },
-                                modifier = Modifier.testTag("nav_item_settings"),
-                                colors = NavigationBarItemDefaults.colors(
-                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-            ) { paddingValues ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                ) {
-                    TabContent(
-                        currentTab = currentTab,
-                        isAstrolabeModeEnabled = isAstrolabeModeEnabled,
-                        onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() },
-                        librarySubTab = librarySubTab,
+                1 -> {
+                    // Library Zone
+                    LibraryScreen(
+                        subTab = librarySubTab,
                         onSubTabSelected = { viewModel.setLibrarySubTab(it) },
                         albums = albums,
                         newestAlbums = newestAlbums,
@@ -753,7 +280,6 @@ fun NaviromApp(
                         profileName = serverState.username,
                         newestTracks = newestTracks,
                         artists = artists,
-                        playlists = playlists,
                         quickMixTracks = quickMixTracks,
                         recentlyPlayedTracks = recentlyPlayedTracks,
                         librarySongs = librarySongs,
@@ -762,55 +288,21 @@ fun NaviromApp(
                         onSetSongSortOrder = { viewModel.setSongSortOrder(it) },
                         selectedAlbumId = selectedAlbumId,
                         selectedAlbumTracks = currentAlbumTracks,
-                        selectedPlaylistId = selectedPlaylistId,
-                        selectedPlaylistTracks = currentPlaylistTracks,
-                        selectedArtistId = selectedArtistId,
-                        currentArtist = currentArtist,
-                        currentArtistAlbums = currentArtistAlbums,
-                        currentArtistSongs = currentArtistSongs,
-                        isLoadingArtistDetails = isLoadingArtistDetails,
-                        onSelectArtist = { viewModel.selectArtist(it) },
-                        searchQuery = searchQuery,
-                        onSearchQueryChange = { viewModel.onSearchQueryChange(it) },
-                        isSearching = isSearching,
-                        searchResults = searchResults,
-                        searchHistory = searchHistory,
-                        onRemoveSearchHistory = { viewModel.removeSearchHistoryItem(it) },
-                        onClearSearchHistory = { viewModel.clearSearchHistory() },
-                        cachedTracks = cachedTracks,
-                        totalCacheSizeBytes = totalCacheSizeBytes,
-                        isOfflineOnlyMode = isOfflineOnlyMode,
-                        serverState = serverState,
-                        allServers = allServers,
-                        favoriteIds = favoriteIds,
-                        favoriteTracks = favoriteTracks,
+                        currentTrack = playbackState.currentTrack,
+                        isPlaying = playbackState.isPlaying,
                         downloadStatuses = downloadStatuses,
                         downloadProgresses = downloadProgresses,
-                        playbackState = playbackState,
+                        favoriteIds = favoriteIds,
+                        favoriteTracks = favoriteTracks,
                         appLanguage = appLanguage,
-                        appThemeMode = appThemeMode,
-                        statsSummary = listeningStats,
-                        isCrossfadeEnabled = isCrossfadeEnabled,
-                        crossfadeDurationSeconds = crossfadeDurationSeconds,
-                        isVinylEffectEnabled = isVinylEffectEnabled,
-                        isDualAudioEnabled = isDualAudioEnabled,
-                        onSetCrossfadeEnabled = { viewModel.setCrossfadeEnabled(it) },
-                        onSetCrossfadeDurationSeconds = { viewModel.setCrossfadeDurationSeconds(it) },
-                        onSetVinylEffectEnabled = { viewModel.setVinylEffectEnabled(it) },
-                        onSetDualAudioEnabled = { viewModel.setDualAudioEnabled(it) },
-                        wlanSpeakerState = wlanSpeakerState,
-                        onOpenWlanCast = { viewModel.showWlanCastSheet() },
-                        onViewStats = { viewModel.setStatsScreenVisible(true) },
-                        onSetLanguage = { viewModel.setLanguage(it) },
-                        onSetThemeMode = { viewModel.setThemeMode(it) },
-                        onSelectAlbum = { albumId ->
-                            viewModel.selectAlbum(albumId)
-                            viewModel.setTab(NaviromTab.LIBRARY) // Open and switch to library tab to view the album details
-                        },
-                        searchFocusTrigger = searchFocusTrigger,
-                        onSelectPlaylist = { viewModel.selectPlaylist(it) },
-                        onCreatePlaylist = { viewModel.createPlaylist(it) },
-                        onDeletePlaylist = { viewModel.deletePlaylist(it) },
+                        musicFolders = serverState.musicFolders,
+                        selectedMusicFolderId = serverState.selectedMusicFolderId,
+                        selectedMusicFolderIds = serverState.selectedMusicFolderIds,
+                        onSelectMusicFolder = { viewModel.selectMusicFolder(it) },
+                        onToggleMusicFolder = { viewModel.toggleMusicFolder(it) },
+                        onSelectAllMusicFolders = { viewModel.selectAllMusicFolders() },
+                        onSyncLibrary = { viewModel.syncLibrary() },
+                        onSelectAlbum = { viewModel.selectAlbum(it) },
                         onTrackClick = { track, list -> viewModel.playTrack(track, list) },
                         onPlayAll = { viewModel.playAll(it) },
                         onShuffleAll = { viewModel.shuffleAll(it) },
@@ -822,30 +314,15 @@ fun NaviromApp(
                         onDownloadTrack = { viewModel.downloadTrack(it) },
                         onPlayNext = { viewModel.playNext(it) },
                         onAddToQueue = { viewModel.addToQueue(it) },
-                        onToggleOfflineOnly = { viewModel.setOfflineOnlyMode(it) },
-                        onDeleteCachedTrack = { viewModel.deleteCachedTrack(it) },
-                        onClearAllCache = { viewModel.clearAllCache() },
-                        onUpdateServerConfig = { protocol, host, port, user, p, t, altHost -> viewModel.updateServerConfig(protocol, host, port, user, p, t, altHost) },
-                        onConnectServer = { viewModel.connectServer() },
-                        onSyncLibrary = { viewModel.syncLibrary() },
+                        onGoToSettings = { pagerState.requestScrollToPage(2) },
                         onScanNetwork = { viewModel.startAutoScanAndFocusUsername() },
-                        onSelectMusicFolder = { viewModel.selectMusicFolder(it) },
-                        onToggleMusicFolder = { viewModel.toggleMusicFolder(it) },
-                        onSelectAllMusicFolders = { viewModel.selectAllMusicFolders() },
-                        focusUsernameTrigger = focusUsernameTrigger,
-                        onSelectServer = { viewModel.setServerConfig(it) },
-                        onDeleteServer = { viewModel.deleteServerConfig(it) },
-                        onGoToSettings = { viewModel.setTab(NaviromTab.SETTINGS) },
-                        onOpenSidebar = { scope.launch { drawerState.open() } },
-                        updateState = updateState,
-                        autoCheckUpdates = autoCheckUpdates,
-                        githubRepo = updateGithubRepo,
-                        lastUpdateCheckedTime = lastUpdateCheckedTime,
-                        onCheckForUpdates = { viewModel.checkForAppUpdates(isManual = true) },
-                        onDownloadAndInstallUpdate = { viewModel.downloadAndInstallUpdate(it) },
-                        onSetAutoCheckUpdates = { viewModel.setAutoCheckUpdates(it) },
-                        onSetGithubRepo = { viewModel.setUpdateGithubRepo(it) },
-                        onDismissUpdate = { viewModel.dismissAppUpdate() },
+                        onOpenSidebar = { /* No-op */ },
+                        selectedArtistId = selectedArtistId,
+                        currentArtist = currentArtist,
+                        currentArtistAlbums = currentArtistAlbums,
+                        currentArtistSongs = currentArtistSongs,
+                        isLoadingArtistDetails = isLoadingArtistDetails,
+                        onSelectArtist = { viewModel.selectArtist(it) },
                         localTracks = localTracks,
                         localFolders = localFolders,
                         disabledLocalFolderIds = disabledLocalFolderIds,
@@ -853,6 +330,40 @@ fun NaviromApp(
                         onSetLocalFolderEnabled = { id, enabled -> viewModel.setLocalFolderEnabled(id, enabled) },
                         onSelectAllLocalFolders = { viewModel.selectAllLocalFolders() },
                         onDeselectAllLocalFolders = { viewModel.deselectAllLocalFolders() },
+                        isScanningLocalAudio = isScanningLocalAudio,
+                        onScanLocalAudio = { viewModel.scanLocalAudio() }
+                    )
+                }
+                2 -> {
+                    // Settings Zone
+                    ServerSettingsScreen(
+                        serverState = serverState,
+                        allServers = allServers,
+                        onSelectServer = { viewModel.setServerConfig(it) },
+                        onDeleteServer = { viewModel.deleteServerConfig(it) },
+                        appLanguage = appLanguage,
+                        appThemeMode = appThemeMode,
+                        statsSummary = listeningStats,
+                        isCrossfadeEnabled = isCrossfadeEnabled,
+                        crossfadeDurationSeconds = crossfadeDurationSeconds,
+                        isVinylEffectEnabled = isVinylEffectEnabled,
+                        isDualAudioEnabled = isDualAudioEnabled,
+                        wlanSpeakerState = wlanSpeakerState,
+                        onOpenWlanCast = { viewModel.showWlanCastSheet() },
+                        onSetCrossfadeEnabled = { viewModel.setCrossfadeEnabled(it) },
+                        onSetCrossfadeDurationSeconds = { viewModel.setCrossfadeDurationSeconds(it) },
+                        onSetVinylEffectEnabled = { viewModel.setVinylEffectEnabled(it) },
+                        onSetDualAudioEnabled = { viewModel.setDualAudioEnabled(it) },
+                        onViewStats = { viewModel.setStatsScreenVisible(true) },
+                        onSetLanguage = { viewModel.setLanguage(it) },
+                        onSetThemeMode = { viewModel.setThemeMode(it) },
+                        onUpdateConfig = { protocol, host, port, user, p, t, altHost -> viewModel.updateServerConfig(protocol, host, port, user, p, t, altHost) },
+                        onConnect = { viewModel.connectServer() },
+                        onSyncLibrary = { viewModel.syncLibrary() },
+                        onScanNetwork = { viewModel.startAutoScanAndFocusUsername() },
+                        onSelectMusicFolder = { viewModel.selectMusicFolder(it) },
+                        onToggleMusicFolder = { viewModel.toggleMusicFolder(it) },
+                        onSelectAllMusicFolders = { viewModel.selectAllMusicFolders() },
                         allDiscoveredLocalFolders = allDiscoveredLocalFolders,
                         settingsEnabledLocalFolderIds = settingsEnabledLocalFolderIds,
                         onToggleSettingsLocalFolder = { viewModel.toggleSettingsLocalFolder(it) },
@@ -861,12 +372,16 @@ fun NaviromApp(
                         onDeselectAllSettingsLocalFolders = { viewModel.deselectAllSettingsLocalFolders() },
                         isScanningLocalAudio = isScanningLocalAudio,
                         onScanLocalAudio = { viewModel.scanLocalAudio() },
-                        currentMusicFolderPath = currentMusicFolderPath,
-                        onNavigateToMusicFolder = { viewModel.navigateToMusicFolder(it) },
-                        onNavigateUpMusicFolder = { viewModel.navigateUpMusicFolder() },
-                        onPlayFolder = { path, shuffle -> viewModel.playFolder(path, shuffle) },
-                        onPlayFolderNext = { viewModel.playFolderNext(it) },
-                        onAddFolderToQueue = { viewModel.addFolderToQueue(it) }
+                        focusUsernameTrigger = focusUsernameTrigger,
+                        updateState = updateState,
+                        autoCheckUpdates = autoCheckUpdates,
+                        githubRepo = updateGithubRepo,
+                        lastUpdateCheckedTime = lastUpdateCheckedTime,
+                        onCheckForUpdates = { viewModel.checkForAppUpdates(isManual = true) },
+                        onDownloadAndInstallUpdate = { viewModel.downloadAndInstallUpdate(it) },
+                        onSetAutoCheckUpdates = { viewModel.setAutoCheckUpdates(it) },
+                        onSetGithubRepo = { viewModel.setUpdateGithubRepo(it) },
+                        onDismissUpdate = { viewModel.dismissAppUpdate() }
                     )
                 }
             }

@@ -233,6 +233,7 @@ fun AstrolabeFullPlayer(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .background(AstrolabeTheme.BackgroundWhite, RoundedCornerShape(16.dp))
                     .padding(8.dp),
                 contentAlignment = Alignment.Center
             ) {
