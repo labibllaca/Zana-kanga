@@ -6,8 +6,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -17,12 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -36,16 +34,28 @@ import com.labix.navirom.data.model.NaviromTrack
 import com.labix.navirom.data.model.PlaybackState
 import com.labix.navirom.data.model.RepeatMode
 import com.labix.navirom.ui.AppLanguage
-import com.labix.navirom.ui.NaviromStrings
 import com.labix.navirom.ui.util.rememberNaviromHaptics
 import kotlinx.coroutines.launch
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
- * Astrolabe Orbital Full Player featuring the Celestial Star Visualizer core,
- * radial album track lathe, concentric progress arc scrubber, and orbital satellite controls.
+ * Editorial item model for sectors arranged around the wheel matching zoom-kal.jpg.
+ */
+data class EditorialSectorItem(
+    val indexLabel: String,
+    val title: String,
+    val description: String,
+    val isSelected: Boolean = false,
+    val onClick: (() -> Unit)? = null
+)
+
+/**
+ * Astrolabe Orbital Full Player.
+ * Restructured to faithfully recreate the calendar/wheel design of zoom-kal.jpg:
+ * - Concentric wheel at top with starry night center, track grooves, album ticks, list arcs,
+ *   and radiating stepped arcs, shelf rays, and constellation stars around the wheel.
+ * - Symmetrical editorial sectors (September, October, November, Virgo) arranged directly around
+ *   and below the wheel with numbers, solid 4.5dp black vertical bar, and serif typography.
+ * - Docked playback controls bar with stark monochrome borders.
  */
 @Composable
 fun AstrolabeFullPlayer(
@@ -71,27 +81,6 @@ fun AstrolabeFullPlayer(
     val scope = rememberCoroutineScope()
     val currentTrack = playbackState.currentTrack ?: queue.getOrNull(queueIndex)
 
-    // Pulse animation for stars and celestial core
-    val infiniteTransition = rememberInfiniteTransition(label = "AstrolabeCorePulse")
-    val pulseEnergy by infiniteTransition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1400, easing = FastOutSlowInEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "PulseEnergy"
-    )
-    val starfieldRotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(90000, easing = LinearEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
-        ),
-        label = "StarfieldRotation"
-    )
-
     // Track Lathe Dial State
     val trackCount = queue.size.coerceAtLeast(1)
     val stepAngle = 360f / trackCount.coerceAtLeast(4)
@@ -100,7 +89,7 @@ fun AstrolabeFullPlayer(
         stepSizeDegrees = stepAngle
     )
 
-    // Sync lathe rotation when queue index changes from external sources
+    // Sync lathe rotation when queue index changes
     LaunchedEffect(queueIndex) {
         if (!latheState.isDragging && queue.isNotEmpty()) {
             val targetAngle = -(queueIndex * stepAngle)
@@ -113,8 +102,7 @@ fun AstrolabeFullPlayer(
     val currentPosMs = playbackState.currentPositionMs.coerceIn(0L, totalDurationMs)
     val progressFraction = (currentPosMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
 
-    var isScrubbing by remember { mutableStateOf(false) }
-    var scrubFraction by remember { mutableFloatStateOf(0f) }
+    val scrollState = rememberScrollState()
 
     Box(
         modifier = modifier
@@ -127,7 +115,7 @@ fun AstrolabeFullPlayer(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Top Astrolabe Header Bar
@@ -201,101 +189,97 @@ fun AstrolabeFullPlayer(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Current Track Header Info (Roman Numeral / Title / Artist)
-            val romanIndex = getRomanNumeral((queueIndex + 1).coerceAtLeast(1))
-            Text(
-                text = "$romanIndex • ${currentTrack?.title ?: "Select a Track"}",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontFamily = FontFamily.Serif,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
-                ),
-                color = Color.Black,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = "${currentTrack?.artist ?: "Unknown Artist"} • ${currentTrack?.album ?: "Unknown Album"}",
-                style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 0.5.sp),
-                color = Color(0xFF444444),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-
-            // Concentric Rings Architecture Guide (Text neatly outside the wheel)
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "TRACK",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = FontFamily.Serif,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp,
-                        fontSize = 9.sp
-                    ),
-                    color = Color.Black
-                )
-                Text("•", color = Color.Gray, fontSize = 9.sp)
-                Text(
-                    text = "ALBUM",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = FontFamily.Serif,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp,
-                        fontSize = 9.sp
-                    ),
-                    color = Color.Black
-                )
-                Text("•", color = Color.Gray, fontSize = 9.sp)
-                Text(
-                    text = "LISTS",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = FontFamily.Serif,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp,
-                        fontSize = 9.sp
-                    ),
-                    color = Color.Black
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Main Concentric Wheel Area (Track, Album, Lists - Zero text inside the wheel)
-            Box(
+            // Scrollable Content Area: Wheel and the radiating editorial sectors
+            Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(Color.White)
-                    .padding(4.dp),
-                contentAlignment = Alignment.Center
+                    .verticalScroll(scrollState),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                var centerOffset by remember { mutableStateOf(Offset.Zero) }
+                Spacer(modifier = Modifier.height(4.dp))
 
-                BoxWithConstraints(
-                    modifier = Modifier.fillMaxSize(),
+                // Current Track Header Info (Roman Numeral / Title / Artist)
+                val romanIndex = getRomanNumeral((queueIndex + 1).coerceAtLeast(1))
+                Text(
+                    text = "$romanIndex • ${currentTrack?.title ?: "Select a Track"}",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    ),
+                    color = Color.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "${currentTrack?.artist ?: "Unknown Artist"} • ${currentTrack?.album ?: "Unknown Album"}",
+                    style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 0.5.sp),
+                    color = Color(0xFF444444),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+
+                // Architectural Ring Hierarchy Guide
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "TRACK",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp,
+                            fontSize = 9.sp
+                        ),
+                        color = Color.Black
+                    )
+                    Text("•", color = Color.Gray, fontSize = 9.sp)
+                    Text(
+                        text = "ALBUM",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp,
+                            fontSize = 9.sp
+                        ),
+                        color = Color.Black
+                    )
+                    Text("•", color = Color.Gray, fontSize = 9.sp)
+                    Text(
+                        text = "LISTS",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp,
+                            fontSize = 9.sp
+                        ),
+                        color = Color.Black
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // ==========================================
+                // THE CONCENTRIC WHEEL CANVAS
+                // (With radiating stepped arcs, shelf rays & constellation stars around the perimeter)
+                // ==========================================
+                val wheelSize = 270.dp
+                Box(
+                    modifier = Modifier
+                        .size(wheelSize)
+                        .background(Color.White),
                     contentAlignment = Alignment.Center
                 ) {
-                    val boxSize = minOf(maxWidth, maxHeight)
-                    val radiusPx = (boxSize.value * 2.5f) / 2f
-                    val centerPx = Offset(radiusPx, radiusPx)
-                    centerOffset = centerPx
+                    var centerOffset by remember { mutableStateOf(Offset.Zero) }
 
-                    // Canvas rendering the three concentric rings:
-                    // 1. Most inner circle: Track playback with fine grooves & progress arc
-                    // 2. Middle circle: Album track division ticks & bold curved arc
-                    // 3. Outer circle: Available lists with segmented thick black arcs
-                    // NO TEXT inside the wheel
                     Canvas(
                         modifier = Modifier
-                            .size(boxSize)
+                            .fillMaxSize()
                             .radialRotatable(
                                 state = latheState,
                                 scope = scope,
@@ -311,12 +295,13 @@ fun AstrolabeFullPlayer(
                             )
                     ) {
                         val center = Offset(size.width / 2f, size.height / 2f)
+                        centerOffset = center
                         val outerR = size.width * 0.48f
 
                         drawEditorialConcentricWheel(
                             center = center,
                             outerRadius = outerR,
-                            progressFraction = if (isScrubbing) scrubFraction else progressFraction,
+                            progressFraction = progressFraction,
                             trackCount = queue.size.coerceAtLeast(1),
                             currentTrackIndex = queueIndex,
                             listCount = 5,
@@ -325,10 +310,10 @@ fun AstrolabeFullPlayer(
                         )
                     }
 
-                    // Centered Album Art Thumbnail inside the Core
+                    // Center Celestial / Album Art Medallion
                     Box(
                         modifier = Modifier
-                            .size(boxSize * 0.22f)
+                            .size(wheelSize * 0.20f)
                             .clip(CircleShape)
                             .border(1.5.dp, Color.Black, CircleShape)
                             .clickable {
@@ -348,42 +333,147 @@ fun AstrolabeFullPlayer(
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(Color.White),
+                                    .background(Color.Black),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.MusicNote,
                                     contentDescription = null,
-                                    tint = Color.Black,
-                                    modifier = Modifier.size(26.dp)
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
 
-                        // Center Play/Pause Overlay Medallion
+                        // Center Play/Pause indicator overlay
                         Surface(
                             shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.65f),
-                            modifier = Modifier.size(38.dp)
+                            color = Color.Black.copy(alpha = 0.55f),
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                     contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
                                     tint = Color.White,
-                                    modifier = Modifier.size(22.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // ==========================================
+                // EDITORIAL SECTORS AROUND AND BELOW THE WHEEL
+                // (Arranged in the exact style of zoom-kal.jpg)
+                // ==========================================
+
+                // Sector 1: SEPTEMBER (Now Playing Context)
+                EditorialSectorBlock(
+                    sectorTitle = "SEPTEMBER",
+                    sectorSubTitle = "NOW PLAYING • ORBITAL FOCUS",
+                    items = listOf(
+                        EditorialSectorItem(
+                            indexLabel = "21",
+                            title = currentTrack?.title ?: "Select a Track",
+                            description = "World Peace Day • ${currentTrack?.artist ?: "Unknown Artist"} • A time of warmth and long joyous days."
+                        ),
+                        EditorialSectorItem(
+                            indexLabel = "22",
+                            title = "Temporal Equinox",
+                            description = "${formatMs(currentPosMs)} / ${formatMs(totalDurationMs)} • Equal amounts of sound and silence across the spectrum."
+                        ),
+                        EditorialSectorItem(
+                            indexLabel = "29",
+                            title = "Opposition Horizon",
+                            description = "Lossless FLAC Master • 24-bit / 96.0 kHz • Dynamic Range +14.2 LUFS."
+                        )
+                    )
+                )
+
+                // Sector 2: OCTOBER (Album Tracklist & Queue)
+                val queueItems = mutableListOf<EditorialSectorItem>()
+                val upcomingTracks = queue.drop(queueIndex).take(4)
+                val labels = listOf("17", "21/22", "31", "04")
+                upcomingTracks.forEachIndexed { idx, track ->
+                    queueItems.add(
+                        EditorialSectorItem(
+                            indexLabel = labels.getOrElse(idx) { "${idx + 1}" },
+                            title = track.title,
+                            description = "${track.artist} • ${formatMs(track.durationSeconds * 1000L)} • Shukaku Harvest selection",
+                            isSelected = (track.id == currentTrack?.id),
+                            onClick = {
+                                haptics.click()
+                                onTrackSelect(track, queue)
+                            }
+                        )
+                    )
+                }
+                if (queueItems.isEmpty()) {
+                    queueItems.add(
+                        EditorialSectorItem(
+                            indexLabel = "17",
+                            title = "Shukaku Matsuri",
+                            description = "Shinto rite offering thanks to first fruits of rice harvest."
+                        )
+                    )
+                }
+
+                EditorialSectorBlock(
+                    sectorTitle = "OCTOBER",
+                    sectorSubTitle = "ALBUM TRACKLIST & UP NEXT",
+                    items = queueItems
+                )
+
+                // Sector 3: NOVEMBER (Astronomical Archive & Collections)
+                EditorialSectorBlock(
+                    sectorTitle = "NOVEMBER",
+                    sectorSubTitle = "ASTRONOMICAL ARCHIVE & COLLECTIONS",
+                    items = listOf(
+                        EditorialSectorItem(
+                            indexLabel = "13",
+                            title = "Total Solar Eclipse",
+                            description = "Visible in Australasia and southern Pacific • High-fidelity master tapes."
+                        ),
+                        EditorialSectorItem(
+                            indexLabel = "13",
+                            title = "Autumn Equinox Resonance",
+                            description = "Analogue tape transfers • Natural room acoustics Salle Pleyel."
+                        ),
+                        EditorialSectorItem(
+                            indexLabel = "28",
+                            title = "Midnight Constellations",
+                            description = "Curated ambient nocturnal sequence • Continuous phase alignment."
+                        )
+                    )
+                )
+
+                // Sector 4: VIRGO (Celestial Harmonic Audio Matrix)
+                EditorialSectorBlock(
+                    sectorTitle = "VIRGO",
+                    sectorSubTitle = "A 23 - S 22 • HARMONIC MATRIX",
+                    items = listOf(
+                        EditorialSectorItem(
+                            indexLabel = "LIB",
+                            title = "Celestial Equilibrium",
+                            description = "The music's goal is balance and perfection. Frequency response is flat, transparent, and organic across all registers."
+                        )
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
 
+            // ==========================================
+            // DOCKED BOTTOM TIME & CONTROLS DOCK
+            // ==========================================
             // Elapsed and Remaining Time Readouts
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
+                    .padding(horizontal = 24.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -408,7 +498,7 @@ fun AstrolabeFullPlayer(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // Playback Controls Bar with Stark Black Border on White
             Surface(
@@ -420,7 +510,7 @@ fun AstrolabeFullPlayer(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -459,7 +549,7 @@ fun AstrolabeFullPlayer(
                             haptics.toggle()
                             onTogglePlayPause()
                         },
-                        modifier = Modifier.size(52.dp),
+                        modifier = Modifier.size(50.dp),
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = Color.Black,
                             contentColor = Color.White
@@ -517,6 +607,143 @@ fun AstrolabeFullPlayer(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Renders an editorial sector block formatted identically to zoom-kal.jpg:
+ * Header in serif uppercase, numbers with shelf tick dividers on the left,
+ * signature 4.5dp solid black vertical accent bar, and multi-line title/description on the right.
+ */
+@Composable
+fun EditorialSectorBlock(
+    sectorTitle: String,
+    sectorSubTitle: String? = null,
+    items: List<EditorialSectorItem>,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        // Sector Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Text(
+                text = sectorTitle,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontFamily = FontFamily.Serif,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.5.sp,
+                    fontSize = 15.sp
+                ),
+                color = Color.Black
+            )
+            if (sectorSubTitle != null) {
+                Text(
+                    text = sectorSubTitle,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Serif,
+                        letterSpacing = 1.sp,
+                        fontSize = 10.sp
+                    ),
+                    color = Color(0xFF666666)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Horizontal sector separator line
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.5.dp)
+                .background(Color.Black)
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Items in sector
+        items.forEachIndexed { _, item ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (item.onClick != null) {
+                            Modifier.clickable { item.onClick.invoke() }
+                        } else Modifier
+                    )
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left Column: Date / Track Number with shelf tick
+                Column(
+                    modifier = Modifier.width(44.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = item.indexLabel,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = if (item.isSelected) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 14.sp
+                        ),
+                        color = Color.Black
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(28.dp)
+                            .height(1.dp)
+                            .background(Color(0xFFCCCCCC))
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Signature 4.5dp Solid Black Vertical Accent Bar (from zoom-kal.jpg)
+                Box(
+                    modifier = Modifier
+                        .width(4.5.dp)
+                        .height(36.dp)
+                        .background(if (item.isSelected) Color.Black else Color.Black.copy(alpha = 0.85f))
+                )
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                // Right Column: Title + Descriptive Text
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = if (item.isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                            letterSpacing = 0.4.sp,
+                            fontSize = 13.sp
+                        ),
+                        color = Color.Black,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = item.description,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp
+                        ),
+                        color = Color(0xFF444444),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }

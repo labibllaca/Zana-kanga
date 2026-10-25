@@ -344,17 +344,115 @@ fun DrawScope.drawEditorialConcentricWheel(
     activeListIndex: Int = 0,
     rotationDeg: Float = 0f
 ) {
-    val outerR = outerRadius
-    val middleR = outerRadius * 0.70f
-    val innerR = outerRadius * 0.42f
-    val coreR = outerRadius * 0.22f
+    val outerR = outerRadius * 0.76f
+    val middleR = outerR * 0.70f
+    val innerR = outerR * 0.42f
+    val coreR = outerR * 0.22f
 
     // Background: Pure White Canvas
     drawCircle(
         color = Color.White,
-        radius = outerR,
+        radius = outerRadius,
         center = center
     )
+
+    // ==========================================
+    // 4. AROUND THE WHEEL: STEPPED BOLD ARCS, SHELF RAYS & CONSTELLATION
+    // (Directly matching zoom-kal.jpg's outer radial geometry)
+    // ==========================================
+    val arc1R = outerR * 1.08f
+    val arc2R = outerR * 1.18f
+    val arc3R = outerR * 1.28f
+
+    // Arc segment 1 (e.g. September sector bracket)
+    drawArc(
+        color = Color.Black,
+        startAngle = rotationDeg - 85f,
+        sweepAngle = 72f,
+        useCenter = false,
+        topLeft = Offset(center.x - arc1R, center.y - arc1R),
+        size = androidx.compose.ui.geometry.Size(arc1R * 2f, arc1R * 2f),
+        style = Stroke(width = 5.0f, cap = StrokeCap.Square)
+    )
+    // Step line from Arc 1 to Arc 2
+    val step1Angle = rotationDeg - 13f
+    val step1Start = RadialMath.toCartesian(center, arc1R, step1Angle)
+    val step1End = RadialMath.toCartesian(center, arc2R, step1Angle)
+    drawLine(Color.Black, step1Start, step1End, strokeWidth = 4.0f)
+
+    // Arc segment 2 (e.g. October sector bracket)
+    drawArc(
+        color = Color.Black,
+        startAngle = rotationDeg - 13f,
+        sweepAngle = 76f,
+        useCenter = false,
+        topLeft = Offset(center.x - arc2R, center.y - arc2R),
+        size = androidx.compose.ui.geometry.Size(arc2R * 2f, arc2R * 2f),
+        style = Stroke(width = 5.0f, cap = StrokeCap.Square)
+    )
+    // Step line from Arc 2 to Arc 3
+    val step2Angle = rotationDeg + 63f
+    val step2Start = RadialMath.toCartesian(center, arc2R, step2Angle)
+    val step2End = RadialMath.toCartesian(center, arc3R, step2Angle)
+    drawLine(Color.Black, step2Start, step2End, strokeWidth = 4.0f)
+
+    // Arc segment 3 (e.g. November sector bracket)
+    drawArc(
+        color = Color.Black,
+        startAngle = rotationDeg + 63f,
+        sweepAngle = 68f,
+        useCenter = false,
+        topLeft = Offset(center.x - arc3R, center.y - arc3R),
+        size = androidx.compose.ui.geometry.Size(arc3R * 2f, arc3R * 2f),
+        style = Stroke(width = 5.0f, cap = StrokeCap.Square)
+    )
+
+    // Outer radial shelf rays extending outward with tick marks
+    val shelfAngles = floatArrayOf(-85f, -48f, -13f, 25f, 63f, 98f, 131f)
+    for (ang in shelfAngles) {
+        val rayAngle = ang + rotationDeg
+        val rStart = outerR + 2f
+        val rEnd = outerR * 1.28f
+        val pStart = RadialMath.toCartesian(center, rStart, rayAngle)
+        val pEnd = RadialMath.toCartesian(center, rEnd, rayAngle)
+        drawLine(
+            color = Color.Black,
+            start = pStart,
+            end = pEnd,
+            strokeWidth = 1.6f,
+            cap = StrokeCap.Square
+        )
+        // Perpendicular shelf ticks
+        for (step in 1..2) {
+            val tickR = rStart + (rEnd - rStart) * (step / 3f)
+            val tickMid = RadialMath.toCartesian(center, tickR, rayAngle)
+            val tickT1 = RadialMath.toCartesian(tickMid, 5f, rayAngle + 90f)
+            val tickT2 = RadialMath.toCartesian(tickMid, 5f, rayAngle - 90f)
+            drawLine(Color.Black, tickT1, tickT2, strokeWidth = 1.0f)
+        }
+    }
+
+    // Outer constellation diagram (matching top right of zoom-kal.jpg)
+    val constCenter = RadialMath.toCartesian(center, outerR * 1.20f, -55f + rotationDeg)
+    val starOffsets = listOf(
+        Offset(-18f, -14f), Offset(-4f, -22f), Offset(12f, -10f),
+        Offset(24f, 2f), Offset(10f, 18f), Offset(-8f, 12f)
+    )
+    for (i in 0 until starOffsets.size - 1) {
+        drawLine(
+            color = Color.Black.copy(alpha = 0.75f),
+            start = constCenter + starOffsets[i],
+            end = constCenter + starOffsets[i + 1],
+            strokeWidth = 1.1f
+        )
+    }
+    for (so in starOffsets) {
+        drawCircle(
+            color = Color.Black,
+            radius = 2.8f,
+            center = constCenter + so
+        )
+    }
 
     // ==========================================
     // 3. OUTER CIRCLE: AVAILABLE LISTS
@@ -570,6 +668,38 @@ fun DrawScope.drawEditorialConcentricWheel(
         strokeWidth = 3.0f,
         cap = StrokeCap.Round
     )
+
+    // ==========================================
+    // 0. CENTER CELESTIAL STARRY NIGHT DISK
+    // ==========================================
+    drawCircle(
+        color = Color.Black,
+        radius = coreR,
+        center = center
+    )
+    // Twinkling white stars & constellation lines inside the core
+    val starCoords = listOf(
+        Pair(-0.45f, -0.3f), Pair(-0.2f, -0.6f), Pair(0.1f, -0.4f),
+        Pair(0.4f, -0.2f), Pair(0.25f, 0.2f), Pair(-0.1f, 0.45f),
+        Pair(-0.4f, 0.2f), Pair(0.5f, 0.35f), Pair(-0.25f, 0.05f),
+        Pair(0.0f, -0.1f), Pair(0.3f, -0.45f), Pair(-0.55f, -0.1f)
+    )
+    val c1 = Offset(center.x + coreR * -0.45f, center.y + coreR * -0.3f)
+    val c2 = Offset(center.x + coreR * -0.2f, center.y + coreR * -0.6f)
+    val c3 = Offset(center.x + coreR * 0.1f, center.y + coreR * -0.4f)
+    val c4 = Offset(center.x + coreR * 0.4f, center.y + coreR * -0.2f)
+    val c5 = Offset(center.x + coreR * 0.25f, center.y + coreR * 0.2f)
+    drawLine(Color.White.copy(alpha = 0.5f), c1, c2, strokeWidth = 0.8f)
+    drawLine(Color.White.copy(alpha = 0.5f), c2, c3, strokeWidth = 0.8f)
+    drawLine(Color.White.copy(alpha = 0.5f), c3, c4, strokeWidth = 0.8f)
+    drawLine(Color.White.copy(alpha = 0.5f), c4, c5, strokeWidth = 0.8f)
+    for ((sx, sy) in starCoords) {
+        drawCircle(
+            color = Color.White,
+            radius = 1.2f,
+            center = Offset(center.x + coreR * sx, center.y + coreR * sy)
+        )
+    }
 
     // Core boundary ring enclosing the center album/vinyl hub
     drawCircle(
