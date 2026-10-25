@@ -93,7 +93,7 @@ fun AstrolabeLibraryView(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(AstrolabeTheme.DeepSpaceMidnight)
+            .background(Color.White)
             .testTag("astrolabe_library_view")
     ) {
         Column(
@@ -101,7 +101,7 @@ fun AstrolabeLibraryView(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Header: Astrolabe Ring Mode Indicator & Switcher
+            // Header: Concentric Mode Indicator & Switcher
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -117,14 +117,14 @@ fun AstrolabeLibraryView(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 2.sp
                         ),
-                        color = AstrolabeTheme.ParchmentRim
+                        color = Color.Black
                     )
                     Text(
                         text = "CONCENTRIC ARTIST & ALBUM SPHERES",
                         style = MaterialTheme.typography.labelSmall.copy(
                             letterSpacing = 1.sp
                         ),
-                        color = AstrolabeTheme.StarCyan.copy(alpha = 0.8f)
+                        color = Color(0xFF444444)
                     )
                 }
 
@@ -135,28 +135,31 @@ fun AstrolabeLibraryView(
                     },
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = AstrolabeTheme.EngravedSlate,
-                        contentColor = AstrolabeTheme.AstrolabeGold
+                        containerColor = Color.White,
+                        contentColor = Color.Black
                     ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Filled.List,
                         contentDescription = "Classic View",
+                        tint = Color.Black,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Classic", style = MaterialTheme.typography.labelMedium)
+                    Text("Classic", style = MaterialTheme.typography.labelMedium, color = Color.Black)
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Upper Section: Concentric Astrolabe Wheel
+            // Upper Section: Concentric Wheel (Track, Album, Lists - zero text in wheel)
             Box(
                 modifier = Modifier
                     .weight(1.1f)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .background(Color.White),
                 contentAlignment = Alignment.Center
             ) {
                 var centerOffset by remember { mutableStateOf(Offset.Zero) }
@@ -166,9 +169,10 @@ fun AstrolabeLibraryView(
                     contentAlignment = Alignment.Center
                 ) {
                     val sizePx = minOf(maxWidth, maxHeight)
-                    centerOffset = Offset(sizePx.value * 1.3f, sizePx.value * 1.3f)
+                    centerOffset = Offset(sizePx.value / 2f, sizePx.value / 2f)
 
-                    // Canvas drawing concentric rings and azimuth ticks
+                    // Canvas drawing concentric rings: innermost for track, middle for album, outer for lists
+                    // Zero text inside the wheel
                     Canvas(
                         modifier = Modifier
                             .size(sizePx)
@@ -188,50 +192,28 @@ fun AstrolabeLibraryView(
                     ) {
                         val center = Offset(size.width / 2f, size.height / 2f)
                         val outerR = size.width * 0.46f
-                        val middleR = size.width * 0.32f
-                        val innerR = size.width * 0.18f
 
-                        // Outer Astrolabe Bezel (Artists sphere)
-                        drawAstrolabeBezel(
+                        drawEditorialConcentricWheel(
                             center = center,
                             outerRadius = outerR,
-                            innerRadius = middleR
-                        )
-
-                        // Middle Dial Ring (Albums sphere)
-                        drawCircle(
-                            color = AstrolabeTheme.EngravedSlate,
-                            radius = middleR,
-                            center = center,
-                            style = Stroke(width = 1.5f)
-                        )
-
-                        // 12 o'clock Active Pointer Marker
-                        val p1 = RadialMath.toCartesian(center, outerR + 6f, -90f)
-                        val p2 = RadialMath.toCartesian(center, middleR - 4f, -90f)
-                        drawLine(
-                            color = AstrolabeTheme.ActivePointerGlow,
-                            start = p1,
-                            end = p2,
-                            strokeWidth = 3f
-                        )
-
-                        // Center Celestial Core
-                        drawCelestialCore(
-                            center = center,
-                            radius = innerR,
-                            pulseEnergy = 1.1f,
-                            rotationDeg = artistDialState.angle * 0.2f,
-                            isPlaying = true
+                            progressFraction = 0.5f,
+                            trackCount = artistAlbums.size.coerceAtLeast(1),
+                            currentTrackIndex = 0,
+                            listCount = artists.size.coerceAtLeast(3),
+                            activeListIndex = activeArtistIndex,
+                            rotationDeg = artistDialState.angle
                         )
                     }
 
-                    // Center Focus Display: Current Artist & Album
+                    // Center Focus Display: Current Artist & Album (displayed cleanly outside/on the core)
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .width(sizePx * 0.42f)
-                            .padding(4.dp)
+                            .width(sizePx * 0.36f)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .border(1.dp, Color.Black, CircleShape)
+                            .padding(8.dp)
                     ) {
                         Text(
                             text = currentArtist?.name ?: "All Music",
@@ -240,15 +222,15 @@ fun AstrolabeLibraryView(
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 1.sp
                             ),
-                            color = AstrolabeTheme.AstrolabeGold,
+                            color = Color.Black,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center
                         )
                         Text(
-                            text = "${artistAlbums.size} Albums • ${currentArtist?.albumCount ?: artistAlbums.size} Releases",
+                            text = "${artistAlbums.size} Albums",
                             style = MaterialTheme.typography.labelSmall,
-                            color = AstrolabeTheme.StarCyan.copy(alpha = 0.85f),
+                            color = Color(0xFF444444),
                             maxLines = 1,
                             textAlign = TextAlign.Center
                         )
@@ -261,8 +243,8 @@ fun AstrolabeLibraryView(
             // Lower Section: Selected Artist's Album Carousel & Track Radiator
             Surface(
                 shape = RoundedCornerShape(24.dp),
-                color = AstrolabeTheme.EngravedSlate.copy(alpha = 0.5f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AstrolabeTheme.CelestialGrid),
+                color = Color.White,
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
                 modifier = Modifier
                     .weight(0.9f)
                     .fillMaxWidth()

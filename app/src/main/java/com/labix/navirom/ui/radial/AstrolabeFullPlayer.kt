@@ -119,7 +119,7 @@ fun AstrolabeFullPlayer(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(AstrolabeTheme.DeepSpaceMidnight)
+            .background(Color.White)
             .statusBarsPadding()
             .navigationBarsPadding()
             .testTag("astrolabe_full_player")
@@ -148,15 +148,15 @@ fun AstrolabeFullPlayer(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
-                        tint = AstrolabeTheme.ParchmentRim
+                        tint = Color.Black
                     )
                 }
 
-                // Astrolabe Mode Indicator with Switcher Button
+                // Mode Indicator with Switcher Button
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = AstrolabeTheme.EngravedSlate.copy(alpha = 0.8f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, AstrolabeTheme.AstrolabeGold.copy(alpha = 0.5f)),
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
                     modifier = Modifier.clickable {
                         haptics.click()
                         onToggleClassicView()
@@ -170,17 +170,17 @@ fun AstrolabeFullPlayer(
                         Icon(
                             imageVector = Icons.Filled.RotateRight,
                             contentDescription = "Switch to Classic View",
-                            tint = AstrolabeTheme.AstrolabeGold,
+                            tint = Color.Black,
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "ASTROLABE WHEEL",
+                            text = "CONCENTRIC WHEEL",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontFamily = FontFamily.Serif,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 2.sp
                             ),
-                            color = AstrolabeTheme.ParchmentRim
+                            color = Color.Black
                         )
                     }
                 }
@@ -196,12 +196,12 @@ fun AstrolabeFullPlayer(
                     Icon(
                         imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                         contentDescription = "Favorite",
-                        tint = if (isFavorite) Color(0xFFE91E63) else AstrolabeTheme.ParchmentRim
+                        tint = if (isFavorite) Color.Black else Color.Black.copy(alpha = 0.5f)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Current Track Header Info (Roman Numeral / Title / Artist)
             val romanIndex = getRomanNumeral((queueIndex + 1).coerceAtLeast(1))
@@ -209,32 +209,72 @@ fun AstrolabeFullPlayer(
                 text = "$romanIndex • ${currentTrack?.title ?: "Select a Track"}",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontFamily = FontFamily.Serif,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
                 ),
-                color = AstrolabeTheme.ParchmentRim,
+                color = Color.Black,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
             )
             Text(
-                text = currentTrack?.artist ?: "Unknown Artist",
+                text = "${currentTrack?.artist ?: "Unknown Artist"} • ${currentTrack?.album ?: "Unknown Album"}",
                 style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 0.5.sp),
-                color = AstrolabeTheme.StarCyan.copy(alpha = 0.85f),
+                color = Color(0xFF444444),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            // Concentric Rings Architecture Guide (Text neatly outside the wheel)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "TRACK",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp,
+                        fontSize = 9.sp
+                    ),
+                    color = Color.Black
+                )
+                Text("•", color = Color.Gray, fontSize = 9.sp)
+                Text(
+                    text = "ALBUM",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp,
+                        fontSize = 9.sp
+                    ),
+                    color = Color.Black
+                )
+                Text("•", color = Color.Gray, fontSize = 9.sp)
+                Text(
+                    text = "LISTS",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp,
+                        fontSize = 9.sp
+                    ),
+                    color = Color.Black
+                )
+            }
 
-            // Main Concentric Orbital Area (Lathe + Progress Arc + Celestial Star Visualizer)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Main Concentric Wheel Area (Track, Album, Lists - Zero text inside the wheel)
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(AstrolabeTheme.BackgroundWhite, RoundedCornerShape(16.dp))
-                    .padding(8.dp),
+                    .background(Color.White)
+                    .padding(4.dp),
                 contentAlignment = Alignment.Center
             ) {
                 var centerOffset by remember { mutableStateOf(Offset.Zero) }
@@ -248,7 +288,11 @@ fun AstrolabeFullPlayer(
                     val centerPx = Offset(radiusPx, radiusPx)
                     centerOffset = centerPx
 
-                    // Canvas rendering the background bezel, coordinate rings, and starfield
+                    // Canvas rendering the three concentric rings:
+                    // 1. Most inner circle: Track playback with fine grooves & progress arc
+                    // 2. Middle circle: Album track division ticks & bold curved arc
+                    // 3. Outer circle: Available lists with segmented thick black arcs
+                    // NO TEXT inside the wheel
                     Canvas(
                         modifier = Modifier
                             .size(boxSize)
@@ -258,7 +302,6 @@ fun AstrolabeFullPlayer(
                                 centerProvider = { centerOffset },
                                 haptics = haptics,
                                 onDragEnd = { finalAngle ->
-                                    // Lock in selected track when lathe settles
                                     val normalizedAngle = RadialMath.normalizeDegrees(-finalAngle)
                                     val selectedIdx = (normalizedAngle / stepAngle).toInt() % trackCount
                                     if (selectedIdx in queue.indices && selectedIdx != queueIndex) {
@@ -269,73 +312,25 @@ fun AstrolabeFullPlayer(
                     ) {
                         val center = Offset(size.width / 2f, size.height / 2f)
                         val outerR = size.width * 0.48f
-                        val middleR = size.width * 0.36f
-                        val innerR = size.width * 0.22f
 
-                        // Outer Astrolabe Bezel with Degree Ticks
-                        drawAstrolabeBezel(
+                        drawEditorialConcentricWheel(
                             center = center,
                             outerRadius = outerR,
-                            innerRadius = middleR
-                        )
-
-                        // Progress Scrubber Arc (Inner Ring)
-                        val activeProgress = if (isScrubbing) scrubFraction else progressFraction
-                        val sweepAngle = activeProgress * 360f
-
-                        // Background inactive arc track
-                        drawCircle(
-                            color = AstrolabeTheme.EngravedSlate.copy(alpha = 0.5f),
-                            radius = innerR + 10f,
-                            center = center,
-                            style = Stroke(width = 6f)
-                        )
-                        // Active progress illuminated arc
-                        drawArc(
-                            color = AstrolabeTheme.StarCyan,
-                            startAngle = -90f,
-                            sweepAngle = sweepAngle,
-                            useCenter = false,
-                            topLeft = Offset(center.x - innerR - 10f, center.y - innerR - 10f),
-                            size = androidx.compose.ui.geometry.Size((innerR + 10f) * 2f, (innerR + 10f) * 2f),
-                            style = Stroke(width = 6f, cap = StrokeCap.Round)
-                        )
-
-                        // Progress indicator celestial bead
-                        val beadPos = RadialMath.toCartesian(center, innerR + 10f, -90f + sweepAngle)
-                        drawCircle(
-                            color = AstrolabeTheme.AstrolabeGold,
-                            radius = 7f,
-                            center = beadPos
-                        )
-
-                        // 12 o'clock Illuminated Needle Pointer for the Track Lathe
-                        val needleTop = RadialMath.toCartesian(center, outerR + 4f, -90f)
-                        val needleBottom = RadialMath.toCartesian(center, middleR - 2f, -90f)
-                        drawLine(
-                            color = AstrolabeTheme.ActivePointerGlow,
-                            start = needleTop,
-                            end = needleBottom,
-                            strokeWidth = 3f,
-                            cap = StrokeCap.Round
-                        )
-
-                        // Celestial Core with real-time starfield visualizer
-                        drawCelestialCore(
-                            center = center,
-                            radius = innerR,
-                            pulseEnergy = pulseEnergy,
-                            rotationDeg = starfieldRotation,
-                            isPlaying = playbackState.isPlaying
+                            progressFraction = if (isScrubbing) scrubFraction else progressFraction,
+                            trackCount = queue.size.coerceAtLeast(1),
+                            currentTrackIndex = queueIndex,
+                            listCount = 5,
+                            activeListIndex = 0,
+                            rotationDeg = latheState.angle
                         )
                     }
 
-                    // Centered Album Art Thumbnail inside the Celestial Core
+                    // Centered Album Art Thumbnail inside the Core
                     Box(
                         modifier = Modifier
-                            .size(boxSize * 0.28f)
+                            .size(boxSize * 0.22f)
                             .clip(CircleShape)
-                            .border(2.dp, AstrolabeTheme.AstrolabeGold.copy(alpha = 0.8f), CircleShape)
+                            .border(1.5.dp, Color.Black, CircleShape)
                             .clickable {
                                 haptics.toggle()
                                 onTogglePlayPause()
@@ -353,14 +348,14 @@ fun AstrolabeFullPlayer(
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(AstrolabeTheme.DeepSpaceMidnight),
+                                    .background(Color.White),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.MusicNote,
                                     contentDescription = null,
-                                    tint = AstrolabeTheme.AstrolabeGold,
-                                    modifier = Modifier.size(32.dp)
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(26.dp)
                                 )
                             }
                         }
@@ -368,15 +363,15 @@ fun AstrolabeFullPlayer(
                         // Center Play/Pause Overlay Medallion
                         Surface(
                             shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.45f),
-                            modifier = Modifier.size(44.dp)
+                            color = Color.Black.copy(alpha = 0.65f),
+                            modifier = Modifier.size(38.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                     contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
-                                    tint = AstrolabeTheme.StarCyan,
-                                    modifier = Modifier.size(26.dp)
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
@@ -395,37 +390,37 @@ fun AstrolabeFullPlayer(
                 Text(
                     text = formatMs(currentPosMs),
                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                    color = AstrolabeTheme.StarCyan
+                    color = Color.Black
                 )
                 Text(
-                    text = "ROTATE TO CUE TRACK",
+                    text = "${queueIndex + 1} / ${queue.size.coerceAtLeast(1)}",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = FontFamily.Serif,
                         letterSpacing = 1.5.sp,
                         fontWeight = FontWeight.Bold
                     ),
-                    color = AstrolabeTheme.AstrolabeGold.copy(alpha = 0.8f)
+                    color = Color.Black
                 )
                 Text(
                     text = "-${formatMs(totalDurationMs - currentPosMs)}",
                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                    color = AstrolabeTheme.ParchmentRim.copy(alpha = 0.7f)
+                    color = Color.Black
                 )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Orbital Satellite Playback Controls
+            // Playback Controls Bar with Stark Black Border on White
             Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = AstrolabeTheme.EngravedSlate.copy(alpha = 0.6f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AstrolabeTheme.CelestialGrid),
+                shape = RoundedCornerShape(24.dp),
+                color = Color.White,
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -439,7 +434,7 @@ fun AstrolabeFullPlayer(
                         Icon(
                             imageVector = Icons.Filled.Shuffle,
                             contentDescription = "Shuffle",
-                            tint = if (playbackState.isShuffle) AstrolabeTheme.AstrolabeGold else AstrolabeTheme.ParchmentRim.copy(alpha = 0.6f)
+                            tint = if (playbackState.isShuffle) Color.Black else Color.Black.copy(alpha = 0.35f)
                         )
                     }
 
@@ -453,27 +448,27 @@ fun AstrolabeFullPlayer(
                         Icon(
                             imageVector = Icons.Filled.SkipPrevious,
                             contentDescription = "Previous",
-                            tint = AstrolabeTheme.ParchmentRim,
+                            tint = Color.Black,
                             modifier = Modifier.size(28.dp)
                         )
                     }
 
-                    // Main Center Play/Pause Satellite
-                    FilledTonalIconButton(
+                    // Main Center Play/Pause Satellite (Solid Black circle with White Icon)
+                    FilledIconButton(
                         onClick = {
                             haptics.toggle()
                             onTogglePlayPause()
                         },
-                        modifier = Modifier.size(54.dp),
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = AstrolabeTheme.AstrolabeGold,
-                            contentColor = AstrolabeTheme.DeepSpaceMidnight
+                        modifier = Modifier.size(52.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = Color.Black,
+                            contentColor = Color.White
                         )
                     ) {
                         Icon(
                             imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                             contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
 
@@ -487,7 +482,7 @@ fun AstrolabeFullPlayer(
                         Icon(
                             imageVector = Icons.Filled.SkipNext,
                             contentDescription = "Next",
-                            tint = AstrolabeTheme.ParchmentRim,
+                            tint = Color.Black,
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -495,7 +490,7 @@ fun AstrolabeFullPlayer(
                     // Repeat Satellite
                     IconButton(
                         onClick = {
-                            haptics.toggle()
+                            haptics.click()
                             onCycleRepeat()
                         }
                     ) {
@@ -503,7 +498,7 @@ fun AstrolabeFullPlayer(
                         Icon(
                             imageVector = if (playbackState.repeatMode == RepeatMode.ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
                             contentDescription = "Repeat",
-                            tint = if (isRepeat) AstrolabeTheme.AstrolabeGold else AstrolabeTheme.ParchmentRim.copy(alpha = 0.6f)
+                            tint = if (isRepeat) Color.Black else Color.Black.copy(alpha = 0.35f)
                         )
                     }
 
@@ -518,7 +513,7 @@ fun AstrolabeFullPlayer(
                             Icon(
                                 imageVector = Icons.Filled.Cast,
                                 contentDescription = "Cast",
-                                tint = AstrolabeTheme.StarCyan
+                                tint = Color.Black
                             )
                         }
                     }

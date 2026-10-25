@@ -302,11 +302,11 @@ fun FullPlayerModal(
         "%d:%02d".format(min, sec)
     }
 
-    val isDark = isSystemInDarkTheme()
-    val backgroundColor = if (isDark) Color(0xFF000000) else Color(0xFF1E1E1E)
-    val cardColor = if (isDark) Color(0xFF000000) else Color.White
-    val textOnCard = if (isDark) Color.White else Color.Black
-    val textMutedOnCard = if (isDark) Color.LightGray else Color.Gray
+    val isDark = false
+    val backgroundColor = Color.White
+    val cardColor = Color.White
+    val textOnCard = Color.Black
+    val textMutedOnCard = Color(0xFF444444)
 
     var primaryCoverColor by remember(track.id) { mutableStateOf<Color?>(null) }
     var secondaryCoverColor by remember(track.id) { mutableStateOf<Color?>(null) }

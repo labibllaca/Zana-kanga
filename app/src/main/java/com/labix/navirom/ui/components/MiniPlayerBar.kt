@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -57,9 +58,10 @@ fun MiniPlayerBar(
             .clip(RoundedCornerShape(20.dp))
             .testTag("mini_player_bar"),
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
-        shadowElevation = 4.dp
+        color = Color.White,
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
+        tonalElevation = 0.dp,
+        shadowElevation = 3.dp
     ) {
         Column {
             // Linear progress indicator
@@ -68,8 +70,8 @@ fun MiniPlayerBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(2.5.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                color = Color.Black,
+                trackColor = Color(0xFFE5E5E5)
             )
 
             Row(

@@ -305,64 +305,320 @@ fun Modifier.radialRotatable(
 
 /**
  * Common Astrolabe aesthetic drawing primitives for dials, star charts, and engraved bezels.
+ * Configured in stark high-contrast monochrome (pure white background, pure black lines, borders, and accents).
  */
 object AstrolabeTheme {
-    val DeepSpaceMidnight = Color(0xFF090D16)
-    val StarCyan = Color(0xFF7FE5D9)
-    val AstrolabeGold = Color(0xFFFFD166)
-    val EngravedSlate = Color(0xFF2A344A)
-    val ParchmentRim = Color(0xFFD4C5B0)
-    val CelestialGrid = Color(0x337FE5D9)
-    val ActivePointerGlow = Color(0xFFFFB703)
+    val DeepSpaceMidnight = Color(0xFFFFFFFF) // Pure white background
+    val StarCyan = Color(0xFF000000) // Stark black
+    val AstrolabeGold = Color(0xFF000000) // Stark black
+    val EngravedSlate = Color(0xFFFFFFFF) // Pure white surface
+    val ParchmentRim = Color(0xFF000000) // Stark black text and icons
+    val CelestialGrid = Color(0x33000000) // Hairline black grid
+    val ActivePointerGlow = Color(0xFF000000) // Stark black pointer
 
-    // Light Theme for Astrolabe Wheel System
+    // Explicit monochrome colors
     val BackgroundWhite = Color(0xFFFFFFFF)
     val TextBlack = Color(0xFF000000)
     val TextDarkGray = Color(0xFF333333)
+    val PureBlack = Color(0xFF000000)
+    val BorderBlack = Color(0xFF000000)
+    val ThickArcBlack = Color(0xFF000000)
 }
 
 /**
- * Canvas drawing utility for drawing astrolabe degree ticks, bezel rings, and coordinate crosshairs.
+ * Editorial Concentric Music Wheel inspired by architectural planisphere calendars.
+ * Pure white background, pure black borders and tick marks, zero text inside the wheel rings.
+ *
+ * Ring Hierarchy:
+ * 1. Most Inner Circle: Track playback ring with fine vinyl grooves & progress arc.
+ * 2. Middle Circle: Album ring with bold black curved divider arcs & album track division ticks.
+ * 3. Outer Circle: Available Lists ring with prominent segmented thick black arcs & fine azimuth ticks.
+ */
+fun DrawScope.drawEditorialConcentricWheel(
+    center: Offset,
+    outerRadius: Float,
+    progressFraction: Float,
+    trackCount: Int = 12,
+    currentTrackIndex: Int = 0,
+    listCount: Int = 5,
+    activeListIndex: Int = 0,
+    rotationDeg: Float = 0f
+) {
+    val outerR = outerRadius
+    val middleR = outerRadius * 0.70f
+    val innerR = outerRadius * 0.42f
+    val coreR = outerRadius * 0.22f
+
+    // Background: Pure White Canvas
+    drawCircle(
+        color = Color.White,
+        radius = outerR,
+        center = center
+    )
+
+    // ==========================================
+    // 3. OUTER CIRCLE: AVAILABLE LISTS
+    // ==========================================
+    // Outer perimeter borderline
+    drawCircle(
+        color = Color.Black,
+        radius = outerR,
+        center = center,
+        style = Stroke(width = 2.0f)
+    )
+
+    // Fine Azimuth Ticks around the outer perimeter (72 steps, major/medium/minor)
+    val perimeterTickCount = 72
+    for (i in 0 until perimeterTickCount) {
+        val angleDeg = i * (360f / perimeterTickCount) + rotationDeg
+        val isMajor = (i % 6 == 0)
+        val isMedium = (i % 2 == 0)
+
+        val tickLength = if (isMajor) 14f else if (isMedium) 9f else 5f
+        val tickStroke = if (isMajor) 2.0f else if (isMedium) 1.2f else 0.8f
+
+        val start = RadialMath.toCartesian(center, outerR - tickLength, angleDeg)
+        val end = RadialMath.toCartesian(center, outerR, angleDeg)
+        drawLine(
+            color = Color.Black,
+            start = start,
+            end = end,
+            strokeWidth = tickStroke,
+            cap = StrokeCap.Round
+        )
+    }
+
+    // Segmented Thick Curved Black Arcs for Available Lists (matching zoom-kal bold arcs)
+    val safeListCount = listCount.coerceAtLeast(3)
+    val listStepDeg = 360f / safeListCount
+    for (l in 0 until safeListCount) {
+        val startAng = l * listStepDeg + rotationDeg + 8f
+        val sweepAng = listStepDeg - 16f
+        val isCurrentList = (l == (activeListIndex % safeListCount))
+        val arcStrokeWidth = if (isCurrentList) 6.0f else 4.0f
+
+        drawArc(
+            color = Color.Black,
+            startAngle = startAng,
+            sweepAngle = sweepAng,
+            useCenter = false,
+            topLeft = Offset(center.x - middleR - 8f, center.y - middleR - 8f),
+            size = androidx.compose.ui.geometry.Size((middleR + 8f) * 2f, (middleR + 8f) * 2f),
+            style = Stroke(width = arcStrokeWidth, cap = StrokeCap.Square)
+        )
+
+        // Radial sector divider ticks at boundary
+        val divAngle = l * listStepDeg + rotationDeg
+        val divP1 = RadialMath.toCartesian(center, middleR - 4f, divAngle)
+        val divP2 = RadialMath.toCartesian(center, outerR - 16f, divAngle)
+        drawLine(
+            color = Color.Black,
+            start = divP1,
+            end = divP2,
+            strokeWidth = 2.0f,
+            cap = StrokeCap.Square
+        )
+    }
+
+    // ==========================================
+    // 2. MIDDLE CIRCLE: ALBUM
+    // ==========================================
+    // Middle ring boundary circle
+    drawCircle(
+        color = Color.Black,
+        radius = middleR,
+        center = center,
+        style = Stroke(width = 1.5f)
+    )
+
+    // Secondary dashed concentric guide line
+    drawCircle(
+        color = Color.Black.copy(alpha = 0.4f),
+        radius = (middleR + innerR) / 2f,
+        center = center,
+        style = Stroke(
+            width = 1.0f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f), 0f)
+        )
+    )
+
+    // Album track radial dividers and ticks
+    val safeTrackCount = trackCount.coerceIn(4, 32)
+    val trackStepDeg = 360f / safeTrackCount
+    for (t in 0 until safeTrackCount) {
+        val tickAngle = t * trackStepDeg + rotationDeg
+        val isCurrentTrack = (t == (currentTrackIndex % safeTrackCount))
+
+        val tickInner = innerR + 10f
+        val tickOuter = if (isCurrentTrack) middleR - 4f else middleR - 14f
+        val tickWidth = if (isCurrentTrack) 3.0f else 1.2f
+
+        val pStart = RadialMath.toCartesian(center, tickInner, tickAngle)
+        val pEnd = RadialMath.toCartesian(center, tickOuter, tickAngle)
+        drawLine(
+            color = Color.Black,
+            start = pStart,
+            end = pEnd,
+            strokeWidth = tickWidth,
+            cap = StrokeCap.Round
+        )
+
+        // Bold black arc segment for active track in the album
+        if (isCurrentTrack) {
+            drawArc(
+                color = Color.Black,
+                startAngle = tickAngle - (trackStepDeg * 0.4f),
+                sweepAngle = trackStepDeg * 0.8f,
+                useCenter = false,
+                topLeft = Offset(center.x - middleR + 4f, center.y - middleR + 4f),
+                size = androidx.compose.ui.geometry.Size((middleR - 4f) * 2f, (middleR - 4f) * 2f),
+                style = Stroke(width = 5.0f, cap = StrokeCap.Square)
+            )
+        }
+    }
+
+    // Signature thick curved black arc (inspired by the prominent black curved divider in the photo)
+    drawArc(
+        color = Color.Black,
+        startAngle = rotationDeg - 75f,
+        sweepAngle = 150f,
+        useCenter = false,
+        topLeft = Offset(center.x - middleR, center.y - middleR),
+        size = androidx.compose.ui.geometry.Size(middleR * 2f, middleR * 2f),
+        style = Stroke(width = 4.5f, cap = StrokeCap.Round)
+    )
+
+    // ==========================================
+    // 1. MOST INNER CIRCLE: TRACK
+    // ==========================================
+    // Inner boundary ring
+    drawCircle(
+        color = Color.Black,
+        radius = innerR,
+        center = center,
+        style = Stroke(width = 1.8f)
+    )
+
+    // Clustered fine concentric vinyl grooves (4 precision hairline circles as in zoom-kal)
+    val grooveSpacing = (innerR - coreR) / 5f
+    for (g in 1..4) {
+        val r = coreR + (g * grooveSpacing)
+        drawCircle(
+            color = Color.Black.copy(alpha = 0.25f),
+            radius = r,
+            center = center,
+            style = Stroke(width = 0.8f)
+        )
+    }
+
+    // Fine track ticks around the inner ring
+    val innerTickCount = 48
+    for (i in 0 until innerTickCount) {
+        val ang = i * (360f / innerTickCount)
+        val isMajor = (i % 4 == 0)
+        val tickLen = if (isMajor) 7f else 3.5f
+        val p1 = RadialMath.toCartesian(center, innerR - tickLen, ang)
+        val p2 = RadialMath.toCartesian(center, innerR, ang)
+        drawLine(
+            color = Color.Black.copy(alpha = if (isMajor) 0.8f else 0.4f),
+            start = p1,
+            end = p2,
+            strokeWidth = if (isMajor) 1.2f else 0.7f
+        )
+    }
+
+    // Track Playback Progress Arc (Bold black line with bead indicator)
+    val activeSweep = (progressFraction.coerceIn(0f, 1f)) * 360f
+    val progressRadius = (innerR + coreR) / 2f
+
+    // Inactive progress background path
+    drawCircle(
+        color = Color.Black.copy(alpha = 0.12f),
+        radius = progressRadius,
+        center = center,
+        style = Stroke(width = 2.0f)
+    )
+
+    // Active progress arc
+    if (activeSweep > 0.5f) {
+        drawArc(
+            color = Color.Black,
+            startAngle = -90f,
+            sweepAngle = activeSweep,
+            useCenter = false,
+            topLeft = Offset(center.x - progressRadius, center.y - progressRadius),
+            size = androidx.compose.ui.geometry.Size(progressRadius * 2f, progressRadius * 2f),
+            style = Stroke(width = 3.5f, cap = StrokeCap.Round)
+        )
+
+        // Progress indicator black bead/pip
+        val beadCenter = RadialMath.toCartesian(center, progressRadius, -90f + activeSweep)
+        drawCircle(
+            color = Color.Black,
+            radius = 5.5f,
+            center = beadCenter
+        )
+    }
+
+    // 12 o'clock Pointer Needle across the wheel
+    val needleTop = RadialMath.toCartesian(center, outerR + 4f, -90f)
+    val needleBottom = RadialMath.toCartesian(center, middleR - 2f, -90f)
+    drawLine(
+        color = Color.Black,
+        start = needleTop,
+        end = needleBottom,
+        strokeWidth = 3.0f,
+        cap = StrokeCap.Round
+    )
+
+    // Core boundary ring enclosing the center album/vinyl hub
+    drawCircle(
+        color = Color.Black,
+        radius = coreR + 2f,
+        center = center,
+        style = Stroke(width = 2.0f)
+    )
+}
+
+/**
+ * Canvas drawing utility for legacy compatibility with degree ticks and bezel rings.
  */
 fun DrawScope.drawAstrolabeBezel(
     center: Offset,
     outerRadius: Float,
     innerRadius: Float,
-    bezelColor: Color = AstrolabeTheme.EngravedSlate,
-    tickColor: Color = AstrolabeTheme.ParchmentRim
+    bezelColor: Color = Color.Black,
+    tickColor: Color = Color.Black
 ) {
-    // Outer and Inner Concentric Ring Borders
     drawCircle(
         color = bezelColor,
         radius = outerRadius,
         center = center,
-        style = Stroke(width = 2.5f)
+        style = Stroke(width = 2.0f)
     )
     drawCircle(
-        color = bezelColor.copy(alpha = 0.5f),
+        color = bezelColor.copy(alpha = 0.4f),
         radius = innerRadius,
         center = center,
         style = Stroke(
-            width = 1.5f,
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+            width = 1.0f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f), 0f)
         )
     )
 
-    // Fine Azimuth Ticks around the perimeter
-    val tickCount = 72 // 5-degree increments
+    val tickCount = 72
     for (i in 0 until tickCount) {
         val angleDeg = i * (360f / tickCount)
-        val isMajor = (i % 6 == 0) // Every 30 degrees (Zodiac / Cardinal)
+        val isMajor = (i % 6 == 0)
         val isMedium = (i % 2 == 0)
 
-        val tickLength = if (isMajor) 14f else if (isMedium) 9f else 5f
-        val tickStroke = if (isMajor) 2.2f else if (isMedium) 1.2f else 0.8f
-        val color = if (isMajor) AstrolabeTheme.AstrolabeGold else tickColor.copy(alpha = if (isMedium) 0.8f else 0.45f)
+        val tickLength = if (isMajor) 12f else if (isMedium) 7f else 4f
+        val tickStroke = if (isMajor) 2.0f else if (isMedium) 1.0f else 0.8f
 
         val start = RadialMath.toCartesian(center, outerRadius - tickLength, angleDeg)
         val end = RadialMath.toCartesian(center, outerRadius, angleDeg)
         drawLine(
-            color = color,
+            color = tickColor,
             start = start,
             end = end,
             strokeWidth = tickStroke,
@@ -372,7 +628,7 @@ fun DrawScope.drawAstrolabeBezel(
 }
 
 /**
- * Celestial starfield renderer with constellation coordinate grid and pulsating starlight.
+ * Celestial core renderer in monochrome white & black.
  */
 fun DrawScope.drawCelestialCore(
     center: Offset,
@@ -381,92 +637,21 @@ fun DrawScope.drawCelestialCore(
     rotationDeg: Float = 0f,
     isPlaying: Boolean = true
 ) {
-    // Midnight circular aperture
     drawCircle(
-        color = AstrolabeTheme.DeepSpaceMidnight,
+        color = Color.White,
         radius = radius,
         center = center
     )
-
-    // Cardinal coordinate crosshairs & equatorial celestial ring
     drawCircle(
-        color = AstrolabeTheme.CelestialGrid,
+        color = Color.Black,
+        radius = radius,
+        center = center,
+        style = Stroke(width = 1.5f)
+    )
+    drawCircle(
+        color = Color.Black.copy(alpha = 0.2f),
         radius = radius * 0.65f,
         center = center,
-        style = Stroke(width = 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 8f), 0f))
+        style = Stroke(width = 0.8f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f), 0f))
     )
-
-    // Concentric celestial coordinates
-    drawCircle(
-        color = AstrolabeTheme.CelestialGrid.copy(alpha = 0.25f),
-        radius = radius * 0.35f,
-        center = center,
-        style = Stroke(width = 0.8f)
-    )
-
-    // Axis lines (North-South, East-West)
-    val cardinalAngles = floatArrayOf(0f, 90f, 180f, 270f)
-    for (ang in cardinalAngles) {
-        val radAng = ang + rotationDeg
-        val p1 = RadialMath.toCartesian(center, radius * 0.15f, radAng)
-        val p2 = RadialMath.toCartesian(center, radius * 0.95f, radAng)
-        drawLine(
-            color = AstrolabeTheme.CelestialGrid.copy(alpha = 0.35f),
-            start = p1,
-            end = p2,
-            strokeWidth = 1f
-        )
-    }
-
-    // Procedural Stars and Constellations
-    val starPositions = listOf(
-        Pair(0.25f, 45f),
-        Pair(0.48f, 72f),
-        Pair(0.55f, 120f),
-        Pair(0.38f, 160f),
-        Pair(0.70f, 215f),
-        Pair(0.82f, 240f),
-        Pair(0.42f, 290f),
-        Pair(0.68f, 330f),
-        Pair(0.85f, 25f),
-        Pair(0.30f, 220f)
-    )
-
-    val points = starPositions.map { (distFactor, angle) ->
-        RadialMath.toCartesian(center, radius * distFactor, angle + rotationDeg)
-    }
-
-    // Connect constellation lines between stars
-    val constellationLinks = listOf(
-        Pair(0, 1), Pair(1, 2), Pair(2, 3), Pair(4, 5), Pair(6, 7), Pair(0, 8)
-    )
-    constellationLinks.forEach { (i1, i2) ->
-        if (i1 < points.size && i2 < points.size) {
-            drawLine(
-                color = AstrolabeTheme.StarCyan.copy(alpha = 0.35f * pulseEnergy),
-                start = points[i1],
-                end = points[i2],
-                strokeWidth = 1f
-            )
-        }
-    }
-
-    // Draw glowing stars
-    points.forEachIndexed { index, pt ->
-        val isMajorStar = index % 3 == 0
-        val baseR = if (isMajorStar) 3.5f else 2.0f
-        val animatedR = baseR * (if (isPlaying) pulseEnergy else 1.0f)
-        val color = if (isMajorStar) AstrolabeTheme.AstrolabeGold else AstrolabeTheme.StarCyan
-
-        drawCircle(
-            color = color.copy(alpha = 0.3f),
-            radius = animatedR * 2.2f,
-            center = pt
-        )
-        drawCircle(
-            color = color,
-            radius = animatedR,
-            center = pt
-        )
-    }
 }

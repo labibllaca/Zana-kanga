@@ -236,11 +236,12 @@ fun NaviromApp(
     ) {
         val pagerState = rememberPagerState(initialPage = 1) { 3 }
         
+        Box(modifier = modifier.fillMaxSize().background(Color.White)) {
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize()
         ) { page ->
-            val backgroundColor = if (page == 0) Color.White else Color.Black
+            val backgroundColor = Color.White
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -387,6 +388,28 @@ fun NaviromApp(
             }
         }
         }
+
+        // Persistent MiniPlayerBar for browsing zones (Library & Settings)
+        if (pagerState.currentPage != 0 && playbackState.currentTrack != null && !isFullPlayerVisible) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(bottom = 6.dp)
+            ) {
+                MiniPlayerBar(
+                    playbackState = playbackState,
+                    onExpandPlayer = {
+                        scope.launch { pagerState.animateScrollToPage(0) }
+                    },
+                    onTogglePlayPause = { viewModel.togglePlayPause() },
+                    onNext = { viewModel.next() },
+                    onPrevious = { viewModel.previous() }
+                )
+            }
+        }
+    }
 
         // Full Screen Player Modal
         if (isFullPlayerVisible && playbackState.currentTrack != null) {
