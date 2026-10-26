@@ -94,14 +94,47 @@ object AppDiagnostics {
     fun init(context: Context) {
         logFile = File(context.filesDir, LOG_FILE_NAME)
         loadLogsFromDisk()
-        setupUncaughtExceptionHandler()
+        checkLastSessionCrash(context)
+        setupUncaughtExceptionHandler(context)
         logInfo(DiagnosticCodes.SYS_STARTUP_001, TAG, "App diagnostics initialized successfully")
     }
 
-    private fun setupUncaughtExceptionHandler() {
+    private fun checkLastSessionCrash(context: Context) {
+        try {
+            val prefs = context.getSharedPreferences("navirom_crash_store", Context.MODE_PRIVATE)
+            val msg = prefs.getString("last_crash_msg", null)
+            val stack = prefs.getString("last_crash_stack", null)
+            val time = prefs.getLong("last_crash_time", 0L)
+            if (!msg.isNullOrBlank() && time > 0) {
+                prefs.edit().clear().commit()
+                val entry = LogEntry(
+                    timestamp = time,
+                    level = LogLevel.ERROR,
+                    errorCode = DiagnosticCodes.SYS_UNCAUGHT_CRASH_999,
+                    tag = "UncaughtCrash",
+                    message = "Fatal uncaught crash in previous session: $msg",
+                    stackTrace = stack
+                )
+                synchronized(this) {
+                    val current = _logsFlow.value.toMutableList()
+                    if (current.none { it.timestamp == time }) {
+                        current.add(0, entry)
+                        _logsFlow.value = current
+                    }
+                }
+                saveLogsToDiskSync()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load last session crash", e)
+        }
+    }
+
+    private fun setupUncaughtExceptionHandler(context: Context) {
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        val appContext = context.applicationContext
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             val stackTrace = Log.getStackTraceString(throwable)
+            Log.e("UncaughtCrash", "FATAL CRASH on thread '${thread.name}': ${throwable.message}", throwable)
             val entry = LogEntry(
                 level = LogLevel.ERROR,
                 errorCode = DiagnosticCodes.SYS_UNCAUGHT_CRASH_999,
@@ -110,6 +143,14 @@ object AppDiagnostics {
                 stackTrace = stackTrace
             )
             appendLogSync(entry)
+            try {
+                appContext.getSharedPreferences("navirom_crash_store", Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("last_crash_msg", throwable.message ?: throwable.javaClass.simpleName)
+                    .putString("last_crash_stack", stackTrace)
+                    .putLong("last_crash_time", System.currentTimeMillis())
+                    .commit() // Commit synchronously to disk before process death
+            } catch (_: Exception) {}
             defaultHandler?.uncaughtException(thread, throwable)
         }
     }

@@ -606,20 +606,22 @@ fun AstrolabeFullPlayer(
                 // EDITORIAL SECTOR 1: CURRENT PLAYING LIST / QUEUE
                 // Directly synchronized with wheel rotation!
                 // ==========================================
-                val queueSectorItems = queue.mapIndexed { idx, track ->
-                    val isCurrent = (idx == queueIndex || track.id == currentTrack?.id)
-                    val isTargeted = (idx == targetedIndex && latheState.isDragging)
-                    EditorialSectorItem(
-                        indexLabel = (idx + 1).toString().padStart(2, '0'),
-                        title = track.title + if (isCurrent && playbackState.isPlaying) "  ▶" else "",
-                        description = "${track.artist} • ${formatMs(track.durationSeconds * 1000L)}" +
-                            if (isTargeted) " • [CUED ON WHEEL]" else if (isCurrent) " • [CURRENTLY PLAYING]" else "",
-                        isSelected = isCurrent || isTargeted,
-                        onClick = {
-                            haptics.click()
-                            onTrackSelect(track, queue)
-                        }
-                    )
+                val queueSectorItems = remember(queue, queueIndex, targetedIndex, playbackState.isPlaying) {
+                    queue.mapIndexed { idx, track ->
+                        val isCurrent = (idx == queueIndex || track.id == currentTrack?.id)
+                        val isTargeted = (idx == targetedIndex && latheState.isDragging)
+                        EditorialSectorItem(
+                            indexLabel = (idx + 1).toString().padStart(2, '0'),
+                            title = track.title + if (isCurrent && playbackState.isPlaying) "  ▶" else "",
+                            description = "${track.artist} • ${formatMs(track.durationSeconds * 1000L)}" +
+                                if (isTargeted) " • [CUED ON WHEEL]" else if (isCurrent) " • [CURRENTLY PLAYING]" else "",
+                            isSelected = isCurrent || isTargeted,
+                            onClick = {
+                                haptics.click()
+                                onTrackSelect(track, queue)
+                            }
+                        )
+                    }
                 }
 
                 EditorialSectorBlock(
