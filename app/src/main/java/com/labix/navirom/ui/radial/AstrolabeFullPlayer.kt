@@ -130,6 +130,19 @@ fun AstrolabeFullPlayer(
     var seekPreviewPosMs by remember { mutableLongStateOf(0L) }
     var seekDeltaMs by remember { mutableLongStateOf(0L) }
 
+    // 5-second inactivity vinyl mode state
+    var lastTouchTimestamp by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var isVinylExpanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(lastTouchTimestamp, isVinylExpanded) {
+        if (!isVinylExpanded) {
+            delay(5000L)
+            if (System.currentTimeMillis() - lastTouchTimestamp >= 5000L) {
+                isVinylExpanded = true
+            }
+        }
+    }
+
     // Double click detection timestamp and position
     var lastTapTimestamp by remember { mutableLongStateOf(0L) }
     var lastTapPosition by remember { mutableStateOf(Offset.Zero) }
@@ -177,6 +190,15 @@ fun AstrolabeFullPlayer(
             .background(canvasBg)
             .statusBarsPadding()
             .navigationBarsPadding()
+            .pointerInput(isVinylExpanded) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    lastTouchTimestamp = System.currentTimeMillis()
+                    if (isVinylExpanded) {
+                        isVinylExpanded = false
+                    }
+                }
+            }
             .testTag("astrolabe_full_player")
     ) {
         Column(
@@ -441,54 +463,104 @@ fun AstrolabeFullPlayer(
                             )
                         }
 
-                        // Center Celestial / Album Art Medallion
+                        val medallionSize = if (isVinylExpanded) wheelSize * 0.72f else wheelSize * 0.20f
+                        val animatedMedallionSize by animateDpAsState(
+                            targetValue = medallionSize,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                            label = "medallionSize"
+                        )
+                        val infiniteTransition = rememberInfiniteTransition(label = "vinyl_rot")
+                        val vinylRot by infiniteTransition.animateFloat(
+                            initialValue = 0f,
+                            targetValue = 360f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(8000, easing = LinearEasing),
+                                repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+                            ),
+                            label = "vinylRot"
+                        )
+
+                        // Center Celestial / Album Art Medallion / Vinyl Plate
                         Box(
                             modifier = Modifier
-                                .size(wheelSize * 0.20f)
+                                .size(animatedMedallionSize)
                                 .clip(CircleShape)
-                                .border(1.5.dp, Color.Black, CircleShape)
+                                .background(if (isVinylExpanded) Color.Black else Color.Transparent)
+                                .border(
+                                    width = if (isVinylExpanded) 3.dp else 1.5.dp,
+                                    color = Color.Black,
+                                    shape = CircleShape
+                                )
                                 .clickable {
                                     haptics.toggle()
-                                    onTogglePlayPause()
+                                    if (isVinylExpanded) {
+                                        isVinylExpanded = false
+                                        lastTouchTimestamp = System.currentTimeMillis()
+                                    } else {
+                                        onTogglePlayPause()
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            if (currentTrack?.coverArtUrl?.isNotBlank() == true) {
-                                AsyncImage(
-                                    model = currentTrack.coverArtUrl,
-                                    contentDescription = "Album Art",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color.Black),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.MusicNote,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                            if (isVinylExpanded) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                    val radius = size.minDimension / 2f
+                                    drawCircle(color = Color(0xFF111111), radius = radius)
+                                    var r = radius * 0.35f
+                                    while (r < radius * 0.92f) {
+                                        drawCircle(color = Color(0xFF2A2A2A), radius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f))
+                                        r += 6.dp.toPx()
+                                    }
                                 }
                             }
 
-                            // Center Play/Pause indicator overlay
-                            Surface(
-                                shape = CircleShape,
-                                color = Color.Black.copy(alpha = 0.55f),
-                                modifier = Modifier.size(32.dp)
+                            val artSize = if (isVinylExpanded) animatedMedallionSize * 0.44f else animatedMedallionSize
+                            Box(
+                                modifier = Modifier
+                                    .size(artSize)
+                                    .clip(CircleShape)
+                                    .border(1.dp, Color.White, CircleShape),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                        contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
+                                if (currentTrack?.coverArtUrl?.isNotBlank() == true) {
+                                    AsyncImage(
+                                        model = currentTrack.coverArtUrl,
+                                        contentDescription = "Album Art",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
                                     )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.MusicNote,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(if (isVinylExpanded) 16.dp else 20.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (!isVinylExpanded) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.Black.copy(alpha = 0.55f),
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                            contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
