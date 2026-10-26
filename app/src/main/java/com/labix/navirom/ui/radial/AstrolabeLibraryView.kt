@@ -54,7 +54,8 @@ data class EditorialListItem(
     val rawAlbum: NaviromAlbum? = null,
     val rawPlaylist: NaviromPlaylist? = null,
     val rawArtist: NaviromArtist? = null,
-    val rawSongsBatch: List<NaviromTrack>? = null
+    val rawSongsBatch: List<NaviromTrack>? = null,
+    val isLocal: Boolean = false
 )
 
 /**
@@ -98,57 +99,67 @@ fun AstrolabeLibraryView(
                 subtitle = "TRACKS $startNum–$endNum • ${batch.size} MANUSCRIPTS",
                 type = LibraryFilterType.SONGS,
                 trackCount = batch.size,
-                rawSongsBatch = batch
+                rawSongsBatch = batch,
+                isLocal = false
             )
         }
     }
 
-    // Build unified editorial list items
+    // Build unified editorial list items with Server vs Local distinction
     val allItems = remember(playlists, albums, artists, librarySongs) {
         val list = mutableListOf<EditorialListItem>()
 
         // 1. Playlists first
         playlists.forEach { pl ->
             val durationText = if (pl.durationSeconds > 0) " • ${formatSecs(pl.durationSeconds)}" else ""
+            val sourceTag = if (pl.isLocal) "[LOCAL] " else "[SERVER] "
             list.add(
                 EditorialListItem(
                     id = "pl_${pl.id}",
                     title = pl.name.ifBlank { "Untitled Playlist" },
-                    subtitle = "PLAYLIST • ${pl.songCount} TRACKS$durationText",
+                    subtitle = "$sourceTag PLAYLIST • ${pl.songCount} TRACKS$durationText",
                     type = LibraryFilterType.PLAYLISTS,
                     trackCount = pl.songCount,
-                    rawPlaylist = pl
+                    rawPlaylist = pl,
+                    isLocal = pl.isLocal
                 )
             )
         }
 
         // 2. Albums
         albums.forEach { alb ->
-            val trackCount = librarySongs.count { it.albumId == alb.id || it.album.equals(alb.name, ignoreCase = true) }
-            val countText = if (trackCount > 0) trackCount else alb.songCount
+            val albTracks = librarySongs.filter { it.albumId == alb.id || it.album.equals(alb.name, ignoreCase = true) }
+            val trackCount = if (albTracks.isNotEmpty()) albTracks.size else alb.songCount
+            val isLocalAlb = alb.id.startsWith("local_") || (albTracks.isNotEmpty() && albTracks.any { it.id.startsWith("local_") || !it.localFilePath.isNullOrBlank() })
+            val sourceTag = if (isLocalAlb) "[LOCAL] " else "[SERVER] "
             list.add(
                 EditorialListItem(
                     id = "alb_${alb.id}",
                     title = alb.name.ifBlank { "Unknown Album" },
-                    subtitle = "ALBUM • ${alb.artist} • $countText TRACKS",
+                    subtitle = "$sourceTag ALBUM • ${alb.artist} • $trackCount TRACKS",
                     type = LibraryFilterType.ALBUMS,
-                    trackCount = countText,
-                    rawAlbum = alb
+                    trackCount = trackCount,
+                    rawAlbum = alb,
+                    isLocal = isLocalAlb
                 )
             )
         }
 
         // 3. Artists
         artists.forEach { art ->
+            val artTracks = librarySongs.filter { it.artist.equals(art.name, ignoreCase = true) }
             val albCount = albums.count { it.artist.equals(art.name, ignoreCase = true) }
+            val isLocalArt = art.id.startsWith("local_") || (artTracks.isNotEmpty() && artTracks.any { it.id.startsWith("local_") || !it.localFilePath.isNullOrBlank() })
+            val sourceTag = if (isLocalArt) "[LOCAL] " else "[SERVER] "
             list.add(
                 EditorialListItem(
                     id = "art_${art.id}",
                     title = art.name.ifBlank { "Unknown Artist" },
-                    subtitle = "ARTIST • $albCount ALBUMS RECORDED",
+                    subtitle = "$sourceTag ARTIST • $albCount ALBUMS RECORDED",
                     type = LibraryFilterType.ARTISTS,
                     trackCount = albCount,
-                    rawArtist = art
+                    rawArtist = art,
+                    isLocal = isLocalArt
                 )
             )
         }
@@ -606,7 +617,7 @@ private fun EditorialListItemRow(
     val containerBg = if (isSelected) {
         if (isDark) Color.White else Color.Black
     } else {
-        if (isDark) Color(0xFF18181D) else Color.White
+        if (isDark) Color.Black else Color.White
     }
     val contentColor = if (isSelected) {
         if (isDark) Color.Black else Color.White
@@ -616,17 +627,17 @@ private fun EditorialListItemRow(
     val subtitleColor = if (isSelected) {
         if (isDark) Color.Black.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.85f)
     } else {
-        if (isDark) Color(0xFFAAAAAF) else Color(0xFF555555)
+        if (isDark) Color(0xFFDDDDDD) else Color(0xFF555555)
     }
     val borderColor = if (isSelected) {
         if (isDark) Color.White else Color.Black
     } else {
-        if (isDark) Color.White.copy(alpha = 0.22f) else Color.Black
+        if (isDark) Color.White else Color.Black
     }
     val tickColor = if (isSelected) {
         if (isDark) Color.Black.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.6f)
     } else {
-        if (isDark) Color(0xFF444450) else Color(0xFFCCCCCC)
+        if (isDark) Color.White.copy(alpha = 0.5f) else Color(0xFFCCCCCC)
     }
 
     Surface(
@@ -739,11 +750,14 @@ private fun EditorialSongItemRow(
     onTrackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val containerBg = if (isDark) Color(0xFF18181D) else Color.White
+    val isLocalTrack = track.id.startsWith("local_") || !track.localFilePath.isNullOrBlank() || track.streamUrl.startsWith("content://") || track.streamUrl.startsWith("file://")
+    val sourceTag = if (isLocalTrack) "[LOCAL] " else "[SERVER] "
+
+    val containerBg = if (isDark) Color.Black else Color.White
     val contentColor = if (isDark) Color.White else Color.Black
-    val subtitleColor = if (isDark) Color(0xFFAAAAAF) else Color(0xFF555555)
-    val borderColor = if (isDark) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.2f)
-    val tickColor = if (isDark) Color(0xFF444450) else Color(0xFFCCCCCC)
+    val subtitleColor = if (isDark) Color(0xFFDDDDDD) else Color(0xFF555555)
+    val borderColor = if (isDark) Color.White else Color.Black
+    val tickColor = if (isDark) Color.White.copy(alpha = 0.5f) else Color(0xFFCCCCCC)
 
     Surface(
         shape = RoundedCornerShape(10.dp),
@@ -806,7 +820,7 @@ private fun EditorialSongItemRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${track.artist} • ${formatDurationSecs(track.durationSeconds)} • ${track.album.ifBlank { "Celestial Archive" }}",
+                    text = "$sourceTag${track.artist} • ${formatDurationSecs(track.durationSeconds)} • ${track.album.ifBlank { "Celestial Archive" }}",
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontFamily = FontFamily.Serif,
                         fontSize = 10.sp,

@@ -26,14 +26,14 @@ val SleekLightOnTertiary = Color(0xFFFFFFFF)
 val SleekLightTertiaryContainer = Color(0xFFF5F5F5)
 val SleekLightOnTertiaryContainer = Color(0xFF000000)
 
-// Minimalist Monochrome Dark Palette (Deep dark obsidian canvas, crisp white text & borders)
-val SleekDarkBg = Color(0xFF101014) // Deep obsidian dark canvas
-val SleekDarkSurface = Color(0xFF18181D) // Elevated dark surface
-val SleekDarkSurfaceVariant = Color(0xFF222228) // Subtle dark gray container
-val SleekDarkOnSurface = Color(0xFFF2F2F5) // Crisp white text
-val SleekDarkOnSurfaceVariant = Color(0xFFAAAAAF) // Secondary light gray text
-val SleekDarkOutline = Color(0xFF44444E) // Defined outline
-val SleekDarkOutlineVariant = Color(0xFF2E2E36)
+// Minimalist Monochrome Dark Palette (Pure black canvas, crisp white text & borders)
+val SleekDarkBg = Color(0xFF000000) // Pure black canvas
+val SleekDarkSurface = Color(0xFF000000) // Pure black surface
+val SleekDarkSurfaceVariant = Color(0xFF121212) // Very subtle dark gray container
+val SleekDarkOnSurface = Color(0xFFFFFFFF) // Pure white text
+val SleekDarkOnSurfaceVariant = Color(0xFFDDDDDD) // Secondary light gray text
+val SleekDarkOutline = Color(0xFFFFFFFF) // Pure white border
+val SleekDarkOutlineVariant = Color(0xFFAAAAAF)
 
 val SleekDarkPrimary = Color(0xFFFFFFFF) // White primary against dark canvas
 val SleekDarkOnPrimary = Color(0xFF101014)
