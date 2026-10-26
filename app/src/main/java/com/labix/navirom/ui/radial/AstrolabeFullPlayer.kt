@@ -149,26 +149,29 @@ fun AstrolabeFullPlayer(
 
     // Real-time Rotational Target Telemetry
     val targetedIndex = remember(latheState.angle, trackCount) {
-        val normalizedAngle = RadialMath.normalizeDegrees(-latheState.angle)
-        val idx = (normalizedAngle / stepAngle).toInt() % trackCount
-        idx.coerceIn(0, (queue.size - 1).coerceAtLeast(0))
+        if (trackCount <= 0) 0 else {
+            val normalizedAngle = RadialMath.normalizeDegrees(-latheState.angle)
+            val rawIdx = (normalizedAngle / stepAngle).toInt()
+            val idx = ((rawIdx % trackCount) + trackCount) % trackCount
+            idx.coerceIn(0, (queue.size - 1).coerceAtLeast(0))
+        }
     }
     val targetedTrack = queue.getOrNull(targetedIndex)
 
     // Programmatic scroll of current playlist when wheel turns
     LaunchedEffect(targetedIndex, latheState.isDragging) {
         if (latheState.isDragging && queue.isNotEmpty()) {
-            val target = targetedIndex.coerceIn(queue.indices)
+            val target = targetedIndex.coerceIn(0, queue.lastIndex)
             queueLazyListState.animateScrollToItem(target)
         }
     }
 
     // Sync lathe rotation and center current song in playlist view when queue index changes normally
-    LaunchedEffect(queueIndex) {
+    LaunchedEffect(queueIndex, queue.size) {
         if (!latheState.isDragging && queue.isNotEmpty()) {
             val targetAngle = -(queueIndex * stepAngle)
             latheState.snapTo(targetAngle)
-            val targetIdx = queueIndex.coerceIn(queue.indices)
+            val targetIdx = queueIndex.coerceIn(0, queue.lastIndex)
             queueLazyListState.animateScrollToItem(targetIdx, scrollOffset = -120)
         }
     }
@@ -433,10 +436,14 @@ fun AstrolabeFullPlayer(
                                                 prevAngle = currentAngle
 
                                                 if (isInsideWheel) {
-                                                    // Inside wheel: seek song position forward/backward by minutes/seconds
-                                                    val seekDeltaMs = ((deltaAngle / 360f) * 60000f).toLong()
-                                                    val targetPos = (playbackState.currentPositionMs + seekDeltaMs).coerceIn(0L, totalDurationMs)
-                                                    onSeekTo(targetPos)
+                                                    // Inside wheel: seek song position forward/backward by minutes/seconds (throttled to max once per 120ms)
+                                                    val currentTime = System.currentTimeMillis()
+                                                    if (currentTime - lastTapTimestamp > 120L) {
+                                                        lastTapTimestamp = currentTime
+                                                        val seekDeltaMs = ((deltaAngle / 360f) * 60000f).toLong()
+                                                        val targetPos = (playbackState.currentPositionMs + seekDeltaMs).coerceIn(0L, totalDurationMs)
+                                                        onSeekTo(targetPos)
+                                                    }
                                                 } else {
                                                     // Outside wheel: navigate to previous/next song on current playing list
                                                     cumulativeWheelDelta += deltaAngle
@@ -457,11 +464,12 @@ fun AstrolabeFullPlayer(
                                         }
                                     } while (event.changes.any { it.pressed })
 
-                                    if (isRadialDragging && !isInsideWheel) {
+                                    if (isRadialDragging && !isInsideWheel && trackCount > 0) {
                                         latheState.setDraggingState(false)
                                         val finalAngle = latheState.angle
                                         val normalizedAngle = RadialMath.normalizeDegrees(-finalAngle)
-                                        val selectedIdx = (normalizedAngle / stepAngle).toInt() % trackCount
+                                        val rawIdx = (normalizedAngle / stepAngle).toInt()
+                                        val selectedIdx = ((rawIdx % trackCount) + trackCount) % trackCount
                                         if (selectedIdx in queue.indices && selectedIdx != queueIndex) {
                                             onTrackSelect(queue[selectedIdx], queue)
                                         }
