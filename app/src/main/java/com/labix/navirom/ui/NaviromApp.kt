@@ -1170,6 +1170,8 @@ fun TabContent(
                     serverState = serverState,
                     totalCacheSizeBytes = totalCacheSizeBytes,
                     appLanguage = appLanguage,
+                    appThemeMode = appThemeMode,
+                    onSetThemeMode = onSetThemeMode,
                     onConnectServer = onConnectServer,
                     onSyncLibrary = onSyncLibrary,
                     onClearAllCache = onClearAllCache,

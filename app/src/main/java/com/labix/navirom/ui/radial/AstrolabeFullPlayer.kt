@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -163,12 +164,17 @@ fun AstrolabeFullPlayer(
     val currentPosMs = playbackState.currentPositionMs.coerceIn(0L, totalDurationMs)
     val progressFraction = (currentPosMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
 
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val canvasBg = MaterialTheme.colorScheme.background
+    val inkColor = if (isDark) Color.White else Color.Black
+    val secondaryInk = if (isDark) Color(0xFFAAAAAF) else Color(0xFF444444)
+
     val scrollState = rememberScrollState()
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(canvasBg)
             .statusBarsPadding()
             .navigationBarsPadding()
             .testTag("astrolabe_full_player")
@@ -197,7 +203,7 @@ fun AstrolabeFullPlayer(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
-                        tint = Color.Black
+                        tint = inkColor
                     )
                 }
 
@@ -212,7 +218,7 @@ fun AstrolabeFullPlayer(
                     Icon(
                         imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                         contentDescription = "Favorite",
-                        tint = if (isFavorite) Color.Black else Color.Black.copy(alpha = 0.5f)
+                        tint = if (isFavorite) (if (isDark) Color.White else Color.Black) else (if (isDark) Color.White.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.5f))
                     )
                 }
             }
@@ -235,7 +241,7 @@ fun AstrolabeFullPlayer(
                         letterSpacing = 1.sp,
                         fontSize = 15.sp
                     ),
-                    color = Color.Black,
+                    color = inkColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center
@@ -247,7 +253,7 @@ fun AstrolabeFullPlayer(
                         letterSpacing = 0.5.sp,
                         fontSize = 11.sp
                     ),
-                    color = Color(0xFF444444),
+                    color = secondaryInk,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center
@@ -267,7 +273,7 @@ fun AstrolabeFullPlayer(
                             letterSpacing = 1.5.sp,
                             fontSize = 9.sp
                         ),
-                        color = Color.Black
+                        color = inkColor
                     )
                     Text("•", color = Color.Gray, fontSize = 9.sp)
                     Text(
@@ -278,7 +284,7 @@ fun AstrolabeFullPlayer(
                             letterSpacing = 1.5.sp,
                             fontSize = 9.sp
                         ),
-                        color = Color.Black
+                        color = inkColor
                     )
                     Text("•", color = Color.Gray, fontSize = 9.sp)
                     Text(
@@ -430,7 +436,8 @@ fun AstrolabeFullPlayer(
                                 currentTrackIndex = queueIndex,
                                 listCount = 5,
                                 activeListIndex = 0,
-                                rotationDeg = latheState.angle
+                                rotationDeg = latheState.angle,
+                                isDark = isDark
                             )
                         }
 
@@ -579,19 +586,6 @@ fun AstrolabeFullPlayer(
                         items = plainItems,
                         isManuscriptList = true
                     )
-                } else {
-                    EditorialSectorBlock(
-                        sectorTitle = "MANUSCRIPT LYRICS",
-                        sectorSubTitle = null,
-                        items = listOf(
-                            EditorialSectorItem(
-                                indexLabel = "",
-                                title = "Transcript Unavailable",
-                                description = "No synchronized lyrics or text registered for ${currentTrack?.title ?: "this piece"}."
-                            )
-                        ),
-                        isManuscriptList = true
-                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -610,7 +604,7 @@ fun AstrolabeFullPlayer(
                 Text(
                     text = formatMs(currentPosMs),
                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                    color = Color.Black
+                    color = inkColor
                 )
                 Text(
                     text = "${queueIndex + 1} / ${queue.size.coerceAtLeast(1)}",
@@ -619,22 +613,22 @@ fun AstrolabeFullPlayer(
                         letterSpacing = 1.5.sp,
                         fontWeight = FontWeight.Bold
                     ),
-                    color = Color.Black
+                    color = inkColor
                 )
                 Text(
                     text = "-${formatMs(totalDurationMs - currentPosMs)}",
                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                    color = Color.Black
+                    color = inkColor
                 )
             }
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Playback Controls Bar with Stark Black Border on White
+            // Playback Controls Bar with Stark Border
             Surface(
                 shape = RoundedCornerShape(24.dp),
-                color = Color.White,
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
+                color = if (isDark) Color(0xFF18181D) else Color.White,
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, if (isDark) Color.White.copy(alpha = 0.3f) else Color.Black),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -653,7 +647,7 @@ fun AstrolabeFullPlayer(
                         Icon(
                             imageVector = Icons.Filled.Shuffle,
                             contentDescription = "Shuffle",
-                            tint = if (playbackState.isShuffle) Color.Black else Color.Black.copy(alpha = 0.35f)
+                            tint = if (playbackState.isShuffle) inkColor else inkColor.copy(alpha = 0.35f)
                         )
                     }
 
@@ -666,7 +660,7 @@ fun AstrolabeFullPlayer(
                         Icon(
                             imageVector = Icons.Filled.SkipPrevious,
                             contentDescription = "Previous",
-                            tint = Color.Black,
+                            tint = inkColor,
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -678,8 +672,8 @@ fun AstrolabeFullPlayer(
                         },
                         modifier = Modifier.size(50.dp),
                         colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = Color.Black,
-                            contentColor = Color.White
+                            containerColor = if (isDark) Color.White else Color.Black,
+                            contentColor = if (isDark) Color.Black else Color.White
                         )
                     ) {
                         Icon(
@@ -698,7 +692,7 @@ fun AstrolabeFullPlayer(
                         Icon(
                             imageVector = Icons.Filled.SkipNext,
                             contentDescription = "Next",
-                            tint = Color.Black,
+                            tint = inkColor,
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -713,7 +707,7 @@ fun AstrolabeFullPlayer(
                         Icon(
                             imageVector = if (playbackState.repeatMode == RepeatMode.ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
                             contentDescription = "Repeat",
-                            tint = if (isRepeat) Color.Black else Color.Black.copy(alpha = 0.35f)
+                            tint = if (isRepeat) inkColor else inkColor.copy(alpha = 0.35f)
                         )
                     }
 
@@ -1356,6 +1350,10 @@ fun EditorialSectorBlock(
 ) {
     var isCollapsed by remember { mutableStateOf(false) }
     val haptics = rememberNaviromHaptics()
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val inkColor = if (isDark) Color.White else Color.Black
+    val dividerColor = if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black
+    val secondaryInk = if (isDark) Color(0xFFAAAAAF) else Color(0xFF666666)
 
     Column(
         modifier = modifier
@@ -1386,7 +1384,7 @@ fun EditorialSectorBlock(
                         letterSpacing = 2.5.sp,
                         fontSize = 15.sp
                     ),
-                    color = Color.Black
+                    color = inkColor
                 )
             }
             if (sectorSubTitle != null) {
@@ -1397,7 +1395,7 @@ fun EditorialSectorBlock(
                         letterSpacing = 1.sp,
                         fontSize = 10.sp
                     ),
-                    color = Color(0xFF666666)
+                    color = secondaryInk
                 )
             }
         }
@@ -1409,7 +1407,7 @@ fun EditorialSectorBlock(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.5.dp)
-                .background(Color.Black)
+                .background(dividerColor)
         )
 
         Spacer(modifier = Modifier.height(6.dp))
@@ -1451,14 +1449,36 @@ fun EditorialSectorItemRow(
     item: EditorialSectorItem,
     modifier: Modifier = Modifier
 ) {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val isSelected = item.isSelected
+    val bgShape = if (isSelected) {
+        if (isDark) Color.White else Color.Black
+    } else {
+        Color.Transparent
+    }
+    val contentColor = if (isSelected) {
+        if (isDark) Color.Black else Color.White
+    } else {
+        if (isDark) Color.White else Color.Black
+    }
+    val descColor = if (isSelected) {
+        if (isDark) Color.Black.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.85f)
+    } else {
+        if (isDark) Color(0xFFAAAAAF) else Color(0xFF555555)
+    }
+    val tickColor = if (isSelected) {
+        if (isDark) Color.Black.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.6f)
+    } else {
+        if (isDark) Color(0xFF444450) else Color(0xFFCCCCCC)
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .then(
                 if (isSelected) {
                     Modifier
-                        .background(Color.Black, RoundedCornerShape(8.dp))
+                        .background(bgShape, RoundedCornerShape(8.dp))
                         .padding(horizontal = 6.dp, vertical = 6.dp)
                 } else {
                     Modifier.padding(vertical = 4.dp, horizontal = 2.dp)
@@ -1484,25 +1504,25 @@ fun EditorialSectorItemRow(
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                         fontSize = 14.sp
                     ),
-                    color = if (isSelected) Color.White else Color.Black
+                    color = contentColor
                 )
                 Box(
                     modifier = Modifier
                         .width(28.dp)
                         .height(1.dp)
-                        .background(if (isSelected) Color.White.copy(alpha = 0.6f) else Color(0xFFCCCCCC))
+                        .background(tickColor)
                 )
             }
 
             Spacer(modifier = Modifier.width(6.dp))
         }
 
-        // Signature 4.5dp Solid Black / White Vertical Accent Bar
+        // Signature 4.5dp Solid Vertical Accent Bar
         Box(
             modifier = Modifier
                 .width(4.5.dp)
                 .height(36.dp)
-                .background(if (isSelected) Color.White else Color.Black)
+                .background(contentColor)
         )
 
         Spacer(modifier = Modifier.width(10.dp))
@@ -1517,7 +1537,7 @@ fun EditorialSectorItemRow(
                     letterSpacing = 0.4.sp,
                     fontSize = 13.sp
                 ),
-                color = if (isSelected) Color.White else Color.Black,
+                color = contentColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1529,7 +1549,7 @@ fun EditorialSectorItemRow(
                         fontSize = 11.sp,
                         lineHeight = 14.sp
                     ),
-                    color = if (isSelected) Color.White.copy(alpha = 0.85f) else Color(0xFF555555),
+                    color = descColor,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )

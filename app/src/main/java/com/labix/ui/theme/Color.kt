@@ -26,29 +26,29 @@ val SleekLightOnTertiary = Color(0xFFFFFFFF)
 val SleekLightTertiaryContainer = Color(0xFFF5F5F5)
 val SleekLightOnTertiaryContainer = Color(0xFF000000)
 
-// Minimalist Monochrome Palette
-val SleekDarkBg = Color(0xFFFFFFFF) // White background
-val SleekDarkSurface = Color(0xFFFFFFFF) // White surface
-val SleekDarkSurfaceVariant = Color(0xFFF7F7F7) // Very subtle light gray container
-val SleekDarkOnSurface = Color(0xFF000000) // Stark black text
-val SleekDarkOnSurfaceVariant = Color(0xFF222222) // Dark charcoal
-val SleekDarkOutline = Color(0xFF000000) // Stark black border
-val SleekDarkOutlineVariant = Color(0xFF333333)
+// Minimalist Monochrome Dark Palette (Deep dark obsidian canvas, crisp white text & borders)
+val SleekDarkBg = Color(0xFF101014) // Deep obsidian dark canvas
+val SleekDarkSurface = Color(0xFF18181D) // Elevated dark surface
+val SleekDarkSurfaceVariant = Color(0xFF222228) // Subtle dark gray container
+val SleekDarkOnSurface = Color(0xFFF2F2F5) // Crisp white text
+val SleekDarkOnSurfaceVariant = Color(0xFFAAAAAF) // Secondary light gray text
+val SleekDarkOutline = Color(0xFF44444E) // Defined outline
+val SleekDarkOutlineVariant = Color(0xFF2E2E36)
 
-val SleekDarkPrimary = Color(0xFF000000) // Black primary
-val SleekDarkOnPrimary = Color(0xFFFFFFFF)
-val SleekDarkPrimaryContainer = Color(0xFFF0F0F0)
-val SleekDarkOnPrimaryContainer = Color(0xFF000000)
+val SleekDarkPrimary = Color(0xFFFFFFFF) // White primary against dark canvas
+val SleekDarkOnPrimary = Color(0xFF101014)
+val SleekDarkPrimaryContainer = Color(0xFF282832)
+val SleekDarkOnPrimaryContainer = Color(0xFFFFFFFF)
 
-val SleekDarkSecondary = Color(0xFF1A1A1A)
-val SleekDarkOnSecondary = Color(0xFFFFFFFF)
-val SleekDarkSecondaryContainer = Color(0xFFEBEBEB)
-val SleekDarkOnSecondaryContainer = Color(0xFF000000)
+val SleekDarkSecondary = Color(0xFFE2E2EA)
+val SleekDarkOnSecondary = Color(0xFF101014)
+val SleekDarkSecondaryContainer = Color(0xFF26262E)
+val SleekDarkOnSecondaryContainer = Color(0xFFF0F0F5)
 
-val SleekDarkTertiary = Color(0xFF333333)
-val SleekDarkOnTertiary = Color(0xFFFFFFFF)
-val SleekDarkTertiaryContainer = Color(0xFFF5F5F5)
-val SleekDarkOnTertiaryContainer = Color(0xFF000000)
+val SleekDarkTertiary = Color(0xFFCCCCCC)
+val SleekDarkOnTertiary = Color(0xFF101014)
+val SleekDarkTertiaryContainer = Color(0xFF202026)
+val SleekDarkOnTertiaryContainer = Color(0xFFFFFFFF)
 
 // Semantic Accents (Refined, Desaturated Editorial Tones)
 val AccentEmerald = Color(0xFF2D7A4F) // Refined botanical green

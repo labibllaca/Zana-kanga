@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -52,6 +53,13 @@ fun MiniPlayerBar(
         label = "miniProgress"
     )
 
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val surfaceColor = if (isDark) Color(0xFF18181D) else Color.White
+    val contentColor = if (isDark) Color(0xFFF2F2F5) else Color.Black
+    val borderColor = if (isDark) Color(0xFF404048) else Color.Black
+    val subtextColor = if (isDark) Color(0xFFA0A0A8) else Color(0xFF555555)
+    val progressTrack = if (isDark) Color(0xFF2A2A32) else Color(0xFFE5E5E5)
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -59,8 +67,8 @@ fun MiniPlayerBar(
             .clip(RoundedCornerShape(20.dp))
             .testTag("mini_player_bar"),
         shape = RoundedCornerShape(20.dp),
-        color = Color.White,
-        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
+        color = surfaceColor,
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, borderColor),
         tonalElevation = 0.dp,
         shadowElevation = 3.dp
     ) {
@@ -71,8 +79,8 @@ fun MiniPlayerBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(2.5.dp),
-                color = Color.Black,
-                trackColor = Color(0xFFE5E5E5)
+                color = contentColor,
+                trackColor = progressTrack
             )
 
             Row(
@@ -170,7 +178,7 @@ fun MiniPlayerBar(
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 0.5.sp
                                 ),
-                                color = Color.Black,
+                                color = contentColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -180,7 +188,7 @@ fun MiniPlayerBar(
                                     fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
                                     letterSpacing = 0.2.sp
                                 ),
-                                color = Color(0xFF555555),
+                                color = subtextColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -207,7 +215,7 @@ fun MiniPlayerBar(
                     Icon(
                         imageVector = if (isHolding) Icons.Filled.FastRewind else Icons.Filled.SkipPrevious,
                         contentDescription = "Previous Track",
-                        tint = if (isHolding) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = contentColor,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -219,7 +227,7 @@ fun MiniPlayerBar(
                             .size(24.dp)
                             .padding(2.dp),
                         strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
+                        color = contentColor
                     )
                 } else {
                     IconButton(
@@ -239,7 +247,7 @@ fun MiniPlayerBar(
                             Icon(
                                 imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 contentDescription = if (isPlaying) "Pause" else "Play",
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = contentColor,
                                 modifier = Modifier.size(26.dp)
                             )
                         }
@@ -263,7 +271,7 @@ fun MiniPlayerBar(
                     Icon(
                         imageVector = if (isHolding) Icons.Filled.FastForward else Icons.Filled.SkipNext,
                         contentDescription = "Next Track",
-                        tint = if (isHolding) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
+                        tint = contentColor,
                         modifier = Modifier.size(24.dp)
                     )
                 }

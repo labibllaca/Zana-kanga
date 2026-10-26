@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
@@ -101,10 +102,17 @@ fun AstrolabeSearchScreen(
         }
     }
 
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val bgColor = if (isDark) Color(0xFF101014) else Color.White
+    val surfaceColor = if (isDark) Color(0xFF18181D) else Color.White
+    val contentColor = if (isDark) Color(0xFFF2F2F5) else Color.Black
+    val borderColor = if (isDark) Color(0xFF404048) else Color.Black
+    val subtextColor = if (isDark) Color(0xFFA0A0A8) else Color(0xFF666666)
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(bgColor)
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(16.dp)
@@ -125,7 +133,7 @@ fun AstrolabeSearchScreen(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 2.sp
                     ),
-                    color = Color.Black
+                    color = contentColor
                 )
                 Text(
                     text = "A–Z SCRUBBER & MANUSCRIPT SEARCH",
@@ -134,14 +142,12 @@ fun AstrolabeSearchScreen(
                         letterSpacing = 1.sp,
                         fontSize = 10.sp
                     ),
-                    color = Color(0xFF666666)
+                    color = subtextColor
                 )
             }
-
-
         }
 
-        // Search Input Field with solid black border on white
+        // Search Input Field with solid border
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
@@ -149,14 +155,14 @@ fun AstrolabeSearchScreen(
                 Text(
                     "Search manuscripts or keywords...",
                     style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif),
-                    color = Color(0xFF888888)
+                    color = if (isDark) Color(0xFF707078) else Color(0xFF888888)
                 )
             },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Color.Black) },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = contentColor) },
             trailingIcon = {
                 if (query.isNotBlank()) {
                     IconButton(onClick = { onQueryChange("") }) {
-                        Icon(Icons.Filled.Clear, contentDescription = "Clear", tint = Color.Black)
+                        Icon(Icons.Filled.Clear, contentDescription = "Clear", tint = contentColor)
                     }
                 }
             },
@@ -164,12 +170,12 @@ fun AstrolabeSearchScreen(
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color.Black,
-                unfocusedBorderColor = Color(0xFF666666),
-                focusedTextColor = Color.Black,
-                unfocusedTextColor = Color.Black,
-                focusedContainerColor = Color.White,
-                unfocusedContainerColor = Color.White
+                focusedBorderColor = contentColor,
+                unfocusedBorderColor = borderColor,
+                focusedTextColor = contentColor,
+                unfocusedTextColor = contentColor,
+                focusedContainerColor = surfaceColor,
+                unfocusedContainerColor = surfaceColor
             )
         )
 
@@ -182,8 +188,8 @@ fun AstrolabeSearchScreen(
                 val isSelected = activeFilter == filter
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = if (isSelected) Color.Black else Color.White,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
+                    color = if (isSelected) contentColor else surfaceColor,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
                     modifier = Modifier
                         .weight(1f)
                         .clickable {
@@ -203,7 +209,7 @@ fun AstrolabeSearchScreen(
                                 letterSpacing = 1.sp,
                                 fontSize = 10.sp
                             ),
-                            color = if (isSelected) Color.White else Color.Black
+                            color = if (isSelected) (if (isDark) Color(0xFF101014) else Color.White) else contentColor
                         )
                     }
                 }
@@ -250,7 +256,8 @@ fun AstrolabeSearchScreen(
                         currentTrackIndex = alphabet.indexOf(selectedLetter),
                         listCount = 4,
                         activeListIndex = 0,
-                        rotationDeg = alphabetDialState.angle
+                        rotationDeg = alphabetDialState.angle,
+                        isDark = isDark
                     )
                 }
 
@@ -260,8 +267,8 @@ fun AstrolabeSearchScreen(
                     modifier = Modifier
                         .size(dialSize * 0.30f)
                         .clip(CircleShape)
-                        .background(Color.White)
-                        .border(1.5.dp, Color.Black, CircleShape)
+                        .background(surfaceColor)
+                        .border(1.5.dp, contentColor, CircleShape)
                         .clickable {
                             // Advance to next letter on tap
                             haptics.tick()
@@ -280,7 +287,7 @@ fun AstrolabeSearchScreen(
                             fontWeight = FontWeight.Bold,
                             fontSize = 26.sp
                         ),
-                        color = Color.Black
+                        color = contentColor
                     )
                     Text(
                         text = "SCRUB",
@@ -290,25 +297,25 @@ fun AstrolabeSearchScreen(
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold
                         ),
-                        color = Color(0xFF666666)
+                        color = subtextColor
                     )
                 }
             }
         }
 
-        // Results Section formatted with editorial shelf ticks and 4.5dp black accent bars
+        // Results Section formatted with editorial shelf ticks and 4.5dp accent bars
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = Color.White,
-            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
+            color = surfaceColor,
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, borderColor),
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
         ) {
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(14.dp),
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(start = 14.dp, top = 14.dp, end = 14.dp, bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 // Artists section if filter allows
@@ -322,10 +329,10 @@ fun AstrolabeSearchScreen(
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 1.5.sp
                                 ),
-                                color = Color.Black,
+                                color = contentColor,
                                 modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                             )
-                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.Black))
+                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(contentColor))
                             Spacer(modifier = Modifier.height(4.dp))
                         }
                         itemsIndexed(displayedArtists) { index, artist ->
@@ -339,23 +346,23 @@ fun AstrolabeSearchScreen(
                                     Text(
                                         text = (index + 1).toString().padStart(2, '0'),
                                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold),
-                                        color = Color.Black
+                                        color = contentColor
                                     )
-                                    Box(modifier = Modifier.width(22.dp).height(1.dp).background(Color(0xFFCCCCCC)))
+                                    Box(modifier = Modifier.width(22.dp).height(1.dp).background(borderColor))
                                 }
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Box(modifier = Modifier.width(4.5.dp).height(32.dp).background(Color.Black))
+                                Box(modifier = Modifier.width(4.5.dp).height(32.dp).background(contentColor))
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = artist.name,
                                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold),
-                                        color = Color.Black
+                                        color = contentColor
                                     )
                                     Text(
                                         text = "Cataloged Celestial Artist",
                                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = Color(0xFF666666)
+                                        color = subtextColor
                                     )
                                 }
                             }
@@ -375,10 +382,10 @@ fun AstrolabeSearchScreen(
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 1.5.sp
                                 ),
-                                color = Color.Black,
+                                color = contentColor,
                                 modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                             )
-                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.Black))
+                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(contentColor))
                             Spacer(modifier = Modifier.height(4.dp))
                         }
                         itemsIndexed(displayedAlbums) { index, album ->
@@ -396,25 +403,25 @@ fun AstrolabeSearchScreen(
                                     Text(
                                         text = (index + 1).toString().padStart(2, '0'),
                                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold),
-                                        color = Color.Black
+                                        color = contentColor
                                     )
-                                    Box(modifier = Modifier.width(22.dp).height(1.dp).background(Color(0xFFCCCCCC)))
+                                    Box(modifier = Modifier.width(22.dp).height(1.dp).background(borderColor))
                                 }
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Box(modifier = Modifier.width(4.5.dp).height(32.dp).background(Color.Black))
+                                Box(modifier = Modifier.width(4.5.dp).height(32.dp).background(contentColor))
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = album.name,
                                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold),
-                                        color = Color.Black,
+                                        color = contentColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = album.artist,
                                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = Color(0xFF666666),
+                                        color = subtextColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -436,10 +443,10 @@ fun AstrolabeSearchScreen(
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 1.5.sp
                                 ),
-                                color = Color.Black,
+                                color = contentColor,
                                 modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                             )
-                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.Black))
+                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(contentColor))
                             Spacer(modifier = Modifier.height(4.dp))
                         }
                         itemsIndexed(displayedTracks) { index, track ->
@@ -457,25 +464,25 @@ fun AstrolabeSearchScreen(
                                     Text(
                                         text = (index + 1).toString().padStart(2, '0'),
                                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold),
-                                        color = Color.Black
+                                        color = contentColor
                                     )
-                                    Box(modifier = Modifier.width(22.dp).height(1.dp).background(Color(0xFFCCCCCC)))
+                                    Box(modifier = Modifier.width(22.dp).height(1.dp).background(borderColor))
                                 }
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Box(modifier = Modifier.width(4.5.dp).height(34.dp).background(Color.Black))
+                                Box(modifier = Modifier.width(4.5.dp).height(34.dp).background(contentColor))
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = track.title,
                                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold),
-                                        color = Color.Black,
+                                        color = contentColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = "${track.artist} • ${formatDuration(track.durationSeconds)}",
                                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = Color(0xFF666666),
+                                        color = subtextColor,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -496,10 +503,15 @@ fun AstrolabeSearchScreen(
                             Text(
                                 text = "Rotate the alphabet scrubber to explore manuscripts",
                                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Serif),
-                                color = Color(0xFF888888)
+                                color = subtextColor
                             )
                         }
                     }
+                }
+
+                // Generous 50% vertical scroll space so bottom items can easily scroll up clear of MiniPlayer
+                item {
+                    Spacer(modifier = Modifier.fillParentMaxHeight(0.5f))
                 }
             }
         }

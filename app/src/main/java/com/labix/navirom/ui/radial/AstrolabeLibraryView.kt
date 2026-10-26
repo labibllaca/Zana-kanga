@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -41,7 +42,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 enum class LibraryFilterType {
-    ALL, PLAYLISTS, ALBUMS, ARTISTS
+    ALL, PLAYLISTS, ALBUMS, ARTISTS, SONGS
 }
 
 data class EditorialListItem(
@@ -52,7 +53,8 @@ data class EditorialListItem(
     val trackCount: Int,
     val rawAlbum: NaviromAlbum? = null,
     val rawPlaylist: NaviromPlaylist? = null,
-    val rawArtist: NaviromArtist? = null
+    val rawArtist: NaviromArtist? = null,
+    val rawSongsBatch: List<NaviromTrack>? = null
 )
 
 /**
@@ -82,11 +84,30 @@ fun AstrolabeLibraryView(
     var activeListIndex by remember { mutableIntStateOf(0) }
     val lazyListState = rememberLazyListState()
 
+    // Unique songs across all lists (no duplicate elements)
+    val uniqueSongs = remember(librarySongs) { librarySongs.distinctBy { it.id } }
+    var visibleSongCount by remember(activeFilter) { mutableIntStateOf(25) }
+
+    val songBatchItems = remember(uniqueSongs) {
+        uniqueSongs.chunked(25).mapIndexed { batchIdx, batch ->
+            val startNum = batchIdx * 25 + 1
+            val endNum = startNum + batch.size - 1
+            EditorialListItem(
+                id = "song_batch_$batchIdx",
+                title = "SONGS BATCH ${batchIdx + 1}",
+                subtitle = "TRACKS $startNum–$endNum • ${batch.size} MANUSCRIPTS",
+                type = LibraryFilterType.SONGS,
+                trackCount = batch.size,
+                rawSongsBatch = batch
+            )
+        }
+    }
+
     // Build unified editorial list items
     val allItems = remember(playlists, albums, artists, librarySongs) {
         val list = mutableListOf<EditorialListItem>()
 
-        // 1. Playlists first (prominent access for large playlist collections)
+        // 1. Playlists first
         playlists.forEach { pl ->
             val durationText = if (pl.durationSeconds > 0) " • ${formatSecs(pl.durationSeconds)}" else ""
             list.add(
@@ -136,13 +157,18 @@ fun AstrolabeLibraryView(
     }
 
     // Filtered lists
-    val displayLists = remember(allItems, activeFilter) {
+    val displayLists = remember(allItems, songBatchItems, activeFilter) {
         when (activeFilter) {
             LibraryFilterType.ALL -> allItems
             LibraryFilterType.PLAYLISTS -> allItems.filter { it.type == LibraryFilterType.PLAYLISTS }
             LibraryFilterType.ALBUMS -> allItems.filter { it.type == LibraryFilterType.ALBUMS }
             LibraryFilterType.ARTISTS -> allItems.filter { it.type == LibraryFilterType.ARTISTS }
+            LibraryFilterType.SONGS -> songBatchItems
         }
+    }
+
+    val displayedSongs = remember(uniqueSongs, visibleSongCount) {
+        uniqueSongs.take(visibleSongCount)
     }
 
     // Ensure active index stays within bounds
@@ -187,10 +213,16 @@ fun AstrolabeLibraryView(
         }
     }
 
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val canvasBg = MaterialTheme.colorScheme.background
+    val inkColor = if (isDark) Color.White else Color.Black
+    val secondaryInk = if (isDark) Color(0xFFAAAAAF) else Color(0xFF666666)
+    val borderDividerColor = if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(canvasBg)
             .statusBarsPadding()
             .testTag("astrolabe_library_view")
     ) {
@@ -216,7 +248,7 @@ fun AstrolabeLibraryView(
                             letterSpacing = 2.sp,
                             fontSize = 15.sp
                         ),
-                        color = Color.Black
+                        color = inkColor
                     )
                     Text(
                         text = "${displayLists.size} COLLECTIONS • HALF-WHEEL RADIAL SELECTION",
@@ -225,7 +257,7 @@ fun AstrolabeLibraryView(
                             letterSpacing = 1.sp,
                             fontSize = 9.sp
                         ),
-                        color = Color(0xFF666666)
+                        color = secondaryInk
                     )
                 }
 
@@ -237,8 +269,8 @@ fun AstrolabeLibraryView(
                         },
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Color.Black,
-                            contentColor = Color.White
+                            containerColor = if (isDark) Color.White else Color.Black,
+                            contentColor = if (isDark) Color.Black else Color.White
                         ),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                     ) {
@@ -268,13 +300,30 @@ fun AstrolabeLibraryView(
                     LibraryFilterType.ALL to "ALL (${allItems.size})",
                     LibraryFilterType.PLAYLISTS to "PLAYLISTS (${playlists.size})",
                     LibraryFilterType.ALBUMS to "ALBUMS (${albums.size})",
-                    LibraryFilterType.ARTISTS to "ARTISTS (${artists.size})"
+                    LibraryFilterType.ARTISTS to "ARTISTS (${artists.size})",
+                    LibraryFilterType.SONGS to "SONGS (${uniqueSongs.size})"
                 ).forEach { (filterType, label) ->
                     val isSelected = activeFilter == filterType
+                    val chipBg = if (isSelected) {
+                        if (isDark) Color.White else Color.Black
+                    } else {
+                        if (isDark) Color(0xFF1C1C22) else Color.White
+                    }
+                    val chipContent = if (isSelected) {
+                        if (isDark) Color.Black else Color.White
+                    } else {
+                        if (isDark) Color.White else Color.Black
+                    }
+                    val chipBorder = if (isSelected) {
+                        if (isDark) Color.White else Color.Black
+                    } else {
+                        if (isDark) Color.White.copy(alpha = 0.35f) else Color.Black
+                    }
+
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) Color.Black else Color.White,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
+                        color = chipBg,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, chipBorder),
                         modifier = Modifier
                             .clickable {
                                 haptics.click()
@@ -291,7 +340,7 @@ fun AstrolabeLibraryView(
                                 letterSpacing = 0.5.sp,
                                 fontSize = 9.sp
                             ),
-                            color = if (isSelected) Color.White else Color.Black,
+                            color = chipContent,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
@@ -303,7 +352,7 @@ fun AstrolabeLibraryView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.5.dp)
-                    .background(Color.Black)
+                    .background(borderDividerColor)
             )
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -326,7 +375,7 @@ fun AstrolabeLibraryView(
                     modifier = Modifier
                         .fillMaxHeight()
                         .width(halfWheelWidth)
-                        .background(Color.White)
+                        .background(canvasBg)
                         .pointerInput(displayLists.size) {
                             var accumulatedDrag = 0f
                             detectVerticalDragGestures(
@@ -369,14 +418,15 @@ fun AstrolabeLibraryView(
                                 outerRadius = outerRadPx,
                                 rotationDeg = wheelRotationDeg,
                                 listCount = displayLists.size.coerceAtLeast(4),
-                                activeListIndex = activeListIndex
+                                activeListIndex = activeListIndex,
+                                isDark = isDark
                             )
                         }
 
                         // Center index tag at equator
                         Surface(
                             shape = RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp),
-                            color = Color.Black,
+                            color = if (isDark) Color.White else Color.Black,
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
                                 .offset(x = 4.dp)
@@ -388,7 +438,7 @@ fun AstrolabeLibraryView(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp
                                 ),
-                                color = Color.White
+                                color = if (isDark) Color.Black else Color.White
                             )
                         }
                     }
@@ -399,15 +449,88 @@ fun AstrolabeLibraryView(
                     modifier = Modifier
                         .fillMaxHeight()
                         .width(1.dp)
-                        .background(Color.Black.copy(alpha = 0.2f))
+                        .background(if (isDark) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.2f))
                 )
 
                 Spacer(modifier = Modifier.width(6.dp))
 
                 // ==========================================
-                // 2. RIGHT SIDE: PROMINENT FULLY VISIBLE LISTS
+                // 2. RIGHT SIDE: PROMINENT FULLY VISIBLE LISTS / SONGS
                 // ==========================================
-                if (displayLists.isEmpty()) {
+                if (activeFilter == LibraryFilterType.SONGS) {
+                    if (uniqueSongs.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No songs cataloged in library",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontSize = 12.sp
+                                ),
+                                color = secondaryInk
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            state = lazyListState,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            contentPadding = PaddingValues(top = 6.dp, start = 2.dp, end = 2.dp, bottom = 80.dp)
+                        ) {
+                            itemsIndexed(displayedSongs) { idx, track ->
+                                EditorialSongItemRow(
+                                    track = track,
+                                    indexNumber = (idx + 1).toString().padStart(2, '0'),
+                                    isDark = isDark,
+                                    onTrackClick = {
+                                        haptics.click()
+                                        onTrackClick(track, uniqueSongs)
+                                    }
+                                )
+                            }
+
+                            if (visibleSongCount < uniqueSongs.size) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 12.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                haptics.click()
+                                                visibleSongCount = (visibleSongCount + 25).coerceAtMost(uniqueSongs.size)
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, inkColor)
+                                        ) {
+                                            Text(
+                                                text = "LOAD NEXT 25 MANUSCRIPTS (${visibleSongCount} / ${uniqueSongs.size})",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontFamily = FontFamily.Serif,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 10.sp
+                                                ),
+                                                color = inkColor
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            item {
+                                Spacer(modifier = Modifier.fillParentMaxHeight(0.5f))
+                            }
+                        }
+                    }
+                } else if (displayLists.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -420,7 +543,7 @@ fun AstrolabeLibraryView(
                                 fontFamily = FontFamily.Serif,
                                 fontSize = 12.sp
                             ),
-                            color = Color(0xFF666666)
+                            color = secondaryInk
                         )
                     }
                 } else {
@@ -430,7 +553,7 @@ fun AstrolabeLibraryView(
                             .weight(1f)
                             .fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
-                        contentPadding = PaddingValues(vertical = 6.dp, horizontal = 2.dp)
+                        contentPadding = PaddingValues(top = 6.dp, start = 2.dp, end = 2.dp, bottom = 80.dp)
                     ) {
                         itemsIndexed(displayLists) { idx, item ->
                             val isSelected = (idx == activeListIndex)
@@ -439,11 +562,11 @@ fun AstrolabeLibraryView(
                                 item = item,
                                 indexNumber = (idx + 1).toString().padStart(2, '0'),
                                 isSelected = isSelected,
+                                isDark = isDark,
                                 onSelect = {
                                     haptics.click()
                                     activeListIndex = idx
                                     wheelRotationDeg = -(idx * angularStep)
-                                    // If playlist or album, open details if requested
                                     if (item.rawPlaylist != null && onSelectPlaylist != null) {
                                         onSelectPlaylist(item.rawPlaylist.id)
                                     } else if (item.rawAlbum != null) {
@@ -459,6 +582,10 @@ fun AstrolabeLibraryView(
                                 }
                             )
                         }
+
+                        item {
+                            Spacer(modifier = Modifier.fillParentMaxHeight(0.5f))
+                        }
                     }
                 }
             }
@@ -471,14 +598,41 @@ private fun EditorialListItemRow(
     item: EditorialListItem,
     indexNumber: String,
     isSelected: Boolean,
+    isDark: Boolean = false,
     onSelect: () -> Unit,
     onPlay: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val containerBg = if (isSelected) {
+        if (isDark) Color.White else Color.Black
+    } else {
+        if (isDark) Color(0xFF18181D) else Color.White
+    }
+    val contentColor = if (isSelected) {
+        if (isDark) Color.Black else Color.White
+    } else {
+        if (isDark) Color.White else Color.Black
+    }
+    val subtitleColor = if (isSelected) {
+        if (isDark) Color.Black.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.85f)
+    } else {
+        if (isDark) Color(0xFFAAAAAF) else Color(0xFF555555)
+    }
+    val borderColor = if (isSelected) {
+        if (isDark) Color.White else Color.Black
+    } else {
+        if (isDark) Color.White.copy(alpha = 0.22f) else Color.Black
+    }
+    val tickColor = if (isSelected) {
+        if (isDark) Color.Black.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.6f)
+    } else {
+        if (isDark) Color(0xFF444450) else Color(0xFFCCCCCC)
+    }
+
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = if (isSelected) Color.Black else Color.White,
-        border = androidx.compose.foundation.BorderStroke(1.2.dp, Color.Black),
+        color = containerBg,
+        border = androidx.compose.foundation.BorderStroke(1.2.dp, borderColor),
         shadowElevation = if (isSelected) 3.dp else 0.dp,
         modifier = modifier
             .fillMaxWidth()
@@ -502,13 +656,13 @@ private fun EditorialListItemRow(
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                         fontSize = 12.sp
                     ),
-                    color = if (isSelected) Color.White else Color.Black
+                    color = contentColor
                 )
                 Box(
                     modifier = Modifier
                         .width(20.dp)
                         .height(1.dp)
-                        .background(if (isSelected) Color.White.copy(alpha = 0.6f) else Color(0xFFCCCCCC))
+                        .background(tickColor)
                 )
             }
 
@@ -519,7 +673,7 @@ private fun EditorialListItemRow(
                 modifier = Modifier
                     .width(4.5.dp)
                     .height(34.dp)
-                    .background(if (isSelected) Color.White else Color.Black)
+                    .background(contentColor)
             )
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -535,7 +689,7 @@ private fun EditorialListItemRow(
                         fontSize = 13.5.sp,
                         lineHeight = 17.sp
                     ),
-                    color = if (isSelected) Color.White else Color.Black,
+                    color = contentColor,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -546,7 +700,7 @@ private fun EditorialListItemRow(
                         fontSize = 10.sp,
                         lineHeight = 13.sp
                     ),
-                    color = if (isSelected) Color.White.copy(alpha = 0.85f) else Color(0xFF555555),
+                    color = subtitleColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -562,7 +716,7 @@ private fun EditorialListItemRow(
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
                     contentDescription = "Play List",
-                    tint = if (isSelected) Color.White else Color.Black,
+                    tint = contentColor,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -575,4 +729,114 @@ private fun formatSecs(secs: Int): String {
     val m = (secs % 3600) / 60
     val s = secs % 60
     return if (h > 0) String.format("%dh %02dm", h, m) else String.format("%02d:%02d", m, s)
+}
+
+@Composable
+private fun EditorialSongItemRow(
+    track: NaviromTrack,
+    indexNumber: String,
+    isDark: Boolean = false,
+    onTrackClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val containerBg = if (isDark) Color(0xFF18181D) else Color.White
+    val contentColor = if (isDark) Color.White else Color.Black
+    val subtitleColor = if (isDark) Color(0xFFAAAAAF) else Color(0xFF555555)
+    val borderColor = if (isDark) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.2f)
+    val tickColor = if (isDark) Color(0xFF444450) else Color(0xFFCCCCCC)
+
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = containerBg,
+        border = androidx.compose.foundation.BorderStroke(1.2.dp, borderColor),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onTrackClick() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.width(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = indexNumber,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.sp
+                    ),
+                    color = contentColor
+                )
+                Box(
+                    modifier = Modifier
+                        .width(20.dp)
+                        .height(1.dp)
+                        .background(tickColor)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            Box(
+                modifier = Modifier
+                    .width(4.5.dp)
+                    .height(34.dp)
+                    .background(contentColor)
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.title.ifBlank { "Untitled Manuscript" },
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.4.sp,
+                        fontSize = 13.5.sp,
+                        lineHeight = 17.sp
+                    ),
+                    color = contentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${track.artist} • ${formatDurationSecs(track.durationSeconds)} • ${track.album.ifBlank { "Celestial Archive" }}",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp
+                    ),
+                    color = subtitleColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            IconButton(
+                onClick = onTrackClick,
+                modifier = Modifier.size(30.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = "Play Track",
+                    tint = contentColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun formatDurationSecs(secs: Int): String {
+    val m = secs / 60
+    val s = secs % 60
+    return String.format("%02d:%02d", m, s)
 }

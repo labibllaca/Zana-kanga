@@ -342,16 +342,22 @@ fun DrawScope.drawEditorialConcentricWheel(
     currentTrackIndex: Int = 0,
     listCount: Int = 5,
     activeListIndex: Int = 0,
-    rotationDeg: Float = 0f
+    rotationDeg: Float = 0f,
+    isDark: Boolean = false
 ) {
     val outerR = outerRadius * 0.76f
     val middleR = outerR * 0.70f
     val innerR = outerR * 0.42f
     val coreR = outerR * 0.22f
 
-    // Background: Pure White Canvas
+    val canvasBg = if (isDark) Color(0xFF101014) else Color.White
+    val inkColor = if (isDark) Color(0xFFF0F0F3) else Color.Black
+    val subtleInk = if (isDark) Color.White.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.35f)
+    val lightInk = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.18f)
+
+    // Background: Canvas
     drawCircle(
-        color = Color.White,
+        color = canvasBg,
         radius = outerRadius,
         center = center
     )
@@ -366,7 +372,7 @@ fun DrawScope.drawEditorialConcentricWheel(
 
     // Arc segment 1 (e.g. September sector bracket)
     drawArc(
-        color = Color.Black,
+        color = inkColor,
         startAngle = rotationDeg - 85f,
         sweepAngle = 72f,
         useCenter = false,
@@ -378,11 +384,11 @@ fun DrawScope.drawEditorialConcentricWheel(
     val step1Angle = rotationDeg - 13f
     val step1Start = RadialMath.toCartesian(center, arc1R, step1Angle)
     val step1End = RadialMath.toCartesian(center, arc2R, step1Angle)
-    drawLine(Color.Black, step1Start, step1End, strokeWidth = 4.0f)
+    drawLine(inkColor, step1Start, step1End, strokeWidth = 4.0f)
 
     // Arc segment 2 (e.g. October sector bracket)
     drawArc(
-        color = Color.Black,
+        color = inkColor,
         startAngle = rotationDeg - 13f,
         sweepAngle = 76f,
         useCenter = false,
@@ -394,11 +400,11 @@ fun DrawScope.drawEditorialConcentricWheel(
     val step2Angle = rotationDeg + 63f
     val step2Start = RadialMath.toCartesian(center, arc2R, step2Angle)
     val step2End = RadialMath.toCartesian(center, arc3R, step2Angle)
-    drawLine(Color.Black, step2Start, step2End, strokeWidth = 4.0f)
+    drawLine(inkColor, step2Start, step2End, strokeWidth = 4.0f)
 
     // Arc segment 3 (e.g. November sector bracket)
     drawArc(
-        color = Color.Black,
+        color = inkColor,
         startAngle = rotationDeg + 63f,
         sweepAngle = 68f,
         useCenter = false,
@@ -416,7 +422,7 @@ fun DrawScope.drawEditorialConcentricWheel(
         val pStart = RadialMath.toCartesian(center, rStart, rayAngle)
         val pEnd = RadialMath.toCartesian(center, rEnd, rayAngle)
         drawLine(
-            color = Color.Black,
+            color = inkColor,
             start = pStart,
             end = pEnd,
             strokeWidth = 1.6f,
@@ -428,7 +434,7 @@ fun DrawScope.drawEditorialConcentricWheel(
             val tickMid = RadialMath.toCartesian(center, tickR, rayAngle)
             val tickT1 = RadialMath.toCartesian(tickMid, 5f, rayAngle + 90f)
             val tickT2 = RadialMath.toCartesian(tickMid, 5f, rayAngle - 90f)
-            drawLine(Color.Black, tickT1, tickT2, strokeWidth = 1.0f)
+            drawLine(inkColor, tickT1, tickT2, strokeWidth = 1.0f)
         }
     }
 
@@ -440,7 +446,7 @@ fun DrawScope.drawEditorialConcentricWheel(
     )
     for (i in 0 until starOffsets.size - 1) {
         drawLine(
-            color = Color.Black.copy(alpha = 0.75f),
+            color = if (isDark) Color.White.copy(alpha = 0.75f) else Color.Black.copy(alpha = 0.75f),
             start = constCenter + starOffsets[i],
             end = constCenter + starOffsets[i + 1],
             strokeWidth = 1.1f
@@ -448,7 +454,7 @@ fun DrawScope.drawEditorialConcentricWheel(
     }
     for (so in starOffsets) {
         drawCircle(
-            color = Color.Black,
+            color = if (isDark) Color.White else Color.Black,
             radius = 2.8f,
             center = constCenter + so
         )
@@ -459,7 +465,7 @@ fun DrawScope.drawEditorialConcentricWheel(
     // ==========================================
     // Outer perimeter borderline
     drawCircle(
-        color = Color.Black,
+        color = inkColor,
         radius = outerR,
         center = center,
         style = Stroke(width = 2.0f)
@@ -478,7 +484,7 @@ fun DrawScope.drawEditorialConcentricWheel(
         val start = RadialMath.toCartesian(center, outerR - tickLength, angleDeg)
         val end = RadialMath.toCartesian(center, outerR, angleDeg)
         drawLine(
-            color = Color.Black,
+            color = inkColor,
             start = start,
             end = end,
             strokeWidth = tickStroke,
@@ -496,7 +502,7 @@ fun DrawScope.drawEditorialConcentricWheel(
         val arcStrokeWidth = if (isCurrentList) 6.0f else 4.0f
 
         drawArc(
-            color = Color.Black,
+            color = inkColor,
             startAngle = startAng,
             sweepAngle = sweepAng,
             useCenter = false,
@@ -510,7 +516,7 @@ fun DrawScope.drawEditorialConcentricWheel(
         val divP1 = RadialMath.toCartesian(center, middleR - 4f, divAngle)
         val divP2 = RadialMath.toCartesian(center, outerR - 16f, divAngle)
         drawLine(
-            color = Color.Black,
+            color = inkColor,
             start = divP1,
             end = divP2,
             strokeWidth = 2.0f,
@@ -523,7 +529,7 @@ fun DrawScope.drawEditorialConcentricWheel(
     // ==========================================
     // Middle ring boundary circle
     drawCircle(
-        color = Color.Black,
+        color = inkColor,
         radius = middleR,
         center = center,
         style = Stroke(width = 1.5f)
@@ -531,7 +537,7 @@ fun DrawScope.drawEditorialConcentricWheel(
 
     // Secondary dashed concentric guide line
     drawCircle(
-        color = Color.Black.copy(alpha = 0.4f),
+        color = subtleInk,
         radius = (middleR + innerR) / 2f,
         center = center,
         style = Stroke(
@@ -554,17 +560,17 @@ fun DrawScope.drawEditorialConcentricWheel(
         val pStart = RadialMath.toCartesian(center, tickInner, tickAngle)
         val pEnd = RadialMath.toCartesian(center, tickOuter, tickAngle)
         drawLine(
-            color = Color.Black,
+            color = inkColor,
             start = pStart,
             end = pEnd,
             strokeWidth = tickWidth,
             cap = StrokeCap.Round
         )
 
-        // Bold black arc segment for active track in the album
+        // Bold arc segment for active track in the album
         if (isCurrentTrack) {
             drawArc(
-                color = Color.Black,
+                color = inkColor,
                 startAngle = tickAngle - (trackStepDeg * 0.4f),
                 sweepAngle = trackStepDeg * 0.8f,
                 useCenter = false,
@@ -575,9 +581,9 @@ fun DrawScope.drawEditorialConcentricWheel(
         }
     }
 
-    // Signature thick curved black arc (inspired by the prominent black curved divider in the photo)
+    // Signature thick curved arc
     drawArc(
-        color = Color.Black,
+        color = inkColor,
         startAngle = rotationDeg - 75f,
         sweepAngle = 150f,
         useCenter = false,
@@ -591,18 +597,18 @@ fun DrawScope.drawEditorialConcentricWheel(
     // ==========================================
     // Inner boundary ring
     drawCircle(
-        color = Color.Black,
+        color = inkColor,
         radius = innerR,
         center = center,
         style = Stroke(width = 1.8f)
     )
 
-    // Clustered fine concentric vinyl grooves (4 precision hairline circles as in zoom-kal)
+    // Clustered fine concentric vinyl grooves
     val grooveSpacing = (innerR - coreR) / 5f
     for (g in 1..4) {
         val r = coreR + (g * grooveSpacing)
         drawCircle(
-            color = Color.Black.copy(alpha = 0.25f),
+            color = if (isDark) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.25f),
             radius = r,
             center = center,
             style = Stroke(width = 0.8f)
@@ -618,20 +624,20 @@ fun DrawScope.drawEditorialConcentricWheel(
         val p1 = RadialMath.toCartesian(center, innerR - tickLen, ang)
         val p2 = RadialMath.toCartesian(center, innerR, ang)
         drawLine(
-            color = Color.Black.copy(alpha = if (isMajor) 0.8f else 0.4f),
+            color = if (isDark) Color.White.copy(alpha = if (isMajor) 0.8f else 0.4f) else Color.Black.copy(alpha = if (isMajor) 0.8f else 0.4f),
             start = p1,
             end = p2,
             strokeWidth = if (isMajor) 1.2f else 0.7f
         )
     }
 
-    // Track Playback Progress Arc (Bold black line with bead indicator)
+    // Track Playback Progress Arc (Bold line with bead indicator)
     val activeSweep = (progressFraction.coerceIn(0f, 1f)) * 360f
     val progressRadius = (innerR + coreR) / 2f
 
     // Inactive progress background path
     drawCircle(
-        color = Color.Black.copy(alpha = 0.12f),
+        color = lightInk,
         radius = progressRadius,
         center = center,
         style = Stroke(width = 2.0f)
@@ -640,7 +646,7 @@ fun DrawScope.drawEditorialConcentricWheel(
     // Active progress arc
     if (activeSweep > 0.5f) {
         drawArc(
-            color = Color.Black,
+            color = inkColor,
             startAngle = -90f,
             sweepAngle = activeSweep,
             useCenter = false,
@@ -649,10 +655,10 @@ fun DrawScope.drawEditorialConcentricWheel(
             style = Stroke(width = 3.5f, cap = StrokeCap.Round)
         )
 
-        // Progress indicator black bead/pip
+        // Progress indicator bead/pip
         val beadCenter = RadialMath.toCartesian(center, progressRadius, -90f + activeSweep)
         drawCircle(
-            color = Color.Black,
+            color = inkColor,
             radius = 5.5f,
             center = beadCenter
         )
@@ -662,7 +668,7 @@ fun DrawScope.drawEditorialConcentricWheel(
     val needleTop = RadialMath.toCartesian(center, outerR + 4f, -90f)
     val needleBottom = RadialMath.toCartesian(center, middleR - 2f, -90f)
     drawLine(
-        color = Color.Black,
+        color = inkColor,
         start = needleTop,
         end = needleBottom,
         strokeWidth = 3.0f,
@@ -673,7 +679,7 @@ fun DrawScope.drawEditorialConcentricWheel(
     // 0. CENTER CELESTIAL STARRY NIGHT DISK
     // ==========================================
     drawCircle(
-        color = Color.Black,
+        color = if (isDark) Color(0xFF0A0A0E) else Color.Black,
         radius = coreR,
         center = center
     )
@@ -703,7 +709,7 @@ fun DrawScope.drawEditorialConcentricWheel(
 
     // Core boundary ring enclosing the center album/vinyl hub
     drawCircle(
-        color = Color.Black,
+        color = inkColor,
         radius = coreR + 2f,
         center = center,
         style = Stroke(width = 2.0f)
@@ -795,16 +801,23 @@ fun DrawScope.drawEditorialLeftHalfWheel(
     outerRadius: Float,
     rotationDeg: Float = 0f,
     listCount: Int = 12,
-    activeListIndex: Int = 0
+    activeListIndex: Int = 0,
+    isDark: Boolean = false
 ) {
     val outerR = outerRadius * 0.96f
     val middleR = outerR * 0.72f
     val innerR = outerR * 0.46f
     val coreR = outerR * 0.22f
 
+    val canvasBg = if (isDark) Color(0xFF101014) else Color.White
+    val inkColor = if (isDark) Color(0xFFF0F0F3) else Color.Black
+    val hubColor = if (isDark) Color(0xFF18181D) else Color.White
+    val subtleInk = if (isDark) Color.White.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.35f)
+    val grooveColor = if (isDark) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.22f)
+
     // Background semicircle
     drawArc(
-        color = Color.White,
+        color = canvasBg,
         startAngle = -90f,
         sweepAngle = 180f,
         useCenter = true,
@@ -814,7 +827,7 @@ fun DrawScope.drawEditorialLeftHalfWheel(
 
     // 1. Concentric Semicircular Border Rings
     drawArc(
-        color = Color.Black,
+        color = inkColor,
         startAngle = -90f,
         sweepAngle = 180f,
         useCenter = false,
@@ -824,7 +837,7 @@ fun DrawScope.drawEditorialLeftHalfWheel(
     )
 
     drawArc(
-        color = Color.Black,
+        color = inkColor,
         startAngle = -90f,
         sweepAngle = 180f,
         useCenter = false,
@@ -834,7 +847,7 @@ fun DrawScope.drawEditorialLeftHalfWheel(
     )
 
     drawArc(
-        color = Color.Black.copy(alpha = 0.35f),
+        color = subtleInk,
         startAngle = -90f,
         sweepAngle = 180f,
         useCenter = false,
@@ -847,7 +860,7 @@ fun DrawScope.drawEditorialLeftHalfWheel(
     )
 
     drawArc(
-        color = Color.Black,
+        color = inkColor,
         startAngle = -90f,
         sweepAngle = 180f,
         useCenter = false,
@@ -862,7 +875,7 @@ fun DrawScope.drawEditorialLeftHalfWheel(
     for (g in 1..grooveCount) {
         val r = coreR + (g * spacing)
         drawArc(
-            color = Color.Black.copy(alpha = 0.22f),
+            color = grooveColor,
             startAngle = -90f,
             sweepAngle = 180f,
             useCenter = false,
@@ -886,7 +899,7 @@ fun DrawScope.drawEditorialLeftHalfWheel(
             val pStart = RadialMath.toCartesian(center, outerR - tickLen, rotatedAng)
             val pEnd = RadialMath.toCartesian(center, outerR, rotatedAng)
             drawLine(
-                color = Color.Black,
+                color = inkColor,
                 start = pStart,
                 end = pEnd,
                 strokeWidth = strokeW,
@@ -907,7 +920,7 @@ fun DrawScope.drawEditorialLeftHalfWheel(
             val isSelected = (l == (activeListIndex % safeCount))
             val arcW = if (isSelected) 5.5f else 3.5f
             drawArc(
-                color = Color.Black,
+                color = inkColor,
                 startAngle = clampedStart,
                 sweepAngle = sweep,
                 useCenter = false,
@@ -920,7 +933,7 @@ fun DrawScope.drawEditorialLeftHalfWheel(
 
     // 5. Hub Semicircle at Left Edge
     drawArc(
-        color = Color.White,
+        color = hubColor,
         startAngle = -90f,
         sweepAngle = 180f,
         useCenter = true,
@@ -928,7 +941,7 @@ fun DrawScope.drawEditorialLeftHalfWheel(
         size = androidx.compose.ui.geometry.Size(coreR * 2f, coreR * 2f)
     )
     drawArc(
-        color = Color.Black,
+        color = inkColor,
         startAngle = -90f,
         sweepAngle = 180f,
         useCenter = false,
@@ -937,7 +950,7 @@ fun DrawScope.drawEditorialLeftHalfWheel(
         style = Stroke(width = 2.0f)
     )
     drawCircle(
-        color = Color.Black,
+        color = inkColor,
         radius = 4f,
         center = center
     )
@@ -946,7 +959,7 @@ fun DrawScope.drawEditorialLeftHalfWheel(
     val pointerP1 = RadialMath.toCartesian(center, innerR, 0f)
     val pointerP2 = RadialMath.toCartesian(center, outerR + 10f, 0f)
     drawLine(
-        color = Color.Black,
+        color = inkColor,
         start = pointerP1,
         end = pointerP2,
         strokeWidth = 3.0f,
@@ -962,5 +975,5 @@ fun DrawScope.drawEditorialLeftHalfWheel(
         lineTo(arrowBottom.x, arrowBottom.y)
         close()
     }
-    drawPath(path, Color.Black)
+    drawPath(path, inkColor)
 }
