@@ -179,7 +179,7 @@ fun AstrolabeFullPlayer(
                 .padding(horizontal = 16.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top Astrolabe Header Bar (Concentric badge removed completely)
+            // Top Astrolabe Header Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -197,20 +197,6 @@ fun AstrolabeFullPlayer(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
-                        tint = Color.Black
-                    )
-                }
-
-                // Center subtle astrolabe view switch icon
-                IconButton(
-                    onClick = {
-                        haptics.click()
-                        onToggleClassicView()
-                    }
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.RotateRight,
-                        contentDescription = "Switch View",
                         tint = Color.Black
                     )
                 }
@@ -313,296 +299,196 @@ fun AstrolabeFullPlayer(
                 // THE CONCENTRIC WHEEL CANVAS
                 // Gestures:
                 // 1) Turn wheel -> rotates dial & scrolls playlist
-                // 2) Hold (>320ms) + slide left/right -> seeks backward/forward
-                // 3) Double click -> opens options modal (sleep timer, dual audio, etc.)
+                // 2) Double click -> opens options modal (sleep timer, dual audio, etc.)
                 // ==========================================
                 val wheelSize = 265.dp
                 var centerOffset by remember { mutableStateOf(Offset.Zero) }
 
                 Box(
                     modifier = Modifier
-                        .size(wheelSize)
-                        .background(Color.White)
-                        .pointerInput(queue.size, totalDurationMs, currentPosMs) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                val now = System.currentTimeMillis()
-                                val downPos = down.position
-                                val center = centerOffset
-
-                                // 1. Double tap detection (< 320ms, < 70px)
-                                val timeDiff = now - lastTapTimestamp
-                                val distDiff = hypot(downPos.x - lastTapPosition.x, downPos.y - lastTapPosition.y)
-                                if (timeDiff in 1..320 && distDiff < 70f) {
-                                    lastTapTimestamp = 0L
-                                    haptics.toggle()
-                                    showOptionsModal = true
-                                    return@awaitEachGesture
-                                } else {
-                                    lastTapTimestamp = now
-                                    lastTapPosition = downPos
-                                }
-
-                                var isHolding = false
-                                var isRadialDragging = false
-                                var dragDisplaced = false
-
-                                // 2. Hold detection (> 320ms without significant motion)
-                                val holdTimerJob = scope.launch {
-                                    delay(320L)
-                                    if (!dragDisplaced && !isRadialDragging) {
-                                        isHolding = true
-                                        isHoldSeeking = true
-                                        seekPreviewPosMs = currentPosMs
-                                        seekDeltaMs = 0L
-                                        haptics.toggle()
-                                    }
-                                }
-
-                                var prevAngle = RadialMath.toPolar(center, downPos).angleDegrees
-                                val startX = downPos.x
-
-                                do {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-
-                                    if (change.pressed) {
-                                        val currentPos = change.position
-                                        val movement = hypot(currentPos.x - downPos.x, currentPos.y - downPos.y)
-
-                                        if (movement > 16f && !isHolding && !isRadialDragging) {
-                                            dragDisplaced = true
-                                            holdTimerJob.cancel()
-                                            isRadialDragging = true
-                                            latheState.setDraggingState(true)
-                                        }
-
-                                        if (isHolding || isHoldSeeking) {
-                                            change.consume()
-                                            val dx = currentPos.x - startX
-                                            val offsetMs = (dx * 180f).toLong()
-                                            seekDeltaMs = offsetMs
-                                            val clampedTarget = (currentPosMs + offsetMs).coerceIn(0L, totalDurationMs)
-                                            seekPreviewPosMs = clampedTarget
-                                        } else if (isRadialDragging) {
-                                            change.consume()
-                                            val currentPolar = RadialMath.toPolar(center, currentPos)
-                                            val currentAngle = currentPolar.angleDegrees
-                                            val deltaAngle = RadialMath.angularDistance(prevAngle, currentAngle)
-                                            prevAngle = currentAngle
-                                            scope.launch {
-                                                latheState.rotateBy(deltaAngle, haptics)
-                                            }
-                                        }
-                                    }
-                                } while (event.changes.any { it.pressed })
-
-                                holdTimerJob.cancel()
-
-                                if (isHolding || isHoldSeeking) {
-                                    haptics.click()
-                                    onSeekTo(seekPreviewPosMs)
-                                    isHoldSeeking = false
-                                    seekDeltaMs = 0L
-                                } else if (isRadialDragging) {
-                                    latheState.setDraggingState(false)
-                                    val finalAngle = latheState.angle
-                                    val normalizedAngle = RadialMath.normalizeDegrees(-finalAngle)
-                                    val selectedIdx = (normalizedAngle / stepAngle).toInt() % trackCount
-                                    if (selectedIdx in queue.indices && selectedIdx != queueIndex) {
-                                        onTrackSelect(queue[selectedIdx], queue)
-                                    }
-                                }
-                            }
-                        },
+                        .fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val center = Offset(size.width / 2f, size.height / 2f)
-                        centerOffset = center
-                        val outerR = size.width * 0.48f
-
-                        drawEditorialConcentricWheel(
-                            center = center,
-                            outerRadius = outerR,
-                            progressFraction = progressFraction,
-                            trackCount = queue.size.coerceAtLeast(1),
-                            currentTrackIndex = queueIndex,
-                            listCount = 5,
-                            activeListIndex = 0,
-                            rotationDeg = latheState.angle
-                        )
-                    }
-
-                    // Center Celestial / Album Art Medallion
-                    Box(
-                        modifier = Modifier
-                            .size(wheelSize * 0.20f)
-                            .clip(CircleShape)
-                            .border(1.5.dp, Color.Black, CircleShape)
-                            .clickable {
-                                haptics.toggle()
-                                onTogglePlayPause()
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (currentTrack?.coverArtUrl?.isNotBlank() == true) {
-                            AsyncImage(
-                                model = currentTrack.coverArtUrl,
-                                contentDescription = "Album Art",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.Black),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.MusicNote,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-
-                        // Center Play/Pause indicator overlay
-                        Surface(
-                            shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.55f),
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                    contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // Live Hold-Seek HUD Overlay on the Wheel
-                    if (isHoldSeeking) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color.Black,
-                            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White),
-                            shadowElevation = 8.dp,
-                            modifier = Modifier.padding(16.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = if (seekDeltaMs >= 0) "FAST FORWARD  ▶▶" else "◀◀  REWIND / SEEK",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontFamily = FontFamily.Serif,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.5.sp,
-                                        fontSize = 10.sp
-                                    ),
-                                    color = Color.White
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "${formatMs(seekPreviewPosMs)} / ${formatMs(totalDurationMs)}",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp
-                                    ),
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = "${if (seekDeltaMs >= 0) "+" else ""}${seekDeltaMs / 1000}s [RELEASE TO CUE]",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 10.sp
-                                    ),
-                                    color = Color.White.copy(alpha = 0.8f)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Real-time Rotational Target Telemetry Banner
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (latheState.isDragging) Color.Black else Color.White,
-                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.Black),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                ) {
+                    // Process indicator of the song played in minutes and seconds displayed around the wheel
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                            .padding(horizontal = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.weight(1f)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.Black,
+                            modifier = Modifier.padding(2.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.RotateRight,
-                                contentDescription = null,
-                                tint = if (latheState.isDragging) Color.White else Color.Black,
-                                modifier = Modifier.size(18.dp)
+                            Text(
+                                text = "  ${formatMs(currentPosMs)}  ",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                ),
+                                color = Color.White
                             )
-                            Column {
-                                Text(
-                                    text = if (latheState.isDragging) "ROTATING DIAL • TARGET NEXT TRACK" else "DIAL SELECTION • CUED",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontFamily = FontFamily.Serif,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.5.sp,
-                                        fontSize = 9.sp
-                                    ),
-                                    color = if (latheState.isDragging) Color.White.copy(alpha = 0.8f) else Color(0xFF666666)
-                                )
-                                Text(
-                                    text = if (targetedTrack != null) {
-                                        "${(targetedIndex + 1).toString().padStart(2, '0')}. ${targetedTrack.title} — ${targetedTrack.artist}"
-                                    } else {
-                                        "Turn concentric circle to change track"
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontFamily = FontFamily.Serif,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
-                                    ),
-                                    color = if (latheState.isDragging) Color.White else Color.Black,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
                         }
 
-                        Text(
-                            text = "${RadialMath.normalizeDegrees(-latheState.angle).toInt()}°",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            ),
-                            color = if (latheState.isDragging) Color.White else Color.Black
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.White,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
+                            modifier = Modifier.padding(2.dp)
+                        ) {
+                            Text(
+                                text = "  ${formatMs(totalDurationMs)}  ",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                ),
+                                color = Color.Black
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(wheelSize)
+                            .background(Color.White)
+                            .pointerInput(queue.size, totalDurationMs) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val now = System.currentTimeMillis()
+                                    val downPos = down.position
+                                    val center = centerOffset
+
+                                    // Double tap detection (< 320ms, < 70px)
+                                    val timeDiff = now - lastTapTimestamp
+                                    val distDiff = hypot(downPos.x - lastTapPosition.x, downPos.y - lastTapPosition.y)
+                                    if (timeDiff in 1..320 && distDiff < 70f) {
+                                        lastTapTimestamp = 0L
+                                        haptics.toggle()
+                                        showOptionsModal = true
+                                        return@awaitEachGesture
+                                    } else {
+                                        lastTapTimestamp = now
+                                        lastTapPosition = downPos
+                                    }
+
+                                    var isRadialDragging = false
+                                    var prevAngle = RadialMath.toPolar(center, downPos).angleDegrees
+
+                                    do {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                                        if (change.pressed) {
+                                            val currentPos = change.position
+                                            val movement = hypot(currentPos.x - downPos.x, currentPos.y - downPos.y)
+
+                                            if (movement > 10f && !isRadialDragging) {
+                                                isRadialDragging = true
+                                                latheState.setDraggingState(true)
+                                            }
+
+                                            if (isRadialDragging) {
+                                                change.consume()
+                                                val currentPolar = RadialMath.toPolar(center, currentPos)
+                                                val currentAngle = currentPolar.angleDegrees
+                                                val deltaAngle = RadialMath.angularDistance(prevAngle, currentAngle)
+                                                prevAngle = currentAngle
+                                                scope.launch {
+                                                    latheState.rotateBy(deltaAngle, haptics)
+                                                }
+                                            }
+                                        }
+                                    } while (event.changes.any { it.pressed })
+
+                                    if (isRadialDragging) {
+                                        latheState.setDraggingState(false)
+                                        val finalAngle = latheState.angle
+                                        val normalizedAngle = RadialMath.normalizeDegrees(-finalAngle)
+                                        val selectedIdx = (normalizedAngle / stepAngle).toInt() % trackCount
+                                        if (selectedIdx in queue.indices && selectedIdx != queueIndex) {
+                                            onTrackSelect(queue[selectedIdx], queue)
+                                        }
+                                    }
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val center = Offset(size.width / 2f, size.height / 2f)
+                            centerOffset = center
+                            val outerR = size.width * 0.48f
+
+                            drawEditorialConcentricWheel(
+                                center = center,
+                                outerRadius = outerR,
+                                progressFraction = progressFraction,
+                                trackCount = queue.size.coerceAtLeast(1),
+                                currentTrackIndex = queueIndex,
+                                listCount = 5,
+                                activeListIndex = 0,
+                                rotationDeg = latheState.angle
+                            )
+                        }
+
+                        // Center Celestial / Album Art Medallion
+                        Box(
+                            modifier = Modifier
+                                .size(wheelSize * 0.20f)
+                                .clip(CircleShape)
+                                .border(1.5.dp, Color.Black, CircleShape)
+                                .clickable {
+                                    haptics.toggle()
+                                    onTogglePlayPause()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (currentTrack?.coverArtUrl?.isNotBlank() == true) {
+                                AsyncImage(
+                                    model = currentTrack.coverArtUrl,
+                                    contentDescription = "Album Art",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.MusicNote,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+
+                            // Center Play/Pause indicator overlay
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = 0.55f),
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                        contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // ==========================================
                 // EDITORIAL SECTOR 1: CURRENT PLAYING LIST / QUEUE
@@ -626,7 +512,7 @@ fun AstrolabeFullPlayer(
 
                 EditorialSectorBlock(
                     sectorTitle = "CURRENT PLAYING LIST",
-                    sectorSubTitle = "${queue.size} TRACKS IN ORBIT • SCROLLS WITH WHEEL",
+                    sectorSubTitle = null,
                     items = if (queueSectorItems.isNotEmpty()) queueSectorItems else listOf(
                         EditorialSectorItem(
                             indexLabel = "01",
@@ -668,7 +554,7 @@ fun AstrolabeFullPlayer(
 
                     EditorialSectorBlock(
                         sectorTitle = "MANUSCRIPT LYRICS",
-                        sectorSubTitle = "SYNCHRONIZED VOCAL TRANSCRIPT",
+                        sectorSubTitle = null,
                         items = lyricItems,
                         isManuscriptList = true
                     )
@@ -689,46 +575,24 @@ fun AstrolabeFullPlayer(
 
                     EditorialSectorBlock(
                         sectorTitle = "MANUSCRIPT LYRICS",
-                        sectorSubTitle = "POETIC TEXT ARCHIVE",
+                        sectorSubTitle = null,
                         items = plainItems,
                         isManuscriptList = true
                     )
                 } else {
                     EditorialSectorBlock(
                         sectorTitle = "MANUSCRIPT LYRICS",
-                        sectorSubTitle = "ASTRONOMICAL POETRY NOT FOUND",
+                        sectorSubTitle = null,
                         items = listOf(
                             EditorialSectorItem(
                                 indexLabel = "",
                                 title = "Transcript Unavailable",
-                                description = "No synchronized lyrics or text registered for ${currentTrack?.title ?: "this celestial piece"}."
+                                description = "No synchronized lyrics or text registered for ${currentTrack?.title ?: "this piece"}."
                             )
                         ),
                         isManuscriptList = true
                     )
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // ==========================================
-                // EDITORIAL SECTOR 3: NOW PLAYING CONTEXT & MATRIX
-                // ==========================================
-                EditorialSectorBlock(
-                    sectorTitle = "ASTRONOMICAL SPECTRUM",
-                    sectorSubTitle = "LOSSLESS ACOUSTIC HARMONICS",
-                    items = listOf(
-                        EditorialSectorItem(
-                            indexLabel = "21",
-                            title = currentTrack?.title ?: "Select a Track",
-                            description = "${currentTrack?.artist ?: "Unknown"} • ${currentTrack?.album ?: "Unknown Album"} • 24-bit / 96.0 kHz Master."
-                        ),
-                        EditorialSectorItem(
-                            indexLabel = "22",
-                            title = "Temporal Equinox",
-                            description = "${formatMs(currentPosMs)} / ${formatMs(totalDurationMs)} • Balance across acoustic registers."
-                        )
-                    )
-                )
 
                 Spacer(modifier = Modifier.height(16.dp))
             }

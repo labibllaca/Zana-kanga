@@ -108,31 +108,7 @@ fun AstrolabeSettingsScreen(
                 )
             }
 
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color.White,
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
-                modifier = Modifier.clickable {
-                    haptics.click()
-                    onToggleClassicView()
-                }
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.Filled.Tune, contentDescription = null, tint = Color.Black, modifier = Modifier.size(15.dp))
-                    Text(
-                        "Classic",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontFamily = FontFamily.Serif,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = Color.Black
-                    )
-                }
-            }
+
         }
 
         // Listener Profile & Personal Identity Section

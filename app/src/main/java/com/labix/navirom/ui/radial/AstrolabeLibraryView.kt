@@ -133,28 +133,7 @@ fun AstrolabeLibraryView(
                     )
                 }
 
-                FilledTonalButton(
-                    onClick = {
-                        haptics.click()
-                        onToggleClassicView()
-                    },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.List,
-                        contentDescription = "Classic View",
-                        tint = Color.Black,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Classic", style = MaterialTheme.typography.labelMedium, color = Color.Black)
-                }
+
             }
 
             Spacer(modifier = Modifier.height(10.dp))

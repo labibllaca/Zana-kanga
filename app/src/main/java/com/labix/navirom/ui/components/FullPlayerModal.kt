@@ -1684,120 +1684,37 @@ fun FullPlayerModal(
                 .widthIn(max = 680.dp)
                 .align(Alignment.Center)
         ) {
-            AnimatedContent(
-                targetState = viewMode,
-            transitionSpec = {
-                if (targetState == PlayerViewMode.LYRICS) {
-                    (slideInVertically(
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
-                    ) { it } + fadeIn(animationSpec = tween(300)))
-                        .togetherWith(
-                            slideOutVertically(
-                                animationSpec = tween(240)
-                            ) { -it / 3 } + fadeOut(animationSpec = tween(200))
-                        )
-                } else {
-                    (slideInVertically(
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
-                    ) { -it / 3 } + fadeIn(animationSpec = tween(300)))
-                        .togetherWith(
-                            slideOutVertically(
-                                animationSpec = tween(240)
-                            ) { it } + fadeOut(animationSpec = tween(200))
-                        )
-                }
-            },
-            label = "PlayerViewModeTransition"
-        ) { mode ->
-            if (isAstrolabeModeEnabled && mode != PlayerViewMode.LYRICS) {
-                com.labix.navirom.ui.radial.AstrolabeFullPlayer(
-                    playbackState = playbackState,
-                    isFavorite = isFavorite,
-                    queue = queue,
-                    queueIndex = queueIndex,
-                    appLanguage = appLanguage,
-                    lyricsData = lyricsData,
-                    onDismiss = onDismiss,
-                    onTogglePlayPause = onTogglePlayPause,
-                    onNext = onNext,
-                    onPrevious = onPrevious,
-                    onSeekTo = onSeekTo,
-                    onToggleShuffle = onToggleShuffle,
-                    onCycleRepeat = onCycleRepeat,
-                    onToggleFavorite = onToggleFavorite,
-                    onTrackSelect = onTrackSelect,
-                    onOpenWlanCast = onOpenWlanCast,
-                    onToggleClassicView = onToggleAstrolabeMode,
-                    onSetSleepTimer = { mins -> onSetSleepTimer(mins, sleepTimerOptions) },
-                    sleepTimerOptions = sleepTimerOptions,
-                    onUpdateSleepTimerOptions = onUpdateSleepTimerOptions,
-                    isDualAudioEnabled = isDualAudioEnabled,
-                    dualSpeakerMode = dualSpeakerMode,
-                    onSetDualSpeakerMode = onSetDualSpeakerMode,
-                    isVinylEffectEnabled = isVinylEffectEnabled
-                )
-            } else if (mode == PlayerViewMode.ARTWORK) {
-                val validSyncedLines = remember(lyricsData.syncedLines) {
-                    lyricsData.syncedLines.filter { it.text.isNotBlank() }
-                }
-                val lyricPreviewPair = remember(currentPosMs, validSyncedLines, lyricsData.plainLyrics) {
-                    if (validSyncedLines.isNotEmpty()) {
-                        val idx = validSyncedLines.indexOfLast { (it.timeMs - 400L) <= currentPosMs }
-                        if (idx >= 0) {
-                            val l1 = validSyncedLines.getOrNull(idx)?.text.orEmpty()
-                            val l2 = validSyncedLines.getOrNull(idx + 1)?.text.orEmpty()
-                            Pair(l1, l2)
-                        } else {
-                            val firstLine = validSyncedLines.firstOrNull()?.text.orEmpty()
-                            val firstTime = validSyncedLines.firstOrNull()?.timeMs ?: 0L
-                            if (firstTime - currentPosMs > 2500L) {
-                                Pair("♪ ♪ ♪", firstLine)
-                            } else {
-                                val secondLine = validSyncedLines.getOrNull(1)?.text.orEmpty()
-                                Pair(firstLine, secondLine)
-                            }
-                        }
-                    } else if (lyricsData.plainLyrics.isNotBlank()) {
-                        val nonBlank = lyricsData.plainLyrics.lines().map { it.trim() }.filter { it.isNotBlank() }
-                        val l1 = nonBlank.getOrNull(0).orEmpty()
-                        val l2 = nonBlank.getOrNull(1).orEmpty()
-                        Pair(l1, l2)
-                    } else {
-                        Pair("", "")
-                    }
-                }
+            com.labix.navirom.ui.radial.AstrolabeFullPlayer(
+                playbackState = playbackState,
+                isFavorite = isFavorite,
+                queue = queue,
+                queueIndex = queueIndex,
+                appLanguage = appLanguage,
+                lyricsData = lyricsData,
+                onDismiss = onDismiss,
+                onTogglePlayPause = onTogglePlayPause,
+                onNext = onNext,
+                onPrevious = onPrevious,
+                onSeekTo = onSeekTo,
+                onToggleShuffle = onToggleShuffle,
+                onCycleRepeat = onCycleRepeat,
+                onToggleFavorite = onToggleFavorite,
+                onTrackSelect = onTrackSelect,
+                onOpenWlanCast = onOpenWlanCast,
+                onToggleClassicView = {},
+                onSetSleepTimer = { mins -> onSetSleepTimer(mins, sleepTimerOptions) },
+                sleepTimerOptions = sleepTimerOptions,
+                onUpdateSleepTimerOptions = onUpdateSleepTimerOptions,
+                isDualAudioEnabled = isDualAudioEnabled,
+                dualSpeakerMode = dualSpeakerMode,
+                onSetDualSpeakerMode = onSetDualSpeakerMode,
+                isVinylEffectEnabled = isVinylEffectEnabled
+            )
+        }
+    }
+}
 
-                // Main Artwork View
-                Column(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    // Top Card
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        color = cardColor,
-                        shape = RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .statusBarsPadding()
-                                .padding(horizontal = 24.dp, vertical = 16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            // Top Bar: Back | Song Index | Saved (Heart) Button
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                IconButton(onClick = {
-                                    haptics.click()
-                                    onDismiss()
-                                }) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textOnCard)
-                                }
+/*
                                 val songIndexText = remember(queueIndex, queueSize, track.id) {
                                     val currentNum = if (queueIndex in 0 until queueSize) {
                                         queueIndex + 1
@@ -3591,6 +3508,7 @@ fun FullPlayerModal(
         }
     }
 }
+*/
 
 @Composable
 private fun AutoResizingSingleLineLyric(
