@@ -109,6 +109,7 @@ import com.labix.navirom.ui.AppLanguage
 import com.labix.navirom.ui.NaviromStrings
 import com.labix.navirom.ui.util.rememberNaviromHaptics
 import com.labix.ui.theme.*
+import com.labix.navirom.ui.radial.*
 
 enum class PlayerViewMode {
     ARTWORK,
@@ -1684,31 +1685,37 @@ fun FullPlayerModal(
                 .widthIn(max = 680.dp)
                 .align(Alignment.Center)
         ) {
-            com.labix.navirom.ui.radial.AstrolabeFullPlayer(
-                playbackState = playbackState,
-                isFavorite = isFavorite,
-                queue = queue,
-                queueIndex = queueIndex,
-                appLanguage = appLanguage,
-                lyricsData = lyricsData,
-                onDismiss = onDismiss,
-                onTogglePlayPause = onTogglePlayPause,
-                onNext = onNext,
-                onPrevious = onPrevious,
-                onSeekTo = onSeekTo,
-                onToggleShuffle = onToggleShuffle,
-                onCycleRepeat = onCycleRepeat,
-                onToggleFavorite = onToggleFavorite,
-                onTrackSelect = onTrackSelect,
-                onOpenWlanCast = onOpenWlanCast,
-                onToggleClassicView = {},
-                onSetSleepTimer = { mins -> onSetSleepTimer(mins, sleepTimerOptions) },
-                sleepTimerOptions = sleepTimerOptions,
-                onUpdateSleepTimerOptions = onUpdateSleepTimerOptions,
-                isDualAudioEnabled = isDualAudioEnabled,
-                dualSpeakerMode = dualSpeakerMode,
-                onSetDualSpeakerMode = onSetDualSpeakerMode,
-                isVinylEffectEnabled = isVinylEffectEnabled
+            AstrolabeFullPlayer(
+                state = AstrolabePlayerState(
+                    playbackState = playbackState,
+                    isFavorite = isFavorite,
+                    queue = queue,
+                    queueIndex = queueIndex,
+                    appLanguage = appLanguage,
+                    lyricsData = lyricsData,
+                    sleepTimerOptions = sleepTimerOptions,
+                    isDualAudioEnabled = isDualAudioEnabled,
+                    dualSpeakerMode = dualSpeakerMode,
+                    isVinylEffectEnabled = isVinylEffectEnabled
+                ),
+                actions = AstrolabePlayerActions(
+                    onDismiss = onDismiss,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onNext = onNext,
+                    onPrevious = onPrevious,
+                    onSeekTo = onSeekTo,
+                    onToggleShuffle = onToggleShuffle,
+                    onCycleRepeat = onCycleRepeat,
+                    onToggleFavorite = onToggleFavorite,
+                    onTrackSelect = onTrackSelect,
+                    onOpenWlanCast = onOpenWlanCast,
+                    onToggleClassicView = {},
+                    onSetSleepTimer = { mins -> onSetSleepTimer(mins, sleepTimerOptions) },
+                    onUpdateSleepTimerOptions = onUpdateSleepTimerOptions,
+                    onToggleDualAudio = null,
+                    onSetDualSpeakerMode = onSetDualSpeakerMode,
+                    onToggleVinylEffect = null
+                )
             )
         }
     }

@@ -63,6 +63,42 @@ data class EditorialSectorItem(
     val onClick: (() -> Unit)? = null
 )
 
+data class AstrolabePlayerState(
+    val playbackState: PlaybackState = PlaybackState(),
+    val isFavorite: Boolean = false,
+    val queue: List<NaviromTrack> = emptyList(),
+    val queueIndex: Int = 0,
+    val appLanguage: AppLanguage = AppLanguage.ENGLISH,
+    val lyricsData: LyricsData? = null,
+    val sleepTimerOptions: SleepTimerOptions = SleepTimerOptions(),
+    val isDualAudioEnabled: Boolean = false,
+    val dualSpeakerMode: DualSpeakerMode = DualSpeakerMode.DUAL_STEREO,
+    val isCrossfadeEnabled: Boolean = false,
+    val crossfadeDurationSeconds: Int = 5,
+    val isVinylEffectEnabled: Boolean = true
+)
+
+data class AstrolabePlayerActions(
+    val onDismiss: () -> Unit = {},
+    val onTogglePlayPause: () -> Unit = {},
+    val onNext: () -> Unit = {},
+    val onPrevious: () -> Unit = {},
+    val onSeekTo: (Long) -> Unit = {},
+    val onToggleShuffle: () -> Unit = {},
+    val onCycleRepeat: () -> Unit = {},
+    val onToggleFavorite: () -> Unit = {},
+    val onTrackSelect: (NaviromTrack, List<NaviromTrack>) -> Unit = { _, _ -> },
+    val onOpenWlanCast: (() -> Unit)? = null,
+    val onToggleClassicView: () -> Unit = {},
+    val onSetSleepTimer: ((Int?) -> Unit)? = null,
+    val onUpdateSleepTimerOptions: ((SleepTimerOptions) -> Unit)? = null,
+    val onToggleDualAudio: (() -> Unit)? = null,
+    val onSetDualSpeakerMode: ((DualSpeakerMode) -> Unit)? = null,
+    val onToggleCrossfade: (() -> Unit)? = null,
+    val onSetCrossfadeDuration: ((Int) -> Unit)? = null,
+    val onToggleVinylEffect: (() -> Unit)? = null
+)
+
 /**
  * Astrolabe Orbital Full Player.
  * Restructured matching user requirements & zoom-kal.jpg:
@@ -75,38 +111,42 @@ data class EditorialSectorItem(
  */
 @Composable
 fun AstrolabeFullPlayer(
-    playbackState: PlaybackState,
-    isFavorite: Boolean,
-    queue: List<NaviromTrack>,
-    queueIndex: Int,
-    appLanguage: AppLanguage,
-    lyricsData: LyricsData? = null,
-    onDismiss: () -> Unit,
-    onTogglePlayPause: () -> Unit,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
-    onSeekTo: (Long) -> Unit,
-    onToggleShuffle: () -> Unit,
-    onCycleRepeat: () -> Unit,
-    onToggleFavorite: () -> Unit,
-    onTrackSelect: (NaviromTrack, List<NaviromTrack>) -> Unit,
-    onOpenWlanCast: (() -> Unit)? = null,
-    onToggleClassicView: () -> Unit,
-    onSetSleepTimer: ((Int?) -> Unit)? = null,
-    sleepTimerOptions: SleepTimerOptions = SleepTimerOptions(),
-    onUpdateSleepTimerOptions: ((SleepTimerOptions) -> Unit)? = null,
-    isDualAudioEnabled: Boolean = false,
-    onToggleDualAudio: (() -> Unit)? = null,
-    dualSpeakerMode: DualSpeakerMode = DualSpeakerMode.DUAL_STEREO,
-    onSetDualSpeakerMode: ((DualSpeakerMode) -> Unit)? = null,
-    isCrossfadeEnabled: Boolean = false,
-    onToggleCrossfade: (() -> Unit)? = null,
-    crossfadeDurationSeconds: Int = 5,
-    onSetCrossfadeDuration: ((Int) -> Unit)? = null,
-    isVinylEffectEnabled: Boolean = true,
-    onToggleVinylEffect: (() -> Unit)? = null,
+    state: AstrolabePlayerState,
+    actions: AstrolabePlayerActions,
     modifier: Modifier = Modifier
 ) {
+    val playbackState = state.playbackState
+    val isFavorite = state.isFavorite
+    val queue = state.queue
+    val queueIndex = state.queueIndex
+    val appLanguage = state.appLanguage
+    val lyricsData = state.lyricsData
+    val sleepTimerOptions = state.sleepTimerOptions
+    val isDualAudioEnabled = state.isDualAudioEnabled
+    val dualSpeakerMode = state.dualSpeakerMode
+    val isCrossfadeEnabled = state.isCrossfadeEnabled
+    val crossfadeDurationSeconds = state.crossfadeDurationSeconds
+    val isVinylEffectEnabled = state.isVinylEffectEnabled
+
+    val onDismiss = actions.onDismiss
+    val onTogglePlayPause = actions.onTogglePlayPause
+    val onNext = actions.onNext
+    val onPrevious = actions.onPrevious
+    val onSeekTo = actions.onSeekTo
+    val onToggleShuffle = actions.onToggleShuffle
+    val onCycleRepeat = actions.onCycleRepeat
+    val onToggleFavorite = actions.onToggleFavorite
+    val onTrackSelect = actions.onTrackSelect
+    val onOpenWlanCast = actions.onOpenWlanCast
+    val onToggleClassicView = actions.onToggleClassicView
+    val onSetSleepTimer = actions.onSetSleepTimer
+    val onUpdateSleepTimerOptions = actions.onUpdateSleepTimerOptions
+    val onToggleDualAudio = actions.onToggleDualAudio
+    val onSetDualSpeakerMode = actions.onSetDualSpeakerMode
+    val onToggleCrossfade = actions.onToggleCrossfade
+    val onSetCrossfadeDuration = actions.onSetCrossfadeDuration
+    val onToggleVinylEffect = actions.onToggleVinylEffect
+
     val haptics = rememberNaviromHaptics()
     val scope = rememberCoroutineScope()
     val currentTrack = playbackState.currentTrack ?: queue.getOrNull(queueIndex)
