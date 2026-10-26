@@ -27,8 +27,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -150,7 +152,7 @@ fun AstrolabeFullPlayer(
     val haptics = rememberNaviromHaptics()
     val scope = rememberCoroutineScope()
     val currentTrack = playbackState.currentTrack ?: queue.getOrNull(queueIndex)
-
+    
     // Track Lathe Dial State
     val trackCount = queue.size.coerceAtLeast(1)
     val stepAngle = 360f / trackCount.coerceAtLeast(4)
@@ -158,6 +160,15 @@ fun AstrolabeFullPlayer(
         initialAngle = 0f,
         stepSizeDegrees = stepAngle
     )
+
+    val nestedScrollConnection = remember(latheState) {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): Offset {
+                // If dragging inside wheel, block scroll
+                return if (latheState.isDragging) available else Offset.Zero
+            }
+        }
+    }
 
     // Synchronized scroll state for queue list
     val queueLazyListState = rememberLazyListState()
@@ -202,7 +213,7 @@ fun AstrolabeFullPlayer(
     LaunchedEffect(targetedIndex, latheState.isDragging) {
         if (latheState.isDragging && queue.isNotEmpty()) {
             val target = targetedIndex.coerceIn(0, queue.lastIndex)
-            queueLazyListState.animateScrollToItem(target)
+            queueLazyListState.animateScrollToItem(target, scrollOffset = -180)
         }
     }
 
@@ -212,7 +223,7 @@ fun AstrolabeFullPlayer(
             val targetAngle = -(queueIndex * stepAngle)
             latheState.snapTo(targetAngle)
             val targetIdx = queueIndex.coerceIn(0, queue.lastIndex)
-            queueLazyListState.animateScrollToItem(targetIdx, scrollOffset = -120)
+            queueLazyListState.animateScrollToItem(targetIdx, scrollOffset = -180)
         }
     }
 
@@ -234,6 +245,7 @@ fun AstrolabeFullPlayer(
             .background(canvasBg)
             .statusBarsPadding()
             .navigationBarsPadding()
+            .nestedScroll(nestedScrollConnection)
             .pointerInput(isVinylExpanded) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -432,23 +444,22 @@ fun AstrolabeFullPlayer(
                                     val down = awaitFirstDown(requireUnconsumed = false)
                                     val now = System.currentTimeMillis()
                                     val downPos = down.position
-                                    val center = centerOffset
+                                    val center = if (centerOffset != Offset.Zero) centerOffset else Offset(size.width / 2f, size.height / 2f)
                                     val distanceFromCenter = hypot(downPos.x - center.x, downPos.y - center.y)
-                                    val isInsideWheel = distanceFromCenter < (center.x * 0.42f)
+                                    val wheelRadius = center.x * 0.78f
+                                    val isInsideWheel = distanceFromCenter <= wheelRadius
 
-                                    // Double tap detection (< 320ms, < 70px) if not inside wheel
-                                    if (!isInsideWheel) {
-                                        val timeDiff = now - lastTapTimestamp
-                                        val distDiff = hypot(downPos.x - lastTapPosition.x, downPos.y - lastTapPosition.y)
-                                        if (timeDiff in 1..320 && distDiff < 70f) {
-                                            lastTapTimestamp = 0L
-                                            haptics.toggle()
-                                            showOptionsModal = true
-                                            return@awaitEachGesture
-                                        } else {
-                                            lastTapTimestamp = now
-                                            lastTapPosition = downPos
-                                        }
+                                    // Double tap detection (< 320ms, < 70px) opens options modal (does not change song)
+                                    val timeDiff = now - lastTapTimestamp
+                                    val distDiff = hypot(downPos.x - lastTapPosition.x, downPos.y - lastTapPosition.y)
+                                    if (timeDiff in 1..320 && distDiff < 70f) {
+                                        lastTapTimestamp = 0L
+                                        haptics.toggle()
+                                        showOptionsModal = true
+                                        return@awaitEachGesture
+                                    } else {
+                                        lastTapTimestamp = now
+                                        lastTapPosition = downPos
                                     }
 
                                     var isRadialDragging = false
@@ -465,33 +476,27 @@ fun AstrolabeFullPlayer(
 
                                             if (movement > 8f && !isRadialDragging) {
                                                 isRadialDragging = true
-                                                latheState.setDraggingState(true)
+                                                if (isInsideWheel) {
+                                                    latheState.setDraggingState(true)
+                                                }
                                             }
 
                                             if (isRadialDragging) {
-                                                change.consume()
-                                                val currentPolar = RadialMath.toPolar(center, currentPos)
-                                                val currentAngle = currentPolar.angleDegrees
-                                                val deltaAngle = RadialMath.angularDistance(prevAngle, currentAngle)
-                                                prevAngle = currentAngle
-
                                                 if (isInsideWheel) {
-                                                    // Inside wheel: seek song position forward/backward by minutes/seconds (throttled to max once per 120ms)
-                                                    val currentTime = System.currentTimeMillis()
-                                                    if (currentTime - lastTapTimestamp > 120L) {
-                                                        lastTapTimestamp = currentTime
-                                                        val seekDeltaMs = ((deltaAngle / 360f) * 60000f).toLong()
-                                                        val targetPos = (playbackState.currentPositionMs + seekDeltaMs).coerceIn(0L, totalDurationMs)
-                                                        onSeekTo(targetPos)
-                                                    }
-                                                } else {
-                                                    // Outside wheel: navigate to previous/next song on current playing list
+                                                    change.consume()
+                                                    val currentPolar = RadialMath.toPolar(center, currentPos)
+                                                    val currentAngle = currentPolar.angleDegrees
+                                                    val deltaAngle = RadialMath.angularDistance(prevAngle, currentAngle)
+                                                    prevAngle = currentAngle
+
+                                                    // ONLY inside the wheel: change the current song by rotating the dial
                                                     cumulativeWheelDelta += deltaAngle
-                                                    if (cumulativeWheelDelta > 35f) {
+                                                    val stepThreshold = 30f
+                                                    if (cumulativeWheelDelta > stepThreshold) {
                                                         cumulativeWheelDelta = 0f
                                                         haptics.click()
                                                         onNext()
-                                                    } else if (cumulativeWheelDelta < -35f) {
+                                                    } else if (cumulativeWheelDelta < -stepThreshold) {
                                                         cumulativeWheelDelta = 0f
                                                         haptics.click()
                                                         onPrevious()
@@ -500,11 +505,12 @@ fun AstrolabeFullPlayer(
                                                         latheState.rotateBy(deltaAngle, haptics)
                                                     }
                                                 }
+                                                // Outside the wheel: do NOT change anything about the song!
                                             }
                                         }
                                     } while (event.changes.any { it.pressed })
 
-                                    if (isRadialDragging && !isInsideWheel && trackCount > 0) {
+                                    if (isRadialDragging && isInsideWheel && trackCount > 0) {
                                         latheState.setDraggingState(false)
                                         val finalAngle = latheState.angle
                                         val normalizedAngle = RadialMath.normalizeDegrees(-finalAngle)
@@ -513,6 +519,8 @@ fun AstrolabeFullPlayer(
                                         if (selectedIdx in queue.indices && selectedIdx != queueIndex) {
                                             onTrackSelect(queue[selectedIdx], queue)
                                         }
+                                    } else if (isRadialDragging) {
+                                        latheState.setDraggingState(false)
                                     }
                                 }
                             },
@@ -557,6 +565,7 @@ fun AstrolabeFullPlayer(
                         Box(
                             modifier = Modifier
                                 .size(animatedMedallionSize)
+                                .graphicsLayer { rotationZ = vinylRot }
                                 .clip(CircleShape)
                                 .background(if (isVinylExpanded) Color.Black else Color.Transparent)
                                 .border(

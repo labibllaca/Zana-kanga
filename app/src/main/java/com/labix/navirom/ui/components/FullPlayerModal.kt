@@ -370,19 +370,7 @@ fun FullPlayerModal(
                             totalDragY += dragAmount.y
                             val threshold = 55f
 
-                            if (kotlin.math.abs(totalDragX) > kotlin.math.abs(totalDragY) * 1.2f && kotlin.math.abs(totalDragX) > threshold) {
-                                change.consume()
-                                gestureHandled = true
-                                if (totalDragX < -threshold) {
-                                    // Swipe Right to Left -> NEXT SONG
-                                    haptics.click()
-                                    onNext()
-                                } else if (totalDragX > threshold) {
-                                    // Swipe Left to Right -> PREVIOUS SONG
-                                    haptics.click()
-                                    onPrevious()
-                                }
-                            } else if (kotlin.math.abs(totalDragY) > kotlin.math.abs(totalDragX) * 1.2f && kotlin.math.abs(totalDragY) > threshold) {
+                            if (kotlin.math.abs(totalDragY) > kotlin.math.abs(totalDragX) * 1.2f && kotlin.math.abs(totalDragY) > threshold) {
                                 if (totalDragY < -threshold) {
                                     // Swipe Bottom to Top (Up) -> SHOW LYRICS VIEW
                                     if (viewMode == PlayerViewMode.ARTWORK) {
