@@ -996,13 +996,15 @@ fun TabContent(
     ) { activeTab ->
         when (activeTab) {
             NaviromTab.LIBRARY -> {
-            if (isAstrolabeModeEnabled && selectedAlbumId == null && selectedArtistId == null) {
+            if (isAstrolabeModeEnabled && selectedAlbumId == null && selectedArtistId == null && selectedPlaylistId == null) {
                 AstrolabeLibraryView(
                     artists = artists,
                     albums = albums,
                     librarySongs = librarySongs,
+                    playlists = playlists,
                     appLanguage = appLanguage,
                     onSelectAlbum = onSelectAlbum,
+                    onSelectPlaylist = onSelectPlaylist,
                     onTrackClick = onTrackClick,
                     onPlayAll = onPlayAll,
                     onToggleClassicView = onToggleAstrolabeMode,

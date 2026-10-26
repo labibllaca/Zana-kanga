@@ -785,3 +785,182 @@ fun DrawScope.drawCelestialCore(
         style = Stroke(width = 0.8f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f), 0f))
     )
 }
+
+/**
+ * Editorial left half vertical wheel renderer matching zoom-kal.jpg geometry.
+ * Sits vertically along the left edge of the screen, sweeping from -90° (top) to +90° (bottom).
+ */
+fun DrawScope.drawEditorialLeftHalfWheel(
+    center: Offset,
+    outerRadius: Float,
+    rotationDeg: Float = 0f,
+    listCount: Int = 12,
+    activeListIndex: Int = 0
+) {
+    val outerR = outerRadius * 0.96f
+    val middleR = outerR * 0.72f
+    val innerR = outerR * 0.46f
+    val coreR = outerR * 0.22f
+
+    // Background semicircle
+    drawArc(
+        color = Color.White,
+        startAngle = -90f,
+        sweepAngle = 180f,
+        useCenter = true,
+        topLeft = Offset(center.x - outerR, center.y - outerR),
+        size = androidx.compose.ui.geometry.Size(outerR * 2f, outerR * 2f)
+    )
+
+    // 1. Concentric Semicircular Border Rings
+    drawArc(
+        color = Color.Black,
+        startAngle = -90f,
+        sweepAngle = 180f,
+        useCenter = false,
+        topLeft = Offset(center.x - outerR, center.y - outerR),
+        size = androidx.compose.ui.geometry.Size(outerR * 2f, outerR * 2f),
+        style = Stroke(width = 2.0f)
+    )
+
+    drawArc(
+        color = Color.Black,
+        startAngle = -90f,
+        sweepAngle = 180f,
+        useCenter = false,
+        topLeft = Offset(center.x - middleR, center.y - middleR),
+        size = androidx.compose.ui.geometry.Size(middleR * 2f, middleR * 2f),
+        style = Stroke(width = 1.5f)
+    )
+
+    drawArc(
+        color = Color.Black.copy(alpha = 0.35f),
+        startAngle = -90f,
+        sweepAngle = 180f,
+        useCenter = false,
+        topLeft = Offset(center.x - (middleR + innerR) / 2f, center.y - (middleR + innerR) / 2f),
+        size = androidx.compose.ui.geometry.Size(middleR + innerR, middleR + innerR),
+        style = Stroke(
+            width = 1.0f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f), 0f)
+        )
+    )
+
+    drawArc(
+        color = Color.Black,
+        startAngle = -90f,
+        sweepAngle = 180f,
+        useCenter = false,
+        topLeft = Offset(center.x - innerR, center.y - innerR),
+        size = androidx.compose.ui.geometry.Size(innerR * 2f, innerR * 2f),
+        style = Stroke(width = 1.5f)
+    )
+
+    // 2. Vinyl Micro-Grooves in the inner ring
+    val grooveCount = 4
+    val spacing = (innerR - coreR) / (grooveCount + 1)
+    for (g in 1..grooveCount) {
+        val r = coreR + (g * spacing)
+        drawArc(
+            color = Color.Black.copy(alpha = 0.22f),
+            startAngle = -90f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(center.x - r, center.y - r),
+            size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
+            style = Stroke(width = 0.8f)
+        )
+    }
+
+    // 3. Azimuth Ticks around the outer semicircle
+    val tickSteps = 36
+    for (i in 0..tickSteps) {
+        val rawAng = -90f + i * (180f / tickSteps)
+        val rotatedAng = rawAng + (rotationDeg % (180f / tickSteps))
+        if (rotatedAng in -89f..89f) {
+            val isMajor = (i % 6 == 0)
+            val isMed = (i % 2 == 0)
+            val tickLen = if (isMajor) 14f else if (isMed) 8f else 4f
+            val strokeW = if (isMajor) 2.0f else if (isMed) 1.2f else 0.8f
+
+            val pStart = RadialMath.toCartesian(center, outerR - tickLen, rotatedAng)
+            val pEnd = RadialMath.toCartesian(center, outerR, rotatedAng)
+            drawLine(
+                color = Color.Black,
+                start = pStart,
+                end = pEnd,
+                strokeWidth = strokeW,
+                cap = StrokeCap.Square
+            )
+        }
+    }
+
+    // 4. Segmented bold arcs for lists
+    val safeCount = listCount.coerceIn(3, 24)
+    val stepDeg = 180f / safeCount
+    for (l in 0 until safeCount) {
+        val startA = -90f + l * stepDeg + (rotationDeg % 180f)
+        val clampedStart = startA.coerceIn(-90f, 90f)
+        val clampedEnd = (startA + stepDeg - 4f).coerceIn(-90f, 90f)
+        val sweep = (clampedEnd - clampedStart).coerceAtLeast(0f)
+        if (sweep > 2f) {
+            val isSelected = (l == (activeListIndex % safeCount))
+            val arcW = if (isSelected) 5.5f else 3.5f
+            drawArc(
+                color = Color.Black,
+                startAngle = clampedStart,
+                sweepAngle = sweep,
+                useCenter = false,
+                topLeft = Offset(center.x - middleR + 2f, center.y - middleR + 2f),
+                size = androidx.compose.ui.geometry.Size((middleR - 2f) * 2f, (middleR - 2f) * 2f),
+                style = Stroke(width = arcW, cap = StrokeCap.Square)
+            )
+        }
+    }
+
+    // 5. Hub Semicircle at Left Edge
+    drawArc(
+        color = Color.White,
+        startAngle = -90f,
+        sweepAngle = 180f,
+        useCenter = true,
+        topLeft = Offset(center.x - coreR, center.y - coreR),
+        size = androidx.compose.ui.geometry.Size(coreR * 2f, coreR * 2f)
+    )
+    drawArc(
+        color = Color.Black,
+        startAngle = -90f,
+        sweepAngle = 180f,
+        useCenter = false,
+        topLeft = Offset(center.x - coreR, center.y - coreR),
+        size = androidx.compose.ui.geometry.Size(coreR * 2f, coreR * 2f),
+        style = Stroke(width = 2.0f)
+    )
+    drawCircle(
+        color = Color.Black,
+        radius = 4f,
+        center = center
+    )
+
+    // 6. Active Pointer / Cursor Needle pointing directly horizontally into the active list at 0° (equator)
+    val pointerP1 = RadialMath.toCartesian(center, innerR, 0f)
+    val pointerP2 = RadialMath.toCartesian(center, outerR + 10f, 0f)
+    drawLine(
+        color = Color.Black,
+        start = pointerP1,
+        end = pointerP2,
+        strokeWidth = 3.0f,
+        cap = StrokeCap.Square
+    )
+    // Triangular arrow head pointing right at active item
+    val arrowTip = RadialMath.toCartesian(center, outerR + 16f, 0f)
+    val arrowTop = RadialMath.toCartesian(center, outerR + 8f, -6f)
+    val arrowBottom = RadialMath.toCartesian(center, outerR + 8f, 6f)
+    val path = androidx.compose.ui.graphics.Path().apply {
+        moveTo(arrowTip.x, arrowTip.y)
+        lineTo(arrowTop.x, arrowTop.y)
+        lineTo(arrowBottom.x, arrowBottom.y)
+        close()
+    }
+    drawPath(path, Color.Black)
+}
