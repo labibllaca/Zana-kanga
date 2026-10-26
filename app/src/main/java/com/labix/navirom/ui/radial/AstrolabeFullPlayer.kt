@@ -163,12 +163,13 @@ fun AstrolabeFullPlayer(
         }
     }
 
-    // Sync lathe rotation when queue index changes normally
+    // Sync lathe rotation and center current song in playlist view when queue index changes normally
     LaunchedEffect(queueIndex) {
         if (!latheState.isDragging && queue.isNotEmpty()) {
             val targetAngle = -(queueIndex * stepAngle)
             latheState.snapTo(targetAngle)
-            queueLazyListState.animateScrollToItem(queueIndex.coerceIn(queue.indices))
+            val targetIdx = queueIndex.coerceIn(queue.indices)
+            queueLazyListState.animateScrollToItem(targetIdx, scrollOffset = -120)
         }
     }
 
@@ -383,28 +384,33 @@ fun AstrolabeFullPlayer(
                         modifier = Modifier
                             .size(wheelSize)
                             .background(Color.White)
-                            .pointerInput(queue.size, totalDurationMs) {
+                            .pointerInput(queue.size, totalDurationMs, playbackState.currentPositionMs) {
                                 awaitEachGesture {
                                     val down = awaitFirstDown(requireUnconsumed = false)
                                     val now = System.currentTimeMillis()
                                     val downPos = down.position
                                     val center = centerOffset
+                                    val distanceFromCenter = hypot(downPos.x - center.x, downPos.y - center.y)
+                                    val isInsideWheel = distanceFromCenter < (center.x * 0.42f)
 
-                                    // Double tap detection (< 320ms, < 70px)
-                                    val timeDiff = now - lastTapTimestamp
-                                    val distDiff = hypot(downPos.x - lastTapPosition.x, downPos.y - lastTapPosition.y)
-                                    if (timeDiff in 1..320 && distDiff < 70f) {
-                                        lastTapTimestamp = 0L
-                                        haptics.toggle()
-                                        showOptionsModal = true
-                                        return@awaitEachGesture
-                                    } else {
-                                        lastTapTimestamp = now
-                                        lastTapPosition = downPos
+                                    // Double tap detection (< 320ms, < 70px) if not inside wheel
+                                    if (!isInsideWheel) {
+                                        val timeDiff = now - lastTapTimestamp
+                                        val distDiff = hypot(downPos.x - lastTapPosition.x, downPos.y - lastTapPosition.y)
+                                        if (timeDiff in 1..320 && distDiff < 70f) {
+                                            lastTapTimestamp = 0L
+                                            haptics.toggle()
+                                            showOptionsModal = true
+                                            return@awaitEachGesture
+                                        } else {
+                                            lastTapTimestamp = now
+                                            lastTapPosition = downPos
+                                        }
                                     }
 
                                     var isRadialDragging = false
                                     var prevAngle = RadialMath.toPolar(center, downPos).angleDegrees
+                                    var cumulativeWheelDelta = 0f
 
                                     do {
                                         val event = awaitPointerEvent()
@@ -414,7 +420,7 @@ fun AstrolabeFullPlayer(
                                             val currentPos = change.position
                                             val movement = hypot(currentPos.x - downPos.x, currentPos.y - downPos.y)
 
-                                            if (movement > 10f && !isRadialDragging) {
+                                            if (movement > 8f && !isRadialDragging) {
                                                 isRadialDragging = true
                                                 latheState.setDraggingState(true)
                                             }
@@ -425,14 +431,33 @@ fun AstrolabeFullPlayer(
                                                 val currentAngle = currentPolar.angleDegrees
                                                 val deltaAngle = RadialMath.angularDistance(prevAngle, currentAngle)
                                                 prevAngle = currentAngle
-                                                scope.launch {
-                                                    latheState.rotateBy(deltaAngle, haptics)
+
+                                                if (isInsideWheel) {
+                                                    // Inside wheel: seek song position forward/backward by minutes/seconds
+                                                    val seekDeltaMs = ((deltaAngle / 360f) * 60000f).toLong()
+                                                    val targetPos = (playbackState.currentPositionMs + seekDeltaMs).coerceIn(0L, totalDurationMs)
+                                                    onSeekTo(targetPos)
+                                                } else {
+                                                    // Outside wheel: navigate to previous/next song on current playing list
+                                                    cumulativeWheelDelta += deltaAngle
+                                                    if (cumulativeWheelDelta > 35f) {
+                                                        cumulativeWheelDelta = 0f
+                                                        haptics.click()
+                                                        onNext()
+                                                    } else if (cumulativeWheelDelta < -35f) {
+                                                        cumulativeWheelDelta = 0f
+                                                        haptics.click()
+                                                        onPrevious()
+                                                    }
+                                                    scope.launch {
+                                                        latheState.rotateBy(deltaAngle, haptics)
+                                                    }
                                                 }
                                             }
                                         }
                                     } while (event.changes.any { it.pressed })
 
-                                    if (isRadialDragging) {
+                                    if (isRadialDragging && !isInsideWheel) {
                                         latheState.setDraggingState(false)
                                         val finalAngle = latheState.angle
                                         val normalizedAngle = RadialMath.normalizeDegrees(-finalAngle)
