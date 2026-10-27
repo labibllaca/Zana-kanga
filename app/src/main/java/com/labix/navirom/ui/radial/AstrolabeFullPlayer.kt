@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.labix.navirom.ui.util.formatMs
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -185,10 +186,10 @@ fun AstrolabeFullPlayer(
     var lastTouchTimestamp by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var isVinylExpanded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(lastTouchTimestamp, isVinylExpanded) {
-        if (!isVinylExpanded) {
+    LaunchedEffect(lastTouchTimestamp, isVinylExpanded, latheState.isDragging) {
+        if (!isVinylExpanded && !latheState.isDragging) {
             delay(5000L)
-            if (System.currentTimeMillis() - lastTouchTimestamp >= 5000L) {
+            if (!latheState.isDragging && System.currentTimeMillis() - lastTouchTimestamp >= 5000L) {
                 isVinylExpanded = true
             }
         }
@@ -246,7 +247,7 @@ fun AstrolabeFullPlayer(
             .statusBarsPadding()
             .navigationBarsPadding()
             .nestedScroll(nestedScrollConnection)
-            .pointerInput(isVinylExpanded) {
+            .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     lastTouchTimestamp = System.currentTimeMillis()
@@ -388,6 +389,12 @@ fun AstrolabeFullPlayer(
                 val wheelSize = 265.dp
                 var centerOffset by remember { mutableStateOf(Offset.Zero) }
 
+                val currentOnNext by rememberUpdatedState(onNext)
+                val currentOnPrevious by rememberUpdatedState(onPrevious)
+                val currentOnTogglePlayPause by rememberUpdatedState(onTogglePlayPause)
+                val currentQueue by rememberUpdatedState(queue)
+                val currentQueueIndex by rememberUpdatedState(queueIndex)
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(),
@@ -439,14 +446,15 @@ fun AstrolabeFullPlayer(
                         modifier = Modifier
                             .size(wheelSize)
                             .background(Color.White)
-                            .pointerInput(queue.size, totalDurationMs, playbackState.currentPositionMs) {
+                            .pointerInput(Unit) {
                                 awaitEachGesture {
                                     val down = awaitFirstDown(requireUnconsumed = false)
                                     val now = System.currentTimeMillis()
+                                    lastTouchTimestamp = now
                                     val downPos = down.position
                                     val center = if (centerOffset != Offset.Zero) centerOffset else Offset(size.width / 2f, size.height / 2f)
                                     val distanceFromCenter = hypot(downPos.x - center.x, downPos.y - center.y)
-                                    val wheelRadius = center.x * 0.78f
+                                    val wheelRadius = center.x * 0.96f
                                     val isInsideWheel = distanceFromCenter <= wheelRadius
 
                                     // Double tap detection (< 320ms, < 70px) opens options modal (does not change song)
@@ -474,7 +482,7 @@ fun AstrolabeFullPlayer(
                                             val currentPos = change.position
                                             val movement = hypot(currentPos.x - downPos.x, currentPos.y - downPos.y)
 
-                                            if (movement > 8f && !isRadialDragging) {
+                                            if (movement > 6f && !isRadialDragging) {
                                                 isRadialDragging = true
                                                 if (isInsideWheel) {
                                                     latheState.setDraggingState(true)
@@ -482,6 +490,7 @@ fun AstrolabeFullPlayer(
                                             }
 
                                             if (isRadialDragging) {
+                                                lastTouchTimestamp = System.currentTimeMillis()
                                                 if (isInsideWheel) {
                                                     change.consume()
                                                     val currentPolar = RadialMath.toPolar(center, currentPos)
@@ -489,38 +498,29 @@ fun AstrolabeFullPlayer(
                                                     val deltaAngle = RadialMath.angularDistance(prevAngle, currentAngle)
                                                     prevAngle = currentAngle
 
-                                                    // ONLY inside the wheel: change the current song by rotating the dial
+                                                    // Continuous, instantaneous rotation of the wheel
+                                                    latheState.rotateImmediate(deltaAngle, haptics)
+
+                                                    // Continuous song cycling without stopping
                                                     cumulativeWheelDelta += deltaAngle
-                                                    val stepThreshold = 30f
-                                                    if (cumulativeWheelDelta > stepThreshold) {
-                                                        cumulativeWheelDelta = 0f
+                                                    val stepThreshold = 35f
+                                                    if (cumulativeWheelDelta >= stepThreshold) {
+                                                        cumulativeWheelDelta -= stepThreshold
                                                         haptics.click()
-                                                        onNext()
-                                                    } else if (cumulativeWheelDelta < -stepThreshold) {
-                                                        cumulativeWheelDelta = 0f
+                                                        currentOnNext()
+                                                    } else if (cumulativeWheelDelta <= -stepThreshold) {
+                                                        cumulativeWheelDelta += stepThreshold
                                                         haptics.click()
-                                                        onPrevious()
-                                                    }
-                                                    scope.launch {
-                                                        latheState.rotateBy(deltaAngle, haptics)
+                                                        currentOnPrevious()
                                                     }
                                                 }
-                                                // Outside the wheel: do NOT change anything about the song!
                                             }
                                         }
                                     } while (event.changes.any { it.pressed })
 
-                                    if (isRadialDragging && isInsideWheel && trackCount > 0) {
+                                    if (isRadialDragging) {
                                         latheState.setDraggingState(false)
-                                        val finalAngle = latheState.angle
-                                        val normalizedAngle = RadialMath.normalizeDegrees(-finalAngle)
-                                        val rawIdx = (normalizedAngle / stepAngle).toInt()
-                                        val selectedIdx = ((rawIdx % trackCount) + trackCount) % trackCount
-                                        if (selectedIdx in queue.indices && selectedIdx != queueIndex) {
-                                            onTrackSelect(queue[selectedIdx], queue)
-                                        }
-                                    } else if (isRadialDragging) {
-                                        latheState.setDraggingState(false)
+                                        lastTouchTimestamp = System.currentTimeMillis()
                                     }
                                 }
                             },
@@ -535,8 +535,8 @@ fun AstrolabeFullPlayer(
                                 center = center,
                                 outerRadius = outerR,
                                 progressFraction = progressFraction,
-                                trackCount = queue.size.coerceAtLeast(1),
-                                currentTrackIndex = queueIndex,
+                                trackCount = currentQueue.size.coerceAtLeast(1),
+                                currentTrackIndex = currentQueueIndex,
                                 listCount = 5,
                                 activeListIndex = 0,
                                 rotationDeg = latheState.angle,
@@ -560,12 +560,13 @@ fun AstrolabeFullPlayer(
                             ),
                             label = "vinylRot"
                         )
+                        val effectiveVinylRot = if (playbackState.isPlaying) vinylRot else 0f
 
                         // Center Celestial / Album Art Medallion / Vinyl Plate
                         Box(
                             modifier = Modifier
                                 .size(animatedMedallionSize)
-                                .graphicsLayer { rotationZ = vinylRot }
+                                .graphicsLayer { rotationZ = effectiveVinylRot }
                                 .clip(CircleShape)
                                 .background(if (isVinylExpanded) Color.Black else Color.Transparent)
                                 .border(
@@ -579,7 +580,7 @@ fun AstrolabeFullPlayer(
                                         isVinylExpanded = false
                                         lastTouchTimestamp = System.currentTimeMillis()
                                     } else {
-                                        onTogglePlayPause()
+                                        currentOnTogglePlayPause()
                                     }
                                 },
                             contentAlignment = Alignment.Center
@@ -590,10 +591,21 @@ fun AstrolabeFullPlayer(
                                     val radius = size.minDimension / 2f
                                     drawCircle(color = Color(0xFF111111), radius = radius)
                                     var r = radius * 0.35f
-                                    while (r < radius * 0.92f) {
-                                        drawCircle(color = Color(0xFF2A2A2A), radius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f))
-                                        r += 6.dp.toPx()
+                                    while (r < radius * 0.94f) {
+                                        drawCircle(color = Color(0xFF242424), radius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2f))
+                                        r += 5.dp.toPx()
                                     }
+                                    val sheenBrush = androidx.compose.ui.graphics.Brush.sweepGradient(
+                                        0.0f to Color.Transparent,
+                                        0.12f to Color.White.copy(alpha = 0.14f),
+                                        0.25f to Color.Transparent,
+                                        0.50f to Color.Transparent,
+                                        0.62f to Color.White.copy(alpha = 0.14f),
+                                        0.75f to Color.Transparent,
+                                        1.0f to Color.Transparent,
+                                        center = center
+                                    )
+                                    drawCircle(brush = sheenBrush, radius = radius * 0.94f)
                                 }
                             }
 
@@ -1714,12 +1726,6 @@ fun EditorialSectorItemRow(
     }
 }
 
-private fun formatMs(ms: Long): String {
-    val totalSecs = (ms / 1000).coerceAtLeast(0)
-    val mins = totalSecs / 60
-    val secs = totalSecs % 60
-    return String.format("%02d:%02d", mins, secs)
-}
 
 private fun getRomanNumeral(n: Int): String {
     val map = listOf(

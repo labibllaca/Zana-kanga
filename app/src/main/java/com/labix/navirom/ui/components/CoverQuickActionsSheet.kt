@@ -3,6 +3,7 @@ package com.labix.navirom.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import com.labix.navirom.ui.util.formatMs
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -63,12 +64,7 @@ fun CoverQuickActionsSheet(
     val totalDurationMs = if (playbackState.durationMs > 0) playbackState.durationMs else (track.durationSeconds * 1000L)
     val currentPosMs = playbackState.currentPositionMs.coerceIn(0L, totalDurationMs.coerceAtLeast(1L))
 
-    val formatTime: (Long) -> String = { ms ->
-        val totalSec = (ms / 1000).coerceAtLeast(0)
-        val min = totalSec / 60
-        val sec = totalSec % 60
-        "%d:%02d".format(min, sec)
-    }
+    val formatTime = ::formatMs
 
     // Timer active calculation
     val isTimerActive = (playbackState.sleepTimerSecondsLeft != null && playbackState.sleepTimerSecondsLeft > 0) ||

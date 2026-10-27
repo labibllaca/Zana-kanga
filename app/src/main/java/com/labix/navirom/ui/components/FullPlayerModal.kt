@@ -1,6 +1,7 @@
 package com.labix.navirom.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import com.labix.navirom.ui.util.formatMs
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -296,12 +297,7 @@ fun FullPlayerModal(
     val currentPosMs = if (isDraggingSlider) dragPositionMs else playbackState.currentPositionMs
     val totalDurationMs = if (playbackState.durationMs > 0) playbackState.durationMs else (track.durationSeconds * 1000L)
 
-    val formatTime: (Long) -> String = { ms ->
-        val totalSec = (ms / 1000).coerceAtLeast(0)
-        val min = totalSec / 60
-        val sec = totalSec % 60
-        "%d:%02d".format(min, sec)
-    }
+    val formatTime = ::formatMs
 
     val isDark = false
     val backgroundColor = Color.White
@@ -3566,12 +3562,7 @@ private fun SecondaryPlayerDeckView(
     val haptics = rememberNaviromHaptics()
     val track = state.currentTrack
 
-    val formatTime: (Long) -> String = { ms ->
-        val totalSec = (ms / 1000).coerceAtLeast(0)
-        val min = totalSec / 60
-        val sec = totalSec % 60
-        "%d:%02d".format(min, sec)
-    }
+    val formatTime = ::formatMs
 
     Surface(
         shape = RoundedCornerShape(16.dp),

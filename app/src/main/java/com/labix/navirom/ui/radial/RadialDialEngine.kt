@@ -122,7 +122,8 @@ class RadialDialState(
     val maxAngle: Float = 180f
 ) {
     val animatableAngle = Animatable(initialAngle)
-    val angle: Float get() = animatableAngle.value
+    var angle by mutableFloatStateOf(initialAngle)
+        private set
 
     var isDragging by mutableStateOf(false)
         private set
@@ -145,16 +146,31 @@ class RadialDialState(
         angularVelocity = velocity
     }
 
+    fun rotateImmediate(deltaDegrees: Float, haptics: NaviromHaptics? = null) {
+        val newTarget = clampIfBounded(angle + deltaDegrees)
+        angle = newTarget
+        if (stepSizeDegrees > 0f && haptics != null) {
+            val currentDetentIndex = (angle / stepSizeDegrees).toInt()
+            if (currentDetentIndex != lastHapticDetentIndex) {
+                haptics.tick()
+                lastHapticDetentIndex = currentDetentIndex
+            }
+        }
+    }
+
     suspend fun snapTo(targetAngle: Float) {
-        animatableAngle.snapTo(clampIfBounded(targetAngle))
+        val clamped = clampIfBounded(targetAngle)
+        angle = clamped
+        animatableAngle.snapTo(clamped)
     }
 
     suspend fun rotateBy(deltaDegrees: Float, haptics: NaviromHaptics? = null) {
-        val newTarget = clampIfBounded(animatableAngle.value + deltaDegrees)
+        val newTarget = clampIfBounded(angle + deltaDegrees)
+        angle = newTarget
         animatableAngle.snapTo(newTarget)
 
         if (stepSizeDegrees > 0f && haptics != null) {
-            val currentDetentIndex = (animatableAngle.value / stepSizeDegrees).toInt()
+            val currentDetentIndex = (angle / stepSizeDegrees).toInt()
             if (currentDetentIndex != lastHapticDetentIndex) {
                 haptics.tick()
                 lastHapticDetentIndex = currentDetentIndex
