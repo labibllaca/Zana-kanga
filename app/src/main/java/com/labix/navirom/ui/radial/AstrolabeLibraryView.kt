@@ -45,6 +45,10 @@ enum class LibraryFilterType {
     ALL, PLAYLISTS, ALBUMS, ARTISTS, SONGS
 }
 
+enum class SourceFilter {
+    ALL, SERVER, LOCAL
+}
+
 data class EditorialListItem(
     val id: String,
     val title: String,
@@ -82,26 +86,19 @@ fun AstrolabeLibraryView(
     val scope = rememberCoroutineScope()
 
     var activeFilter by remember { mutableStateOf(LibraryFilterType.ALL) }
+    var sourceFilter by remember { mutableStateOf(SourceFilter.ALL) }
     var activeListIndex by remember { mutableIntStateOf(0) }
     val lazyListState = rememberLazyListState()
+    var isWheelInteracting by remember { mutableStateOf(false) }
 
     // Unique songs across all lists (no duplicate elements)
     val uniqueSongs = remember(librarySongs) { librarySongs.distinctBy { it.id } }
-    var visibleSongCount by remember(activeFilter) { mutableIntStateOf(25) }
 
-    val songBatchItems = remember(uniqueSongs) {
-        uniqueSongs.chunked(25).mapIndexed { batchIdx, batch ->
-            val startNum = batchIdx * 25 + 1
-            val endNum = startNum + batch.size - 1
-            EditorialListItem(
-                id = "song_batch_$batchIdx",
-                title = "SONGS BATCH ${batchIdx + 1}",
-                subtitle = "TRACKS $startNum–$endNum • ${batch.size} MANUSCRIPTS",
-                type = LibraryFilterType.SONGS,
-                trackCount = batch.size,
-                rawSongsBatch = batch,
-                isLocal = false
-            )
+    val filteredSongs = remember(uniqueSongs, sourceFilter) {
+        when (sourceFilter) {
+            SourceFilter.ALL -> uniqueSongs
+            SourceFilter.LOCAL -> uniqueSongs.filter { it.id.startsWith("local_") || !it.localFilePath.isNullOrBlank() || it.streamUrl.startsWith("content://") || it.streamUrl.startsWith("file://") }
+            SourceFilter.SERVER -> uniqueSongs.filter { !(it.id.startsWith("local_") || !it.localFilePath.isNullOrBlank() || it.streamUrl.startsWith("content://") || it.streamUrl.startsWith("file://")) }
         }
     }
 
@@ -167,47 +164,68 @@ fun AstrolabeLibraryView(
         list
     }
 
-    // Filtered lists
-    val displayLists = remember(allItems, songBatchItems, activeFilter) {
-        when (activeFilter) {
-            LibraryFilterType.ALL -> allItems
-            LibraryFilterType.PLAYLISTS -> allItems.filter { it.type == LibraryFilterType.PLAYLISTS }
-            LibraryFilterType.ALBUMS -> allItems.filter { it.type == LibraryFilterType.ALBUMS }
-            LibraryFilterType.ARTISTS -> allItems.filter { it.type == LibraryFilterType.ARTISTS }
-            LibraryFilterType.SONGS -> songBatchItems
+    val sourceFilteredAllItems = remember(allItems, sourceFilter) {
+        when (sourceFilter) {
+            SourceFilter.ALL -> allItems
+            SourceFilter.LOCAL -> allItems.filter { it.isLocal }
+            SourceFilter.SERVER -> allItems.filter { !it.isLocal }
         }
     }
 
-    val displayedSongs = remember(uniqueSongs, visibleSongCount) {
-        uniqueSongs.take(visibleSongCount)
+    // Filtered lists
+    val displayLists = remember(sourceFilteredAllItems, activeFilter) {
+        when (activeFilter) {
+            LibraryFilterType.ALL -> sourceFilteredAllItems
+            LibraryFilterType.PLAYLISTS -> sourceFilteredAllItems.filter { it.type == LibraryFilterType.PLAYLISTS }
+            LibraryFilterType.ALBUMS -> sourceFilteredAllItems.filter { it.type == LibraryFilterType.ALBUMS }
+            LibraryFilterType.ARTISTS -> sourceFilteredAllItems.filter { it.type == LibraryFilterType.ARTISTS }
+            LibraryFilterType.SONGS -> emptyList()
+        }
     }
 
-    // Ensure active index stays within bounds
-    LaunchedEffect(displayLists.size) {
-        if (displayLists.isNotEmpty()) {
-            activeListIndex = activeListIndex.coerceIn(0, displayLists.size - 1)
+    val isSongsView = (activeFilter == LibraryFilterType.SONGS)
+    val totalWheelItems = if (isSongsView) filteredSongs.size else displayLists.size
+
+    // Left Half-Wheel state: dynamically rebases when total items change
+    val safeItemCount = totalWheelItems.coerceAtLeast(1)
+    val angularStep = 180f / safeItemCount.coerceIn(4, 36)
+    var wheelRotationDeg by remember { mutableFloatStateOf(0f) }
+
+    // Rebase active index & rotation whenever new songs or lists are loaded
+    LaunchedEffect(totalWheelItems, activeFilter, sourceFilter) {
+        if (totalWheelItems > 0) {
+            activeListIndex = activeListIndex.coerceIn(0, totalWheelItems - 1)
         } else {
             activeListIndex = 0
         }
+        wheelRotationDeg = -(activeListIndex * angularStep)
     }
 
-    // Left Half-Wheel state
-    val safeItemCount = displayLists.size.coerceAtLeast(1)
-    val angularStep = 180f / safeItemCount.coerceIn(4, 24)
-    var wheelRotationDeg by remember { mutableFloatStateOf(0f) }
-
-    // Synchronize wheel rotation when index changes
+    // Synchronize list scrolling when active index changes externally
     LaunchedEffect(activeListIndex) {
-        if (displayLists.isNotEmpty() && activeListIndex in displayLists.indices) {
-            lazyListState.animateScrollToItem(activeListIndex)
+        if (!isWheelInteracting && totalWheelItems > 0 && activeListIndex in 0 until totalWheelItems && !lazyListState.isScrollInProgress) {
+            lazyListState.scrollToItem(activeListIndex)
         }
     }
 
-    val currentSelectedItem = displayLists.getOrNull(activeListIndex)
+    // Bidirectional sync: synchronize wheel when user scrolls list directly
+    LaunchedEffect(lazyListState.firstVisibleItemIndex, lazyListState.isScrollInProgress) {
+        if (!isWheelInteracting && lazyListState.isScrollInProgress && totalWheelItems > 0) {
+            val currentFirst = lazyListState.firstVisibleItemIndex.coerceIn(0, totalWheelItems - 1)
+            if (currentFirst != activeListIndex) {
+                activeListIndex = currentFirst
+                wheelRotationDeg = -(currentFirst * angularStep)
+            }
+        }
+    }
+
+    val currentSelectedItem = if (!isSongsView) displayLists.getOrNull(activeListIndex) else null
 
     // Resolved tracks for the selected list
-    val selectedTracks = remember(currentSelectedItem, librarySongs) {
-        when (currentSelectedItem?.type) {
+    val selectedTracks = remember(currentSelectedItem, librarySongs, isSongsView, filteredSongs) {
+        if (isSongsView) {
+            filteredSongs
+        } else when (currentSelectedItem?.type) {
             LibraryFilterType.ALBUMS -> {
                 val albId = currentSelectedItem.rawAlbum?.id
                 val albName = currentSelectedItem.rawAlbum?.name
@@ -299,20 +317,67 @@ fun AstrolabeLibraryView(
                 }
             }
 
-            // Filter Chips Row (ALL | PLAYLISTS | ALBUMS | ARTISTS)
+            // 1. Source Filter Chips Row (ALL SOURCES | SERVER | LOCAL)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                    .padding(vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 listOf(
-                    LibraryFilterType.ALL to "ALL (${allItems.size})",
-                    LibraryFilterType.PLAYLISTS to "PLAYLISTS (${playlists.size})",
-                    LibraryFilterType.ALBUMS to "ALBUMS (${albums.size})",
-                    LibraryFilterType.ARTISTS to "ARTISTS (${artists.size})",
-                    LibraryFilterType.SONGS to "SONGS (${uniqueSongs.size})"
+                    SourceFilter.ALL to "ALL SOURCES",
+                    SourceFilter.SERVER to "SERVER ONLY",
+                    SourceFilter.LOCAL to "LOCAL ON-DEVICE"
+                ).forEach { (src, label) ->
+                    val isSelected = sourceFilter == src
+                    val chipBg = if (isSelected) (if (isDark) Color.White else Color.Black) else (if (isDark) Color(0xFF18181D) else Color.White)
+                    val chipContent = if (isSelected) (if (isDark) Color.Black else Color.White) else (if (isDark) Color.White else Color.Black)
+                    val chipBorder = if (isSelected) (if (isDark) Color.White else Color.Black) else (if (isDark) Color.White.copy(alpha = 0.35f) else Color.Black)
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = chipBg,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, chipBorder),
+                        modifier = Modifier.clickable {
+                            haptics.click()
+                            sourceFilter = src
+                            activeListIndex = 0
+                            wheelRotationDeg = 0f
+                        }
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Serif,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                letterSpacing = 0.5.sp,
+                                fontSize = 8.5.sp
+                            ),
+                            color = chipContent,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+
+            // 2. Category Filter Chips Row (ALL | PLAYLISTS | ALBUMS | ARTISTS | SONGS)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val playlistsCount = sourceFilteredAllItems.count { it.type == LibraryFilterType.PLAYLISTS }
+                val albumsCount = sourceFilteredAllItems.count { it.type == LibraryFilterType.ALBUMS }
+                val artistsCount = sourceFilteredAllItems.count { it.type == LibraryFilterType.ARTISTS }
+                listOf(
+                    LibraryFilterType.ALL to "ALL (${sourceFilteredAllItems.size})",
+                    LibraryFilterType.PLAYLISTS to "PLAYLISTS ($playlistsCount)",
+                    LibraryFilterType.ALBUMS to "ALBUMS ($albumsCount)",
+                    LibraryFilterType.ARTISTS to "ARTISTS ($artistsCount)",
+                    LibraryFilterType.SONGS to "SONGS (${filteredSongs.size})"
                 ).forEach { (filterType, label) ->
                     val isSelected = activeFilter == filterType
                     val chipBg = if (isSelected) {
@@ -387,11 +452,18 @@ fun AstrolabeLibraryView(
                         .fillMaxHeight()
                         .width(halfWheelWidth)
                         .background(canvasBg)
-                        .pointerInput(displayLists.size) {
+                        .pointerInput(totalWheelItems, activeFilter, sourceFilter) {
                             var accumulatedDrag = 0f
                             detectVerticalDragGestures(
                                 onDragStart = {
+                                    isWheelInteracting = true
                                     accumulatedDrag = 0f
+                                },
+                                onDragEnd = {
+                                    isWheelInteracting = false
+                                },
+                                onDragCancel = {
+                                    isWheelInteracting = false
                                 },
                                 onVerticalDrag = { change, dragAmount ->
                                     change.consume()
@@ -400,19 +472,28 @@ fun AstrolabeLibraryView(
                                     // Rotate wheel by drag
                                     wheelRotationDeg += dragAmount * 0.45f
 
-                                    // Check threshold for index change
-                                    val threshold = 28f
-                                    if (abs(accumulatedDrag) >= threshold && displayLists.isNotEmpty()) {
+                                    // Check threshold for index change dynamically
+                                    val threshold = when {
+                                        totalWheelItems > 200 -> 9f
+                                        totalWheelItems > 100 -> 13f
+                                        totalWheelItems > 50 -> 18f
+                                        else -> 24f
+                                    }
+                                    if (abs(accumulatedDrag) >= threshold && totalWheelItems > 0) {
                                         val steps = (accumulatedDrag / threshold).toInt()
                                         if (steps != 0) {
-                                            haptics.tick()
-                                            val newIdx = (activeListIndex - steps).coerceIn(0, displayLists.size - 1)
+                                            val newIdx = (activeListIndex - steps).coerceIn(0, totalWheelItems - 1)
                                             if (newIdx != activeListIndex) {
+                                                haptics.tick()
                                                 activeListIndex = newIdx
-                                                accumulatedDrag = 0f
+                                                scope.launch {
+                                                    lazyListState.scrollToItem(newIdx)
+                                                }
                                             }
+                                            accumulatedDrag -= steps * threshold
                                         }
                                     }
+                                    accumulatedDrag = accumulatedDrag.coerceIn(-threshold * 2f, threshold * 2f)
                                 }
                             )
                         },
@@ -428,7 +509,7 @@ fun AstrolabeLibraryView(
                                 center = center,
                                 outerRadius = outerRadPx,
                                 rotationDeg = wheelRotationDeg,
-                                listCount = displayLists.size.coerceAtLeast(4),
+                                listCount = totalWheelItems.coerceAtLeast(4),
                                 activeListIndex = activeListIndex,
                                 isDark = isDark
                             )
@@ -469,7 +550,7 @@ fun AstrolabeLibraryView(
                 // 2. RIGHT SIDE: PROMINENT FULLY VISIBLE LISTS / SONGS
                 // ==========================================
                 if (activeFilter == LibraryFilterType.SONGS) {
-                    if (uniqueSongs.isEmpty()) {
+                    if (filteredSongs.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -477,7 +558,7 @@ fun AstrolabeLibraryView(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "No songs cataloged in library",
+                                text = "No songs cataloged in this filter",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontFamily = FontFamily.Serif,
                                     fontSize = 12.sp
@@ -494,46 +575,18 @@ fun AstrolabeLibraryView(
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                             contentPadding = PaddingValues(top = 6.dp, start = 2.dp, end = 2.dp, bottom = 80.dp)
                         ) {
-                            itemsIndexed(displayedSongs) { idx, track ->
+                            itemsIndexed(filteredSongs, key = { _, track -> track.id }) { idx, track ->
                                 EditorialSongItemRow(
                                     track = track,
                                     indexNumber = (idx + 1).toString().padStart(2, '0'),
+                                    isSelected = (idx == activeListIndex),
                                     isDark = isDark,
                                     onTrackClick = {
                                         haptics.click()
-                                        onTrackClick(track, uniqueSongs)
+                                        activeListIndex = idx
+                                        onTrackClick(track, filteredSongs)
                                     }
                                 )
-                            }
-
-                            if (visibleSongCount < uniqueSongs.size) {
-                                item {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 12.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                haptics.click()
-                                                visibleSongCount = (visibleSongCount + 25).coerceAtMost(uniqueSongs.size)
-                                            },
-                                            shape = RoundedCornerShape(12.dp),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, inkColor)
-                                        ) {
-                                            Text(
-                                                text = "LOAD NEXT 25 MANUSCRIPTS (${visibleSongCount} / ${uniqueSongs.size})",
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontFamily = FontFamily.Serif,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 10.sp
-                                                ),
-                                                color = inkColor
-                                            )
-                                        }
-                                    }
-                                }
                             }
 
                             item {
@@ -746,6 +799,7 @@ private fun formatSecs(secs: Int): String {
 private fun EditorialSongItemRow(
     track: NaviromTrack,
     indexNumber: String,
+    isSelected: Boolean = false,
     isDark: Boolean = false,
     onTrackClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -753,16 +807,37 @@ private fun EditorialSongItemRow(
     val isLocalTrack = track.id.startsWith("local_") || !track.localFilePath.isNullOrBlank() || track.streamUrl.startsWith("content://") || track.streamUrl.startsWith("file://")
     val sourceTag = if (isLocalTrack) "[LOCAL] " else "[SERVER] "
 
-    val containerBg = if (isDark) Color.Black else Color.White
-    val contentColor = if (isDark) Color.White else Color.Black
-    val subtitleColor = if (isDark) Color(0xFFDDDDDD) else Color(0xFF555555)
-    val borderColor = if (isDark) Color.White else Color.Black
-    val tickColor = if (isDark) Color.White.copy(alpha = 0.5f) else Color(0xFFCCCCCC)
+    val containerBg = if (isSelected) {
+        if (isDark) Color.White else Color.Black
+    } else {
+        if (isDark) Color.Black else Color.White
+    }
+    val contentColor = if (isSelected) {
+        if (isDark) Color.Black else Color.White
+    } else {
+        if (isDark) Color.White else Color.Black
+    }
+    val subtitleColor = if (isSelected) {
+        if (isDark) Color.Black.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.85f)
+    } else {
+        if (isDark) Color(0xFFDDDDDD) else Color(0xFF555555)
+    }
+    val borderColor = if (isSelected) {
+        if (isDark) Color.White else Color.Black
+    } else {
+        if (isDark) Color.White else Color.Black
+    }
+    val tickColor = if (isSelected) {
+        if (isDark) Color.Black.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.6f)
+    } else {
+        if (isDark) Color.White.copy(alpha = 0.5f) else Color(0xFFCCCCCC)
+    }
 
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = containerBg,
         border = androidx.compose.foundation.BorderStroke(1.2.dp, borderColor),
+        shadowElevation = if (isSelected) 3.dp else 0.dp,
         modifier = modifier
             .fillMaxWidth()
             .clickable { onTrackClick() }
@@ -781,7 +856,7 @@ private fun EditorialSongItemRow(
                     text = indexNumber,
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontFamily = FontFamily.Serif,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                         fontSize = 12.sp
                     ),
                     color = contentColor
