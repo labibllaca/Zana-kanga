@@ -241,6 +241,7 @@ fun NaviromApp(
         var libraryActiveIndex by remember { mutableIntStateOf(0) }
         var libraryActiveFilter by remember { mutableStateOf(LibraryFilterType.ALL) }
         var librarySourceFilter by remember { mutableStateOf(SourceFilter.ALL) }
+        var playerScrollOffsetYPx by remember { mutableFloatStateOf(0f) }
 
         LaunchedEffect(currentTab) {
             val targetPage = when (currentTab) {
@@ -322,7 +323,8 @@ fun NaviromApp(
                                         onToggleVinylEffect = { viewModel.setVinylEffectEnabled(!isVinylEffectEnabled) },
                                         onOpenOptionsModal = {}
                                     ),
-                                    hasExternalWheel = true
+                                    hasExternalWheel = true,
+                                    onScrollOffsetChanged = { playerScrollOffsetYPx = it }
                                 )
                             }
                             1 -> {
@@ -374,6 +376,7 @@ fun NaviromApp(
                         onTogglePlayPause = { viewModel.togglePlayPause() },
                         onOpenOptionsModal = { viewModel.setFullPlayerVisible(true) },
                         isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f,
+                        playerScrollOffsetYPx = playerScrollOffsetYPx,
                         modifier = Modifier.fillMaxSize()
                     )
 

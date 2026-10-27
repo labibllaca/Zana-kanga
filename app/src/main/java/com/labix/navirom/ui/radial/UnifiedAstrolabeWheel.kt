@@ -74,6 +74,7 @@ fun UnifiedAstrolabeWheel(
     onTogglePlayPause: () -> Unit,
     onOpenOptionsModal: () -> Unit,
     isDark: Boolean,
+    playerScrollOffsetYPx: Float = 0f,
     modifier: Modifier = Modifier
 ) {
     if (!isAstrolabeModeEnabled) return
@@ -151,7 +152,8 @@ fun UnifiedAstrolabeWheel(
 
         // 1. Center in Playing-View (page 0)
         val playerCenterX = screenWidthPx / 2f
-        val playerCenterY = with(density) { 258.dp.toPx() }
+        val basePlayerCenterY = with(density) { 258.dp.toPx() }
+        val playerCenterY = basePlayerCenterY - playerScrollOffsetYPx
         val playerRadius = with(density) { 132.5.dp.toPx() }
 
         // 2. Center in Library-View (page 1)

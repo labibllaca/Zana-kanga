@@ -118,6 +118,7 @@ fun AstrolabeFullPlayer(
     state: AstrolabePlayerState,
     actions: AstrolabePlayerActions,
     hasExternalWheel: Boolean = false,
+    onScrollOffsetChanged: (Float) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val playbackState = state.playbackState
@@ -166,6 +167,20 @@ fun AstrolabeFullPlayer(
 
     // Synchronized scroll state for queue list
     val queueLazyListState = rememberLazyListState()
+
+    val scrollOffsetPx by remember {
+        derivedStateOf {
+            if (queueLazyListState.firstVisibleItemIndex == 0) {
+                queueLazyListState.firstVisibleItemScrollOffset.toFloat()
+            } else {
+                2000f
+            }
+        }
+    }
+
+    LaunchedEffect(scrollOffsetPx) {
+        onScrollOffsetChanged(scrollOffsetPx)
+    }
 
     // Wheel options modal state (shown on double click)
     var showOptionsModal by remember { mutableStateOf(false) }
