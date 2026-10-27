@@ -162,15 +162,6 @@ fun AstrolabeFullPlayer(
         stepSizeDegrees = stepAngle
     )
 
-    val nestedScrollConnection = remember(latheState) {
-        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): Offset {
-                // If dragging inside wheel, block scroll
-                return if (latheState.isDragging) available else Offset.Zero
-            }
-        }
-    }
-
     // Synchronized scroll state for queue list
     val queueLazyListState = rememberLazyListState()
 
@@ -210,21 +201,11 @@ fun AstrolabeFullPlayer(
     }
     val targetedTrack = queue.getOrNull(targetedIndex)
 
-    // Programmatic scroll of current playlist when wheel turns
-    LaunchedEffect(targetedIndex, latheState.isDragging) {
-        if (latheState.isDragging && queue.isNotEmpty()) {
-            val target = targetedIndex.coerceIn(0, queue.lastIndex)
-            queueLazyListState.animateScrollToItem(target, scrollOffset = -180)
-        }
-    }
-
-    // Sync lathe rotation and center current song in playlist view when queue index changes normally
+    // Sync lathe rotation when queue index changes normally
     LaunchedEffect(queueIndex, queue.size) {
         if (!latheState.isDragging && queue.isNotEmpty()) {
             val targetAngle = -(queueIndex * stepAngle)
             latheState.snapTo(targetAngle)
-            val targetIdx = queueIndex.coerceIn(0, queue.lastIndex)
-            queueLazyListState.animateScrollToItem(targetIdx, scrollOffset = -180)
         }
     }
 
@@ -238,21 +219,18 @@ fun AstrolabeFullPlayer(
     val inkColor = if (isDark) Color.White else Color.Black
     val secondaryInk = if (isDark) Color(0xFFAAAAAF) else Color(0xFF444444)
 
-    val scrollState = rememberScrollState()
-
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(canvasBg)
             .statusBarsPadding()
             .navigationBarsPadding()
-            .nestedScroll(nestedScrollConnection)
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    lastTouchTimestamp = System.currentTimeMillis()
-                    if (isVinylExpanded) {
+            .pointerInput(isVinylExpanded) {
+                if (isVinylExpanded) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
                         isVinylExpanded = false
+                        lastTouchTimestamp = System.currentTimeMillis()
                     }
                 }
             }
@@ -302,444 +280,54 @@ fun AstrolabeFullPlayer(
                 }
             }
 
-            // Scrollable Content Area: Wheel elevated to the top with radiating editorial sectors
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(scrollState),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Current Track Header Info (Roman Numeral / Title / Artist)
-                val romanIndex = getRomanNumeral((queueIndex + 1).coerceAtLeast(1))
-                Text(
-                    text = "$romanIndex • ${currentTrack?.title ?: "Select a Track"}",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontFamily = FontFamily.Serif,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
-                        fontSize = 15.sp
-                    ),
-                    color = inkColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = "${currentTrack?.artist ?: "Unknown Artist"} • ${currentTrack?.album ?: "Unknown Album"}",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Serif,
-                        letterSpacing = 0.5.sp,
-                        fontSize = 11.sp
-                    ),
-                    color = secondaryInk,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center
-                )
-
-                // Architectural Ring Hierarchy Guide
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "TRACK",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = FontFamily.Serif,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.5.sp,
-                            fontSize = 9.sp
-                        ),
-                        color = inkColor
-                    )
-                    Text("•", color = Color.Gray, fontSize = 9.sp)
-                    Text(
-                        text = "ALBUM",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = FontFamily.Serif,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.5.sp,
-                            fontSize = 9.sp
-                        ),
-                        color = inkColor
-                    )
-                    Text("•", color = Color.Gray, fontSize = 9.sp)
-                    Text(
-                        text = "LISTS",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = FontFamily.Serif,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.5.sp,
-                            fontSize = 9.sp
-                        ),
-                        color = Color.Black
+            // ==========================================
+            // PREPARED DATA FOR SECTORS
+            // ==========================================
+            val queueSectorItems = remember(queue, queueIndex, targetedIndex, playbackState.isPlaying) {
+                queue.mapIndexed { idx, track ->
+                    val isCurrent = (idx == queueIndex || track.id == currentTrack?.id)
+                    val isTargeted = (idx == targetedIndex && latheState.isDragging)
+                    EditorialSectorItem(
+                        indexLabel = (idx + 1).toString().padStart(2, '0'),
+                        title = track.title + if (isCurrent && playbackState.isPlaying) "  ▶" else "",
+                        description = "${track.artist} • ${formatMs(track.durationSeconds * 1000L)}" +
+                            if (isTargeted) " • [CUED ON WHEEL]" else if (isCurrent) " • [CURRENTLY PLAYING]" else "",
+                        isSelected = isCurrent || isTargeted,
+                        onClick = {
+                            haptics.click()
+                            onTrackSelect(track, queue)
+                        }
                     )
                 }
+            }
 
-                Spacer(modifier = Modifier.height(6.dp))
+            val hasSyncedLyrics = lyricsData?.syncedLines?.isNotEmpty() == true
+            val hasPlainLyrics = lyricsData?.plainLyrics?.isNotBlank() == true
 
-                // ==========================================
-                // THE CONCENTRIC WHEEL CANVAS
-                // Gestures:
-                // 1) Turn wheel -> rotates dial & scrolls playlist
-                // 2) Double click -> opens options modal (sleep timer, dual audio, etc.)
-                // ==========================================
-                val wheelSize = 265.dp
-                var centerOffset by remember { mutableStateOf(Offset.Zero) }
-
-                val currentOnNext by rememberUpdatedState(onNext)
-                val currentOnPrevious by rememberUpdatedState(onPrevious)
-                val currentOnTogglePlayPause by rememberUpdatedState(onTogglePlayPause)
-                val currentQueue by rememberUpdatedState(queue)
-                val currentQueueIndex by rememberUpdatedState(queueIndex)
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Process indicator of the song played in minutes and seconds displayed around the wheel
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color.Black,
-                            modifier = Modifier.padding(2.dp)
-                        ) {
-                            Text(
-                                text = "  ${formatMs(currentPosMs)}  ",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp
-                                ),
-                                color = Color.White
-                            )
+            val lyricItems = remember(lyricsData?.syncedLines, currentPosMs) {
+                val syncedLines = lyricsData?.syncedLines ?: emptyList()
+                val activeLyricIdx = syncedLines.indexOfLast { (it.timeMs - 350L) <= currentPosMs }
+                syncedLines.mapIndexed { idx, line ->
+                    val isLineActive = (idx == activeLyricIdx)
+                    EditorialSectorItem(
+                        indexLabel = "",
+                        title = line.text.ifBlank { "• • •" },
+                        description = if (isLineActive) "Active vocal phase • tap line to cue playback" else "Synchronized stanza line",
+                        isSelected = isLineActive,
+                        onClick = {
+                            haptics.click()
+                            onSeekTo(line.timeMs)
                         }
-
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color.White,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
-                            modifier = Modifier.padding(2.dp)
-                        ) {
-                            Text(
-                                text = "  ${formatMs(totalDurationMs)}  ",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp
-                                ),
-                                color = Color.Black
-                            )
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(wheelSize)
-                            .background(Color.White)
-                            .pointerInput(Unit) {
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                    val now = System.currentTimeMillis()
-                                    lastTouchTimestamp = now
-                                    val downPos = down.position
-                                    val center = if (centerOffset != Offset.Zero) centerOffset else Offset(size.width / 2f, size.height / 2f)
-                                    val distanceFromCenter = hypot(downPos.x - center.x, downPos.y - center.y)
-                                    val wheelRadius = center.x * 0.96f
-                                    val isInsideWheel = distanceFromCenter <= wheelRadius
-
-                                    // Double tap detection (< 320ms, < 70px) opens options modal (does not change song)
-                                    val timeDiff = now - lastTapTimestamp
-                                    val distDiff = hypot(downPos.x - lastTapPosition.x, downPos.y - lastTapPosition.y)
-                                    if (timeDiff in 1..320 && distDiff < 70f) {
-                                        lastTapTimestamp = 0L
-                                        haptics.toggle()
-                                        showOptionsModal = true
-                                        return@awaitEachGesture
-                                    } else {
-                                        lastTapTimestamp = now
-                                        lastTapPosition = downPos
-                                    }
-
-                                    var isRadialDragging = false
-                                    var prevAngle = RadialMath.toPolar(center, downPos).angleDegrees
-                                    var cumulativeWheelDelta = 0f
-
-                                    do {
-                                        val event = awaitPointerEvent()
-                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-
-                                        if (change.pressed) {
-                                            val currentPos = change.position
-                                            val movement = hypot(currentPos.x - downPos.x, currentPos.y - downPos.y)
-
-                                            if (movement > 6f && !isRadialDragging) {
-                                                isRadialDragging = true
-                                                if (isInsideWheel) {
-                                                    latheState.setDraggingState(true)
-                                                }
-                                            }
-
-                                            if (isRadialDragging) {
-                                                lastTouchTimestamp = System.currentTimeMillis()
-                                                if (isInsideWheel) {
-                                                    change.consume()
-                                                    val currentPolar = RadialMath.toPolar(center, currentPos)
-                                                    val currentAngle = currentPolar.angleDegrees
-                                                    val deltaAngle = RadialMath.angularDistance(prevAngle, currentAngle)
-                                                    prevAngle = currentAngle
-
-                                                    // Continuous, instantaneous rotation of the wheel
-                                                    latheState.rotateImmediate(deltaAngle, haptics)
-
-                                                    // Continuous song cycling without stopping
-                                                    cumulativeWheelDelta += deltaAngle
-                                                    val stepThreshold = 35f
-                                                    if (cumulativeWheelDelta >= stepThreshold) {
-                                                        cumulativeWheelDelta -= stepThreshold
-                                                        haptics.click()
-                                                        currentOnNext()
-                                                    } else if (cumulativeWheelDelta <= -stepThreshold) {
-                                                        cumulativeWheelDelta += stepThreshold
-                                                        haptics.click()
-                                                        currentOnPrevious()
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } while (event.changes.any { it.pressed })
-
-                                    if (isRadialDragging) {
-                                        latheState.setDraggingState(false)
-                                        lastTouchTimestamp = System.currentTimeMillis()
-                                    }
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val center = Offset(size.width / 2f, size.height / 2f)
-                            centerOffset = center
-                            val outerR = size.width * 0.48f
-
-                            drawEditorialConcentricWheel(
-                                center = center,
-                                outerRadius = outerR,
-                                progressFraction = progressFraction,
-                                trackCount = currentQueue.size.coerceAtLeast(1),
-                                currentTrackIndex = currentQueueIndex,
-                                listCount = 5,
-                                activeListIndex = 0,
-                                rotationDeg = latheState.angle,
-                                isDark = isDark
-                            )
-                        }
-
-                        val medallionSize = if (isVinylExpanded) wheelSize * 0.72f else wheelSize * 0.20f
-                        val animatedMedallionSize by animateDpAsState(
-                            targetValue = medallionSize,
-                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-                            label = "medallionSize"
-                        )
-                        val infiniteTransition = rememberInfiniteTransition(label = "vinyl_rot")
-                        val vinylRot by infiniteTransition.animateFloat(
-                            initialValue = 0f,
-                            targetValue = 360f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(8000, easing = LinearEasing),
-                                repeatMode = androidx.compose.animation.core.RepeatMode.Restart
-                            ),
-                            label = "vinylRot"
-                        )
-                        val effectiveVinylRot = if (playbackState.isPlaying) vinylRot else 0f
-
-                        // Center Celestial / Album Art Medallion / Vinyl Plate
-                        Box(
-                            modifier = Modifier
-                                .size(animatedMedallionSize)
-                                .graphicsLayer { rotationZ = effectiveVinylRot }
-                                .clip(CircleShape)
-                                .background(if (isVinylExpanded) Color.Black else Color.Transparent)
-                                .border(
-                                    width = if (isVinylExpanded) 3.dp else 1.5.dp,
-                                    color = Color.Black,
-                                    shape = CircleShape
-                                )
-                                .clickable {
-                                    haptics.toggle()
-                                    if (isVinylExpanded) {
-                                        isVinylExpanded = false
-                                        lastTouchTimestamp = System.currentTimeMillis()
-                                    } else {
-                                        currentOnTogglePlayPause()
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isVinylExpanded) {
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val center = Offset(size.width / 2f, size.height / 2f)
-                                    val radius = size.minDimension / 2f
-                                    drawCircle(color = Color(0xFF111111), radius = radius)
-                                    var r = radius * 0.35f
-                                    while (r < radius * 0.94f) {
-                                        drawCircle(color = Color(0xFF242424), radius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2f))
-                                        r += 5.dp.toPx()
-                                    }
-                                    val sheenBrush = androidx.compose.ui.graphics.Brush.sweepGradient(
-                                        0.0f to Color.Transparent,
-                                        0.12f to Color.White.copy(alpha = 0.14f),
-                                        0.25f to Color.Transparent,
-                                        0.50f to Color.Transparent,
-                                        0.62f to Color.White.copy(alpha = 0.14f),
-                                        0.75f to Color.Transparent,
-                                        1.0f to Color.Transparent,
-                                        center = center
-                                    )
-                                    drawCircle(brush = sheenBrush, radius = radius * 0.94f)
-                                }
-                            }
-
-                            val artSize = if (isVinylExpanded) animatedMedallionSize * 0.44f else animatedMedallionSize
-                            Box(
-                                modifier = Modifier
-                                    .size(artSize)
-                                    .clip(CircleShape)
-                                    .border(1.dp, Color.White, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (currentTrack?.coverArtUrl?.isNotBlank() == true) {
-                                    AsyncImage(
-                                        model = currentTrack.coverArtUrl,
-                                        contentDescription = "Album Art",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(Color.Black),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.MusicNote,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(if (isVinylExpanded) 16.dp else 20.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            if (!isVinylExpanded) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color.Black.copy(alpha = 0.55f),
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                            contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // ==========================================
-                // EDITORIAL SECTOR 1: CURRENT PLAYING LIST / QUEUE
-                // Directly synchronized with wheel rotation!
-                // ==========================================
-                val queueSectorItems = remember(queue, queueIndex, targetedIndex, playbackState.isPlaying) {
-                    queue.mapIndexed { idx, track ->
-                        val isCurrent = (idx == queueIndex || track.id == currentTrack?.id)
-                        val isTargeted = (idx == targetedIndex && latheState.isDragging)
-                        EditorialSectorItem(
-                            indexLabel = (idx + 1).toString().padStart(2, '0'),
-                            title = track.title + if (isCurrent && playbackState.isPlaying) "  ▶" else "",
-                            description = "${track.artist} • ${formatMs(track.durationSeconds * 1000L)}" +
-                                if (isTargeted) " • [CUED ON WHEEL]" else if (isCurrent) " • [CURRENTLY PLAYING]" else "",
-                            isSelected = isCurrent || isTargeted,
-                            onClick = {
-                                haptics.click()
-                                onTrackSelect(track, queue)
-                            }
-                        )
-                    }
-                }
-
-                EditorialSectorBlock(
-                    sectorTitle = "CURRENT PLAYING LIST",
-                    sectorSubTitle = null,
-                    items = if (queueSectorItems.isNotEmpty()) queueSectorItems else listOf(
-                        EditorialSectorItem(
-                            indexLabel = "01",
-                            title = currentTrack?.title ?: "No track queued",
-                            description = currentTrack?.artist ?: "Unknown artist"
-                        )
-                    ),
-                    lazyListState = queueLazyListState,
-                    maxHeight = 240.dp
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // ==========================================
-                // EDITORIAL SECTOR 2: LYRICS (LOWER BELOW THE CURRENT PLAYING LIST)
-                // ==========================================
-                val hasSyncedLyrics = lyricsData?.syncedLines?.isNotEmpty() == true
-                val hasPlainLyrics = lyricsData?.plainLyrics?.isNotBlank() == true
-
-                if (hasSyncedLyrics) {
-                    val syncedLines = lyricsData?.syncedLines ?: emptyList()
-                    val activeLyricIdx = remember(currentPosMs, syncedLines) {
-                        syncedLines.indexOfLast { (it.timeMs - 350L) <= currentPosMs }
-                    }
-
-                    val lyricItems = syncedLines.mapIndexed { idx, line ->
-                        val isLineActive = (idx == activeLyricIdx)
-                        EditorialSectorItem(
-                            indexLabel = "",
-                            title = line.text.ifBlank { "• • •" },
-                            description = if (isLineActive) "Active vocal phase • tap line to cue playback" else "Synchronized stanza line",
-                            isSelected = isLineActive,
-                            onClick = {
-                                haptics.click()
-                                onSeekTo(line.timeMs)
-                            }
-                        )
-                    }
-
-                    EditorialSectorBlock(
-                        sectorTitle = "MANUSCRIPT LYRICS",
-                        sectorSubTitle = null,
-                        items = lyricItems,
-                        isManuscriptList = true
                     )
-                } else if (hasPlainLyrics) {
-                    val plainLines = lyricsData?.plainLyrics.orEmpty()
-                        .lines()
-                        .filter { it.isNotBlank() }
-                        .take(40)
+                }
+            }
 
-                    val plainItems = plainLines.mapIndexed { idx, line ->
+            val plainItems = remember(lyricsData?.plainLyrics) {
+                lyricsData?.plainLyrics.orEmpty()
+                    .lines()
+                    .filter { it.isNotBlank() }
+                    .take(40)
+                    .map { line ->
                         EditorialSectorItem(
                             indexLabel = "",
                             title = line,
@@ -747,16 +335,532 @@ fun AstrolabeFullPlayer(
                             isSelected = false
                         )
                     }
+            }
 
-                    EditorialSectorBlock(
-                        sectorTitle = "MANUSCRIPT LYRICS",
+            var isQueueCollapsed by remember { mutableStateOf(false) }
+            var isLyricsCollapsed by remember { mutableStateOf(false) }
+
+            val currentOnNext by rememberUpdatedState(onNext)
+            val currentOnPrevious by rememberUpdatedState(onPrevious)
+            val currentOnSeekTo by rememberUpdatedState(onSeekTo)
+            val currentOnTogglePlayPause by rememberUpdatedState(onTogglePlayPause)
+            val currentQueue by rememberUpdatedState(queue)
+            val currentQueueIndex by rememberUpdatedState(queueIndex)
+            val currentPlaybackState by rememberUpdatedState(playbackState)
+
+            // Scrollable Content Area: Single unified LazyColumn ensuring fully scrollable song lists
+            LazyColumn(
+                state = queueLazyListState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                item(key = "astrolabe_wheel_section") {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Current Track Header Info (Roman Numeral / Title / Artist)
+                        val romanIndex = getRomanNumeral((queueIndex + 1).coerceAtLeast(1))
+                        Text(
+                            text = "$romanIndex • ${currentTrack?.title ?: "Select a Track"}",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = FontFamily.Serif,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp,
+                                fontSize = 15.sp
+                            ),
+                            color = inkColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "${currentTrack?.artist ?: "Unknown Artist"} • ${currentTrack?.album ?: "Unknown Album"}",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Serif,
+                                letterSpacing = 0.5.sp,
+                                fontSize = 11.sp
+                            ),
+                            color = secondaryInk,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+
+                        // Architectural Ring Hierarchy Guide
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "TRACK",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.5.sp,
+                                    fontSize = 9.sp
+                                ),
+                                color = inkColor
+                            )
+                            Text("•", color = Color.Gray, fontSize = 9.sp)
+                            Text(
+                                text = "ALBUM",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.5.sp,
+                                    fontSize = 9.sp
+                                ),
+                                color = inkColor
+                            )
+                            Text("•", color = Color.Gray, fontSize = 9.sp)
+                            Text(
+                                text = "LISTS",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Serif,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.5.sp,
+                                    fontSize = 9.sp
+                                ),
+                                color = Color.Black
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // ==========================================
+                        // THE CONCENTRIC WHEEL CANVAS
+                        // Gestures:
+                        // 1) Swipe UP / DOWN inside circle -> change current song
+                        // 2) Swipe LEFT / RIGHT inside circle -> fast-forward / rewind with live HUD
+                        // 3) Double click inside circle -> opens orbital options modal
+                        // 4) Tap center medallion -> play/pause
+                        // ==========================================
+                        val wheelSize = 265.dp
+                        var centerOffset by remember { mutableStateOf(Offset.Zero) }
+
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            // Process indicators
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color.Black,
+                                    modifier = Modifier.padding(2.dp)
+                                ) {
+                                    Text(
+                                        text = "  ${formatMs(currentPosMs)}  ",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp
+                                        ),
+                                        color = Color.White
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color.White,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black),
+                                    modifier = Modifier.padding(2.dp)
+                                ) {
+                                    Text(
+                                        text = "  ${formatMs(totalDurationMs)}  ",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp
+                                        ),
+                                        color = Color.Black
+                                    )
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(wheelSize)
+                                    .background(Color.White)
+                                    .pointerInput(queue.size, queueIndex, currentPosMs, totalDurationMs) {
+                                        awaitEachGesture {
+                                            val down = awaitFirstDown(requireUnconsumed = false)
+                                            val now = System.currentTimeMillis()
+                                            lastTouchTimestamp = now
+                                            val downPos = down.position
+                                            val center = if (centerOffset != Offset.Zero) centerOffset else Offset(size.width / 2f, size.height / 2f)
+                                            val distanceFromCenter = hypot(downPos.x - center.x, downPos.y - center.y)
+                                            val wheelRadius = center.x * 0.96f
+                                            val isInsideWheel = distanceFromCenter <= wheelRadius
+
+                                            if (!isInsideWheel) {
+                                                return@awaitEachGesture
+                                            }
+
+                                            // Double tap detection (< 320ms, < 70px) opens options modal (does not change song)
+                                            val timeDiff = now - lastTapTimestamp
+                                            val distDiff = hypot(downPos.x - lastTapPosition.x, downPos.y - lastTapPosition.y)
+                                            if (timeDiff in 1..320 && distDiff < 70f) {
+                                                lastTapTimestamp = 0L
+                                                haptics.toggle()
+                                                showOptionsModal = true
+                                                return@awaitEachGesture
+                                            } else {
+                                                lastTapTimestamp = now
+                                                lastTapPosition = downPos
+                                            }
+
+                                            var gestureMode = 0 // 0 = UNDECIDED, 1 = VERTICAL_SONG_SWITCH, 2 = HORIZONTAL_SEEK
+                                            var accumulatedVerticalDelta = 0f
+                                            var totalMovedX = 0f
+                                            var totalMovedY = 0f
+                                            var lastPos = downPos
+                                            val startPosMs = currentPlaybackState.currentPositionMs
+                                            var activeSeekTargetMs = startPosMs
+                                            val dragSlop = 16f
+                                            val songChangeThreshold = 45f
+
+                                            do {
+                                                val event = awaitPointerEvent()
+                                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                                                if (change.pressed) {
+                                                    val currentPos = change.position
+                                                    val dx = currentPos.x - lastPos.x
+                                                    val dy = currentPos.y - lastPos.y
+                                                    totalMovedX += dx
+                                                    totalMovedY += dy
+                                                    lastPos = currentPos
+                                                    lastTouchTimestamp = System.currentTimeMillis()
+
+                                                    // Always consume inside wheel so parent LazyColumn never scrolls
+                                                    change.consume()
+
+                                                    if (gestureMode == 0) {
+                                                        val totalDist = hypot(totalMovedX, totalMovedY)
+                                                        if (totalDist >= dragSlop) {
+                                                            if (kotlin.math.abs(totalMovedY) >= kotlin.math.abs(totalMovedX)) {
+                                                                gestureMode = 1
+                                                                latheState.setDraggingState(true)
+                                                            } else {
+                                                                gestureMode = 2
+                                                                isHoldSeeking = true
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if (gestureMode == 1) {
+                                                        // VERTICAL SWIPE: Up = Next song, Down = Previous song
+                                                        accumulatedVerticalDelta += dy
+                                                        latheState.rotateImmediate(-dy * 0.7f, haptics)
+
+                                                        if (accumulatedVerticalDelta <= -songChangeThreshold) {
+                                                            accumulatedVerticalDelta += songChangeThreshold
+                                                            haptics.click()
+                                                            currentOnNext()
+                                                        } else if (accumulatedVerticalDelta >= songChangeThreshold) {
+                                                            accumulatedVerticalDelta -= songChangeThreshold
+                                                            haptics.click()
+                                                            currentOnPrevious()
+                                                        }
+                                                    } else if (gestureMode == 2) {
+                                                        // HORIZONTAL SWIPE: Right = Fast forward, Left = Rewind
+                                                        val msPerPixel = 150L
+                                                        val deltaMs = (totalMovedX * msPerPixel).toLong()
+                                                        activeSeekTargetMs = (startPosMs + deltaMs).coerceIn(0L, totalDurationMs)
+                                                        seekDeltaMs = deltaMs
+                                                        seekPreviewPosMs = activeSeekTargetMs
+
+                                                        if (kotlin.math.abs(deltaMs) % 4000L < 250L) {
+                                                            haptics.tick()
+                                                        }
+                                                    }
+                                                }
+                                            } while (event.changes.any { it.pressed })
+
+                                            if (gestureMode == 1) {
+                                                latheState.setDraggingState(false)
+                                                lastTouchTimestamp = System.currentTimeMillis()
+                                            } else if (gestureMode == 2) {
+                                                isHoldSeeking = false
+                                                if (kotlin.math.abs(seekDeltaMs) >= 800L) {
+                                                    haptics.click()
+                                                    currentOnSeekTo(activeSeekTargetMs)
+                                                }
+                                                seekDeltaMs = 0L
+                                                lastTouchTimestamp = System.currentTimeMillis()
+                                            }
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                    centerOffset = center
+                                    val outerR = size.width * 0.48f
+
+                                    drawEditorialConcentricWheel(
+                                        center = center,
+                                        outerRadius = outerR,
+                                        progressFraction = progressFraction,
+                                        trackCount = currentQueue.size.coerceAtLeast(1),
+                                        currentTrackIndex = currentQueueIndex,
+                                        listCount = 5,
+                                        activeListIndex = 0,
+                                        rotationDeg = latheState.angle,
+                                        isDark = isDark
+                                    )
+                                }
+
+                                val medallionSize = if (isVinylExpanded) wheelSize * 0.72f else wheelSize * 0.20f
+                                val animatedMedallionSize by animateDpAsState(
+                                    targetValue = medallionSize,
+                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                                    label = "medallionSize"
+                                )
+                                val infiniteTransition = rememberInfiniteTransition(label = "vinyl_rot")
+                                val vinylRot by infiniteTransition.animateFloat(
+                                    initialValue = 0f,
+                                    targetValue = 360f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(8000, easing = LinearEasing),
+                                        repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+                                    ),
+                                    label = "vinylRot"
+                                )
+                                val effectiveVinylRot = if (playbackState.isPlaying) vinylRot else 0f
+
+                                // Center Celestial / Album Art Medallion / Vinyl Plate
+                                Box(
+                                    modifier = Modifier
+                                        .size(animatedMedallionSize)
+                                        .graphicsLayer { rotationZ = effectiveVinylRot }
+                                        .clip(CircleShape)
+                                        .background(if (isVinylExpanded) Color.Black else Color.Transparent)
+                                        .border(
+                                            width = if (isVinylExpanded) 3.dp else 1.5.dp,
+                                            color = Color.Black,
+                                            shape = CircleShape
+                                        )
+                                        .clickable {
+                                            haptics.toggle()
+                                            if (isVinylExpanded) {
+                                                isVinylExpanded = false
+                                                lastTouchTimestamp = System.currentTimeMillis()
+                                            } else {
+                                                currentOnTogglePlayPause()
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isVinylExpanded) {
+                                        Canvas(modifier = Modifier.fillMaxSize()) {
+                                            val center = Offset(size.width / 2f, size.height / 2f)
+                                            val radius = size.minDimension / 2f
+                                            drawCircle(color = Color(0xFF111111), radius = radius)
+                                            var r = radius * 0.35f
+                                            while (r < radius * 0.94f) {
+                                                drawCircle(color = Color(0xFF242424), radius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2f))
+                                                r += 5.dp.toPx()
+                                            }
+                                            val sheenBrush = androidx.compose.ui.graphics.Brush.sweepGradient(
+                                                0.0f to Color.Transparent,
+                                                0.12f to Color.White.copy(alpha = 0.14f),
+                                                0.25f to Color.Transparent,
+                                                0.50f to Color.Transparent,
+                                                0.62f to Color.White.copy(alpha = 0.14f),
+                                                0.75f to Color.Transparent,
+                                                1.0f to Color.Transparent,
+                                                center = center
+                                            )
+                                            drawCircle(brush = sheenBrush, radius = radius * 0.94f)
+                                        }
+                                    }
+
+                                    val artSize = if (isVinylExpanded) animatedMedallionSize * 0.44f else animatedMedallionSize
+                                    Box(
+                                        modifier = Modifier
+                                            .size(artSize)
+                                            .clip(CircleShape)
+                                            .border(1.dp, Color.White, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (currentTrack?.coverArtUrl?.isNotBlank() == true) {
+                                            AsyncImage(
+                                                model = currentTrack.coverArtUrl,
+                                                contentDescription = "Album Art",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(Color.Black),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.MusicNote,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(if (isVinylExpanded) 16.dp else 20.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    if (!isVinylExpanded) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color.Black.copy(alpha = 0.55f),
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                                    contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Fast-forward / Rewind Seek HUD Overlay
+                                if (isHoldSeeking) {
+                                    Surface(
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = Color.Black.copy(alpha = 0.90f),
+                                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White),
+                                        shadowElevation = 10.dp,
+                                        modifier = Modifier
+                                            .padding(12.dp)
+                                            .align(Alignment.Center)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (seekDeltaMs >= 0) Icons.Filled.FastForward else Icons.Filled.FastRewind,
+                                                contentDescription = if (seekDeltaMs >= 0) "Fast Forward" else "Rewind",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                val deltaSec = seekDeltaMs / 1000L
+                                                val sign = if (deltaSec >= 0) "+" else ""
+                                                Text(
+                                                    text = "$sign${deltaSec}s",
+                                                    style = MaterialTheme.typography.titleMedium.copy(
+                                                        fontFamily = FontFamily.Monospace,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 15.sp
+                                                    ),
+                                                    color = Color.White
+                                                )
+                                                Text(
+                                                    text = "${formatMs(seekPreviewPosMs)} / ${formatMs(totalDurationMs)}",
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontFamily = FontFamily.Monospace,
+                                                        fontSize = 11.sp
+                                                    ),
+                                                    color = Color.White.copy(alpha = 0.8f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+
+                // ==========================================
+                // EDITORIAL SECTOR 1: CURRENT PLAYING LIST / QUEUE
+                // ==========================================
+                item(key = "queue_header") {
+                    EditorialSectorHeaderRow(
+                        sectorTitle = "CURRENT PLAYING LIST",
                         sectorSubTitle = null,
-                        items = plainItems,
-                        isManuscriptList = true
+                        isCollapsed = isQueueCollapsed,
+                        onToggleCollapse = {
+                            haptics.click()
+                            isQueueCollapsed = !isQueueCollapsed
+                        }
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                if (!isQueueCollapsed) {
+                    val displayQueue = if (queueSectorItems.isNotEmpty()) queueSectorItems else listOf(
+                        EditorialSectorItem(
+                            indexLabel = "01",
+                            title = currentTrack?.title ?: "No track queued",
+                            description = currentTrack?.artist ?: "Unknown artist"
+                        )
+                    )
+                    itemsIndexed(
+                        items = displayQueue,
+                        key = { idx, item -> "queue_${idx}_${item.title}" }
+                    ) { _, item ->
+                        EditorialSectorItemRow(item = item)
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                }
+
+                // ==========================================
+                // EDITORIAL SECTOR 2: LYRICS
+                // ==========================================
+                if (hasSyncedLyrics || hasPlainLyrics) {
+                    item(key = "lyrics_header") {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        EditorialSectorHeaderRow(
+                            sectorTitle = "MANUSCRIPT LYRICS",
+                            sectorSubTitle = null,
+                            isCollapsed = isLyricsCollapsed,
+                            onToggleCollapse = {
+                                haptics.click()
+                                isLyricsCollapsed = !isLyricsCollapsed
+                            }
+                        )
+                    }
+
+                    if (!isLyricsCollapsed) {
+                        val activeLyricList = if (hasSyncedLyrics) lyricItems else plainItems
+                        itemsIndexed(
+                            items = activeLyricList,
+                            key = { idx, _ -> "lyric_$idx" }
+                        ) { _, item ->
+                            EditorialSectorItemRow(item = item)
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                    } else {
+                        val activeLine = lyricItems.firstOrNull { it.isSelected } ?: lyricItems.firstOrNull()
+                        if (activeLine != null) {
+                            item(key = "active_lyric_line") {
+                                EditorialSectorItemRow(item = activeLine)
+                            }
+                        }
+                    }
+                }
+
+                item(key = "list_bottom_spacer") {
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
             }
 
             // ==========================================
@@ -1507,17 +1611,13 @@ fun AstrolabeOptionsModal(
  * signature 4.5dp solid black vertical accent bar, and multi-line title/description on the right.
  */
 @Composable
-fun EditorialSectorBlock(
+fun EditorialSectorHeaderRow(
     sectorTitle: String,
     sectorSubTitle: String? = null,
-    items: List<EditorialSectorItem>,
-    lazyListState: LazyListState? = null,
-    maxHeight: androidx.compose.ui.unit.Dp? = null,
-    isManuscriptList: Boolean = false,
+    isCollapsed: Boolean,
+    onToggleCollapse: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isCollapsed by remember { mutableStateOf(false) }
-    val haptics = rememberNaviromHaptics()
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val inkColor = if (isDark) Color.White else Color.Black
     val dividerColor = if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black
@@ -1526,17 +1626,13 @@ fun EditorialSectorBlock(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(top = 8.dp, bottom = 4.dp)
     ) {
-        // Sector Header (Clicking header minimizes the list)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                    haptics.click()
-                    isCollapsed = !isCollapsed
-                }
-                .padding(vertical = 2.dp),
+                .clickable { onToggleCollapse() }
+                .padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1545,7 +1641,7 @@ fun EditorialSectorBlock(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = if (isCollapsed) "▶ " + sectorTitle else "▼ " + sectorTitle,
+                    text = if (isCollapsed) "▶ $sectorTitle" else "▼ $sectorTitle",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.Bold,
@@ -1557,7 +1653,7 @@ fun EditorialSectorBlock(
             }
             if (sectorSubTitle != null) {
                 Text(
-                    text = if (isCollapsed) (if (isManuscriptList) "[ACTIVE LYRIC SHOWN]" else "[MINIMIZED]") else sectorSubTitle,
+                    text = if (isCollapsed) "[MINIMIZED]" else sectorSubTitle,
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = FontFamily.Serif,
                         letterSpacing = 1.sp,
@@ -1570,7 +1666,6 @@ fun EditorialSectorBlock(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // Horizontal sector separator line
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1579,34 +1674,53 @@ fun EditorialSectorBlock(
         )
 
         Spacer(modifier = Modifier.height(6.dp))
+    }
+}
+
+/**
+ * Editorial item model for sectors arranged around the wheel matching zoom-kal.jpg.
+ * Each item contains a left section with track index label, a subtle 1dp horizontal tick,
+ * signature 4.5dp solid black vertical accent bar, and multi-line title/description on the right.
+ */
+@Composable
+fun EditorialSectorBlock(
+    sectorTitle: String,
+    sectorSubTitle: String? = null,
+    items: List<EditorialSectorItem>,
+    lazyListState: LazyListState? = null,
+    maxHeight: androidx.compose.ui.unit.Dp? = null,
+    isManuscriptList: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    var isCollapsed by remember { mutableStateOf(false) }
+    val haptics = rememberNaviromHaptics()
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        EditorialSectorHeaderRow(
+            sectorTitle = sectorTitle,
+            sectorSubTitle = if (isCollapsed && isManuscriptList) "[ACTIVE LYRIC SHOWN]" else sectorSubTitle,
+            isCollapsed = isCollapsed,
+            onToggleCollapse = {
+                haptics.click()
+                isCollapsed = !isCollapsed
+            }
+        )
 
         if (isCollapsed) {
             if (isManuscriptList) {
-                // "except the manuscript list there show only the current line of lyric"
                 val activeOrFirst = items.firstOrNull { it.isSelected } ?: items.firstOrNull()
                 if (activeOrFirst != null) {
                     EditorialSectorItemRow(item = activeOrFirst)
                 }
-            } else {
-                // Minimized block
             }
         } else {
-            if (lazyListState != null) {
-                LazyColumn(
-                    state = lazyListState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 120.dp, max = maxHeight ?: 260.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    itemsIndexed(items) { _, item ->
-                        EditorialSectorItemRow(item = item)
-                    }
-                }
-            } else {
-                items.forEach { item ->
-                    EditorialSectorItemRow(item = item)
-                }
+            items.forEach { item ->
+                EditorialSectorItemRow(item = item)
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
     }
