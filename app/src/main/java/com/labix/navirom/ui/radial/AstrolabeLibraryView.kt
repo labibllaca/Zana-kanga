@@ -80,6 +80,10 @@ fun AstrolabeLibraryView(
     onPlayAll: (List<NaviromTrack>) -> Unit,
     onToggleClassicView: () -> Unit = {},
     userName: String = "",
+    hasExternalWheel: Boolean = false,
+    externalActiveListIndex: Int = 0,
+    onExternalActiveIndexChange: (Int) -> Unit = {},
+    onTotalItemsCountChange: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val haptics = rememberNaviromHaptics()
@@ -88,6 +92,7 @@ fun AstrolabeLibraryView(
     var activeFilter by remember { mutableStateOf(LibraryFilterType.ALL) }
     var sourceFilter by remember { mutableStateOf(SourceFilter.ALL) }
     var activeListIndex by remember { mutableIntStateOf(0) }
+    val effectiveActiveIndex = if (hasExternalWheel) externalActiveListIndex else activeListIndex
     val lazyListState = rememberLazyListState()
     var isWheelInteracting by remember { mutableStateOf(false) }
 
@@ -191,6 +196,10 @@ fun AstrolabeLibraryView(
     val angularStep = 180f / safeItemCount.coerceIn(4, 36)
     var wheelRotationDeg by remember { mutableFloatStateOf(0f) }
 
+    LaunchedEffect(totalWheelItems) {
+        onTotalItemsCountChange?.invoke(totalWheelItems)
+    }
+
     // Rebase active index & rotation whenever new songs or lists are loaded
     LaunchedEffect(totalWheelItems, activeFilter, sourceFilter) {
         if (totalWheelItems > 0) {
@@ -202,9 +211,9 @@ fun AstrolabeLibraryView(
     }
 
     // Synchronize list scrolling when active index changes externally
-    LaunchedEffect(activeListIndex) {
-        if (!isWheelInteracting && totalWheelItems > 0 && activeListIndex in 0 until totalWheelItems && !lazyListState.isScrollInProgress) {
-            lazyListState.scrollToItem(activeListIndex)
+    LaunchedEffect(effectiveActiveIndex) {
+        if (!isWheelInteracting && totalWheelItems > 0 && effectiveActiveIndex in 0 until totalWheelItems && !lazyListState.isScrollInProgress) {
+            lazyListState.scrollToItem(effectiveActiveIndex)
         }
     }
 
@@ -212,14 +221,18 @@ fun AstrolabeLibraryView(
     LaunchedEffect(lazyListState.firstVisibleItemIndex, lazyListState.isScrollInProgress) {
         if (!isWheelInteracting && lazyListState.isScrollInProgress && totalWheelItems > 0) {
             val currentFirst = lazyListState.firstVisibleItemIndex.coerceIn(0, totalWheelItems - 1)
-            if (currentFirst != activeListIndex) {
-                activeListIndex = currentFirst
-                wheelRotationDeg = -(currentFirst * angularStep)
+            if (currentFirst != effectiveActiveIndex) {
+                if (hasExternalWheel) {
+                    onExternalActiveIndexChange(currentFirst)
+                } else {
+                    activeListIndex = currentFirst
+                    wheelRotationDeg = -(currentFirst * angularStep)
+                }
             }
         }
     }
 
-    val currentSelectedItem = if (!isSongsView) displayLists.getOrNull(activeListIndex) else null
+    val currentSelectedItem = if (!isSongsView) displayLists.getOrNull(effectiveActiveIndex) else null
 
     // Resolved tracks for the selected list
     val selectedTracks = remember(currentSelectedItem, librarySongs, isSongsView, filteredSongs) {
@@ -447,93 +460,102 @@ fun AstrolabeLibraryView(
                 // ==========================================
                 val halfWheelWidth = 115.dp
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .width(halfWheelWidth)
-                        .background(canvasBg)
-                        .pointerInput(totalWheelItems, activeFilter, sourceFilter) {
-                            var accumulatedDrag = 0f
-                            detectVerticalDragGestures(
-                                onDragStart = {
-                                    isWheelInteracting = true
-                                    accumulatedDrag = 0f
-                                },
-                                onDragEnd = {
-                                    isWheelInteracting = false
-                                },
-                                onDragCancel = {
-                                    isWheelInteracting = false
-                                },
-                                onVerticalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    accumulatedDrag += dragAmount
+                if (!hasExternalWheel) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(halfWheelWidth)
+                            .background(canvasBg)
+                            .pointerInput(totalWheelItems, activeFilter, sourceFilter) {
+                                var accumulatedDrag = 0f
+                                detectVerticalDragGestures(
+                                    onDragStart = {
+                                        isWheelInteracting = true
+                                        accumulatedDrag = 0f
+                                    },
+                                    onDragEnd = {
+                                        isWheelInteracting = false
+                                    },
+                                    onDragCancel = {
+                                        isWheelInteracting = false
+                                    },
+                                    onVerticalDrag = { change, dragAmount ->
+                                        change.consume()
+                                        accumulatedDrag += dragAmount
 
-                                    // Rotate wheel by drag
-                                    wheelRotationDeg += dragAmount * 0.45f
+                                        // Rotate wheel by drag
+                                        wheelRotationDeg += dragAmount * 0.45f
 
-                                    // Check threshold for index change dynamically
-                                    val threshold = when {
-                                        totalWheelItems > 200 -> 9f
-                                        totalWheelItems > 100 -> 13f
-                                        totalWheelItems > 50 -> 18f
-                                        else -> 24f
-                                    }
-                                    if (abs(accumulatedDrag) >= threshold && totalWheelItems > 0) {
-                                        val steps = (accumulatedDrag / threshold).toInt()
-                                        if (steps != 0) {
-                                            val newIdx = (activeListIndex - steps).coerceIn(0, totalWheelItems - 1)
-                                            if (newIdx != activeListIndex) {
-                                                haptics.tick()
-                                                activeListIndex = newIdx
-                                                scope.launch {
-                                                    lazyListState.scrollToItem(newIdx)
-                                                }
-                                            }
-                                            accumulatedDrag -= steps * threshold
+                                        // Check threshold for index change dynamically
+                                        val threshold = when {
+                                            totalWheelItems > 200 -> 9f
+                                            totalWheelItems > 100 -> 13f
+                                            totalWheelItems > 50 -> 18f
+                                            else -> 24f
                                         }
+                                        if (abs(accumulatedDrag) >= threshold && totalWheelItems > 0) {
+                                            val steps = (accumulatedDrag / threshold).toInt()
+                                            if (steps != 0) {
+                                                val newIdx = (activeListIndex - steps).coerceIn(0, totalWheelItems - 1)
+                                                if (newIdx != activeListIndex) {
+                                                    haptics.tick()
+                                                    activeListIndex = newIdx
+                                                    scope.launch {
+                                                        lazyListState.scrollToItem(newIdx)
+                                                    }
+                                                }
+                                                accumulatedDrag -= steps * threshold
+                                            }
+                                        }
+                                        accumulatedDrag = accumulatedDrag.coerceIn(-threshold * 2f, threshold * 2f)
                                     }
-                                    accumulatedDrag = accumulatedDrag.coerceIn(-threshold * 2f, threshold * 2f)
-                                }
-                            )
-                        },
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val centerY = size.height / 2f
-                            val center = Offset(0f, centerY)
-                            val outerRadPx = minOf(size.width * 0.95f, size.height * 0.46f)
+                                )
+                            },
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val centerY = size.height / 2f
+                                val center = Offset(0f, centerY)
+                                val outerRadPx = minOf(size.width * 0.95f, size.height * 0.46f)
 
-                            drawEditorialLeftHalfWheel(
-                                center = center,
-                                outerRadius = outerRadPx,
-                                rotationDeg = wheelRotationDeg,
-                                listCount = totalWheelItems.coerceAtLeast(4),
-                                activeListIndex = activeListIndex,
-                                isDark = isDark
-                            )
-                        }
+                                drawEditorialLeftHalfWheel(
+                                    center = center,
+                                    outerRadius = outerRadPx,
+                                    rotationDeg = wheelRotationDeg,
+                                    listCount = totalWheelItems.coerceAtLeast(4),
+                                    activeListIndex = activeListIndex,
+                                    isDark = isDark
+                                )
+                            }
 
-                        // Center index tag at equator
-                        Surface(
-                            shape = RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp),
-                            color = if (isDark) Color.White else Color.Black,
-                            modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .offset(x = 4.dp)
-                        ) {
-                            Text(
-                                text = " ${(activeListIndex + 1).toString().padStart(2, '0')} ",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp
-                                ),
-                                color = if (isDark) Color.Black else Color.White
-                            )
+                            // Center index tag at equator
+                            Surface(
+                                shape = RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp),
+                                color = if (isDark) Color.White else Color.Black,
+                                modifier = Modifier
+                                    .align(Alignment.CenterStart)
+                                    .offset(x = 4.dp)
+                            ) {
+                                Text(
+                                    text = " ${(activeListIndex + 1).toString().padStart(2, '0')} ",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = if (isDark) Color.Black else Color.White
+                                )
+                            }
                         }
                     }
+                } else {
+                    // Reserved slot for external UnifiedAstrolabeWheel
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(halfWheelWidth)
+                    )
                 }
 
                 // Fine vertical divider separating half-wheel and lists
@@ -579,11 +601,15 @@ fun AstrolabeLibraryView(
                                 EditorialSongItemRow(
                                     track = track,
                                     indexNumber = (idx + 1).toString().padStart(2, '0'),
-                                    isSelected = (idx == activeListIndex),
+                                    isSelected = (idx == effectiveActiveIndex),
                                     isDark = isDark,
                                     onTrackClick = {
                                         haptics.click()
-                                        activeListIndex = idx
+                                        if (hasExternalWheel) {
+                                            onExternalActiveIndexChange(idx)
+                                        } else {
+                                            activeListIndex = idx
+                                        }
                                         onTrackClick(track, filteredSongs)
                                     }
                                 )
@@ -620,7 +646,7 @@ fun AstrolabeLibraryView(
                         contentPadding = PaddingValues(top = 6.dp, start = 2.dp, end = 2.dp, bottom = 80.dp)
                     ) {
                         itemsIndexed(displayLists) { idx, item ->
-                            val isSelected = (idx == activeListIndex)
+                            val isSelected = (idx == effectiveActiveIndex)
 
                             EditorialListItemRow(
                                 item = item,
@@ -629,8 +655,12 @@ fun AstrolabeLibraryView(
                                 isDark = isDark,
                                 onSelect = {
                                     haptics.click()
-                                    activeListIndex = idx
-                                    wheelRotationDeg = -(idx * angularStep)
+                                    if (hasExternalWheel) {
+                                        onExternalActiveIndexChange(idx)
+                                    } else {
+                                        activeListIndex = idx
+                                        wheelRotationDeg = -(idx * angularStep)
+                                    }
                                     if (item.rawPlaylist != null && onSelectPlaylist != null) {
                                         onSelectPlaylist(item.rawPlaylist.id)
                                     } else if (item.rawAlbum != null) {
@@ -639,7 +669,11 @@ fun AstrolabeLibraryView(
                                 },
                                 onPlay = {
                                     haptics.toggle()
-                                    activeListIndex = idx
+                                    if (hasExternalWheel) {
+                                        onExternalActiveIndexChange(idx)
+                                    } else {
+                                        activeListIndex = idx
+                                    }
                                     if (selectedTracks.isNotEmpty()) {
                                         onPlayAll(selectedTracks)
                                     }

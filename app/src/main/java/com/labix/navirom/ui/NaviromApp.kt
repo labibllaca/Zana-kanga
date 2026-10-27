@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -236,6 +237,8 @@ fun NaviromApp(
         )
     ) {
         val pagerState = rememberPagerState(initialPage = 1) { 3 }
+        var libraryTotalItems by remember { mutableIntStateOf(1) }
+        var libraryActiveIndex by remember { mutableIntStateOf(0) }
 
         LaunchedEffect(currentTab) {
             val targetPage = when (currentTab) {
@@ -314,8 +317,10 @@ fun NaviromApp(
                                         onSetDualSpeakerMode = { viewModel.setDualSpeakerMode(it) },
                                         onToggleCrossfade = { viewModel.setCrossfadeEnabled(!isCrossfadeEnabled) },
                                         onSetCrossfadeDuration = { viewModel.setCrossfadeDurationSeconds(it) },
-                                        onToggleVinylEffect = { viewModel.setVinylEffectEnabled(!isVinylEffectEnabled) }
-                                    )
+                                        onToggleVinylEffect = { viewModel.setVinylEffectEnabled(!isVinylEffectEnabled) },
+                                        onOpenOptionsModal = {}
+                                    ),
+                                    hasExternalWheel = true
                                 )
                             }
                             1 -> {
@@ -325,6 +330,10 @@ fun NaviromApp(
                                     onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() },
                                     librarySubTab = librarySubTab,
                                     onSubTabSelected = { viewModel.setLibrarySubTab(it) },
+                                    libraryActiveIndex = libraryActiveIndex,
+                                    onLibraryActiveIndexChange = { libraryActiveIndex = it },
+                                    libraryTotalItems = libraryTotalItems,
+                                    onLibraryTotalItemsChange = { libraryTotalItems = it },
                                     albums = albums,
                                     newestAlbums = newestAlbums,
                                     mostPlayedAlbums = mostPlayedAlbums,
@@ -455,6 +464,10 @@ fun NaviromApp(
                                     onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() },
                                     librarySubTab = librarySubTab,
                                     onSubTabSelected = { viewModel.setLibrarySubTab(it) },
+                                    libraryActiveIndex = libraryActiveIndex,
+                                    onLibraryActiveIndexChange = { libraryActiveIndex = it },
+                                    libraryTotalItems = libraryTotalItems,
+                                    onLibraryTotalItemsChange = { libraryTotalItems = it },
                                     albums = albums,
                                     newestAlbums = newestAlbums,
                                     mostPlayedAlbums = mostPlayedAlbums,
@@ -580,6 +593,25 @@ fun NaviromApp(
                             }
                         }
                     }
+
+                    UnifiedAstrolabeWheel(
+                        pagerState = pagerState,
+                        isAstrolabeModeEnabled = isAstrolabeModeEnabled,
+                        playbackState = playbackState,
+                        currentTrack = queue.getOrNull(queueIndex) ?: playbackState.currentTrack,
+                        queue = queue,
+                        queueIndex = queueIndex,
+                        libraryTotalItems = libraryTotalItems,
+                        libraryActiveIndex = libraryActiveIndex,
+                        onLibraryIndexChanged = { libraryActiveIndex = it },
+                        onPreviousTrack = { viewModel.previous() },
+                        onNextTrack = { viewModel.next() },
+                        onSeekTo = { viewModel.seekTo(it) },
+                        onTogglePlayPause = { viewModel.togglePlayPause() },
+                        onOpenOptionsModal = { viewModel.setFullPlayerVisible(true) },
+                        isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f,
+                        modifier = Modifier.fillMaxSize()
+                    )
 
                     // Persistent MiniPlayerBar
                     if (playbackState.currentTrack != null && !isFullPlayerVisible && pagerState.currentPage != 0) {
@@ -983,7 +1015,11 @@ fun TabContent(
     onNavigateUpMusicFolder: () -> Boolean = { false },
     onPlayFolder: (String, Boolean) -> Unit = { _, _ -> },
     userName: String = "",
-    onSetUserName: (String) -> Unit = {}
+    onSetUserName: (String) -> Unit = {},
+    libraryActiveIndex: Int = 0,
+    onLibraryActiveIndexChange: (Int) -> Unit = {},
+    libraryTotalItems: Int = 1,
+    onLibraryTotalItemsChange: (Int) -> Unit = {}
 ) {
     AnimatedContent(
         targetState = currentTab,
@@ -1012,7 +1048,11 @@ fun TabContent(
                     onTrackClick = onTrackClick,
                     onPlayAll = onPlayAll,
                     onToggleClassicView = onToggleAstrolabeMode,
-                    userName = userName
+                    userName = userName,
+                    hasExternalWheel = true,
+                    externalActiveListIndex = libraryActiveIndex,
+                    onExternalActiveIndexChange = onLibraryActiveIndexChange,
+                    onTotalItemsCountChange = onLibraryTotalItemsChange
                 )
             } else {
                 LibraryScreen(
