@@ -84,13 +84,28 @@ fun AstrolabeLibraryView(
     externalActiveListIndex: Int = 0,
     onExternalActiveIndexChange: (Int) -> Unit = {},
     onTotalItemsCountChange: ((Int) -> Unit)? = null,
+    externalActiveFilter: LibraryFilterType? = null,
+    onActiveFilterChange: ((LibraryFilterType) -> Unit)? = null,
+    externalSourceFilter: SourceFilter? = null,
+    onSourceFilterChange: ((SourceFilter) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val haptics = rememberNaviromHaptics()
     val scope = rememberCoroutineScope()
 
-    var activeFilter by remember { mutableStateOf(LibraryFilterType.ALL) }
-    var sourceFilter by remember { mutableStateOf(SourceFilter.ALL) }
+    var localActiveFilter by remember { mutableStateOf(LibraryFilterType.ALL) }
+    var localSourceFilter by remember { mutableStateOf(SourceFilter.ALL) }
+
+    val activeFilter = externalActiveFilter ?: localActiveFilter
+    val sourceFilter = externalSourceFilter ?: localSourceFilter
+
+    val updateActiveFilter: (LibraryFilterType) -> Unit = {
+        if (onActiveFilterChange != null) onActiveFilterChange(it) else localActiveFilter = it
+    }
+    val updateSourceFilter: (SourceFilter) -> Unit = {
+        if (onSourceFilterChange != null) onSourceFilterChange(it) else localSourceFilter = it
+    }
+
     var activeListIndex by remember { mutableIntStateOf(0) }
     val effectiveActiveIndex = if (hasExternalWheel) externalActiveListIndex else activeListIndex
     val lazyListState = rememberLazyListState()
@@ -212,8 +227,10 @@ fun AstrolabeLibraryView(
 
     // Synchronize list scrolling when active index changes externally
     LaunchedEffect(effectiveActiveIndex) {
-        if (!isWheelInteracting && totalWheelItems > 0 && effectiveActiveIndex in 0 until totalWheelItems && !lazyListState.isScrollInProgress) {
-            lazyListState.scrollToItem(effectiveActiveIndex)
+        if (!isWheelInteracting && totalWheelItems > 0 && effectiveActiveIndex in 0 until totalWheelItems) {
+            scope.launch {
+                lazyListState.animateScrollToItem(effectiveActiveIndex)
+            }
         }
     }
 
@@ -354,7 +371,7 @@ fun AstrolabeLibraryView(
                         border = androidx.compose.foundation.BorderStroke(1.dp, chipBorder),
                         modifier = Modifier.clickable {
                             haptics.click()
-                            sourceFilter = src
+                            updateSourceFilter(src)
                             activeListIndex = 0
                             wheelRotationDeg = 0f
                         }
@@ -416,7 +433,7 @@ fun AstrolabeLibraryView(
                         modifier = Modifier
                             .clickable {
                                 haptics.click()
-                                activeFilter = filterType
+                                updateActiveFilter(filterType)
                                 activeListIndex = 0
                                 wheelRotationDeg = 0f
                             }

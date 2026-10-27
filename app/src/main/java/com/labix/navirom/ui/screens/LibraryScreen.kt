@@ -1183,18 +1183,54 @@ fun LibraryScreen(
                 }
                 LibrarySubTab.LIBRARIES -> {
                     // Local Music Folders & Server Libraries tab - hide folders that don't have music in it
-                    val musicLocalFolders = remember(localFolders) {
-                        localFolders.filter { it.trackCount > 0 && it.tracks.isNotEmpty() }
+                    val musicLocalFolders = remember(localFolders) { localFolders.filter { it.tracks.isNotEmpty() } }
+                    val activeLocalFolderCount = remember(musicLocalFolders, disabledLocalFolderIds) { musicLocalFolders.count { !disabledLocalFolderIds.contains(it.id) } }
+                    val allLocalSelected = remember(musicLocalFolders, disabledLocalFolderIds) { musicLocalFolders.none { disabledLocalFolderIds.contains(it.id) } }
+                    val isAllServerSelected = isAllLibrariesSelected
+
+                    var libraryFolderQuery by remember { mutableStateOf("") }
+                    val searchedLocalFolders = remember(musicLocalFolders, libraryFolderQuery) {
+                        if (libraryFolderQuery.isBlank()) musicLocalFolders
+                        else musicLocalFolders.filter {
+                            it.name.contains(libraryFolderQuery, ignoreCase = true) ||
+                            it.displayPath.contains(libraryFolderQuery, ignoreCase = true)
+                        }
                     }
-                    val isAllServerSelected = selectedMusicFolderIds.isEmpty() || (selectedMusicFolderIds.size >= musicFolders.size)
-                    val activeLocalFolderCount = musicLocalFolders.count { !disabledLocalFolderIds.contains(it.id) }
-                    val allLocalSelected = disabledLocalFolderIds.isEmpty() && musicLocalFolders.isNotEmpty()
+                    val searchedServerFolders = remember(musicFolders, libraryFolderQuery) {
+                        if (libraryFolderQuery.isBlank()) musicFolders
+                        else musicFolders.filter {
+                            it.name.contains(libraryFolderQuery, ignoreCase = true) ||
+                            it.id.contains(libraryFolderQuery, ignoreCase = true)
+                        }
+                    }
 
                     LazyColumn(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier.fillMaxSize().testTag("local_files_tab_list")
                     ) {
+                        // Section 0: Search input bar for Libraries/Folders
+                        item {
+                            OutlinedTextField(
+                                value = libraryFolderQuery,
+                                onValueChange = { libraryFolderQuery = it },
+                                placeholder = { Text("Search active libraries & folders...", style = MaterialTheme.typography.bodyMedium) },
+                                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "Search Libraries") },
+                                trailingIcon = {
+                                    if (libraryFolderQuery.isNotEmpty()) {
+                                        IconButton(onClick = { libraryFolderQuery = "" }) {
+                                            Icon(Icons.Filled.Clear, contentDescription = "Clear Search")
+                                        }
+                                    }
+                                },
+                                singleLine = true,
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("libraries_search_field")
+                            )
+                        }
+
                         // Section 1: Local On-Device Audio Folders Banner
                         item {
                             Card(
@@ -1328,7 +1364,7 @@ fun LibraryScreen(
                                 }
                             }
 
-                            items(musicLocalFolders, key = { "local_folder_${it.id}" }) { folder ->
+                            items(searchedLocalFolders, key = { "local_folder_${it.id}" }) { folder ->
                                 val isFolderEnabled = !disabledLocalFolderIds.contains(folder.id)
                                 var isExpanded by remember(folder.id) { mutableStateOf(false) }
 
@@ -1392,7 +1428,11 @@ fun LibraryScreen(
 
                                                         Surface(
                                                             shape = RoundedCornerShape(6.dp),
-                                                            color = if (isFolderEnabled) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                                            color = if (isFolderEnabled) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                                            modifier = Modifier.clickable {
+                                                                haptics.toggle()
+                                                                onToggleLocalFolder(folder.id)
+                                                            }
                                                         ) {
                                                             Text(
                                                                 text = if (isFolderEnabled) "Aktiv" else "Deaktiviert",
@@ -1716,7 +1756,7 @@ fun LibraryScreen(
                                 )
                             }
 
-                            items(musicFolders, key = { it.id }) { folder ->
+                            items(searchedServerFolders, key = { it.id }) { folder ->
                                 val isChecked = !isAllServerSelected && selectedMusicFolderIds.contains(folder.id)
 
                                 Card(

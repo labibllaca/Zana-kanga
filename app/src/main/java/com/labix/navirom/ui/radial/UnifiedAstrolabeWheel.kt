@@ -160,8 +160,9 @@ fun UnifiedAstrolabeWheel(
         val libraryCenterY = libraryTopOffsetPx + (screenHeightPx - libraryTopOffsetPx) / 2f
         val libraryRadius = with(density) { 115.dp.toPx() }
 
-        // Continuous interpolation across pages
-        val t = continuousPage.coerceIn(0f, 1f)
+        // Continuous interpolation across pages with organic easing
+        val rawT = continuousPage.coerceIn(0f, 1f)
+        val t = androidx.compose.animation.core.FastOutSlowInEasing.transform(rawT)
         val (currentCenterX, currentCenterY, currentRadius) = if (continuousPage <= 1f) {
             Triple(
                 lerp(playerCenterX, libraryCenterX, t),
