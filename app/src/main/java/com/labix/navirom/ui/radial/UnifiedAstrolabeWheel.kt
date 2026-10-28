@@ -128,6 +128,15 @@ fun UnifiedAstrolabeWheel(
     val currentPosMs = playbackState.currentPositionMs.coerceIn(0L, totalDurationMs)
     val seekPreviewPosMs = (currentPosMs + seekDeltaMs).coerceIn(0L, totalDurationMs)
 
+    // Remember updated states for gesture handler so pointerInput isn't cancelled mid-gesture by position ticks
+    val currentPosMsState = rememberUpdatedState(currentPosMs)
+    val totalDurationMsState = rememberUpdatedState(totalDurationMs)
+    val onSeekToState = rememberUpdatedState(onSeekTo)
+    val onNextTrackState = rememberUpdatedState(onNextTrack)
+    val onPreviousTrackState = rememberUpdatedState(onPreviousTrack)
+    val onTogglePlayPauseState = rememberUpdatedState(onTogglePlayPause)
+    val onOpenOptionsModalState = rememberUpdatedState(onOpenOptionsModal)
+
     // Infinite vinyl rotation
     val infiniteTransition = rememberInfiniteTransition(label = "unified_vinyl_rot")
     val vinylRot by infiniteTransition.animateFloat(
@@ -255,16 +264,7 @@ fun UnifiedAstrolabeWheel(
                         width = if (isVinylExpanded) 3.dp else 1.5.dp,
                         color = Color.Black,
                         shape = CircleShape
-                    )
-                    .clickable {
-                        haptics.toggle()
-                        if (isVinylExpanded) {
-                            isVinylExpanded = false
-                            lastTouchTimestamp = System.currentTimeMillis()
-                        } else {
-                            onTogglePlayPause()
-                        }
-                    },
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 // Vinyl grooves background when expanded
@@ -434,7 +434,7 @@ fun UnifiedAstrolabeWheel(
                         )
                     }
                     .size(with(density) { (currentRadius * 2f).toDp() })
-                    .pointerInput(queue.size, queueIndex, currentPosMs, totalDurationMs) {
+                    .pointerInput(Unit) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val now = System.currentTimeMillis()
@@ -446,29 +446,19 @@ fun UnifiedAstrolabeWheel(
 
                             if (!isInsideWheel) return@awaitEachGesture
 
-                            // Double tap detection (< 320ms, < 70px) opens options modal
-                            val timeDiff = now - lastTapTimestamp
-                            val distDiff = hypot(downPos.x - lastTapPosition.x, downPos.y - lastTapPosition.y)
-                            if (timeDiff in 1..320 && distDiff < 70f) {
-                                lastTapTimestamp = 0L
-                                haptics.toggle()
-                                onOpenOptionsModal()
-                                return@awaitEachGesture
-                            } else {
-                                lastTapTimestamp = now
-                                lastTapPosition = downPos
-                            }
+                            val startPosMs = currentPosMsState.value
+                            val durMs = totalDurationMsState.value
 
                             var gestureMode = 0 // 0 = UNDECIDED, 1 = VERTICAL_SONG_SWITCH, 2 = HORIZONTAL_SEEK
                             var totalMovedX = 0f
                             var totalMovedY = 0f
                             var lastPos = downPos
-                            val startPosMs = playbackState.currentPositionMs
                             var activeSeekTargetMs = startPosMs
-                            val dragSlop = 16f
-                            val songChangeThreshold = 45f
 
-                            do {
+                            val dragSlop = 12f
+                            val songChangeThreshold = 40f
+
+                            while (true) {
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
 
@@ -487,7 +477,9 @@ fun UnifiedAstrolabeWheel(
                                         val totalDist = hypot(totalMovedX, totalMovedY)
                                         if (totalDist >= dragSlop) {
                                             gestureMode = if (abs(totalMovedY) >= abs(totalMovedX)) 1 else 2
-                                            if (gestureMode == 2) isHoldSeeking = true
+                                            if (gestureMode == 2) {
+                                                isHoldSeeking = true
+                                            }
                                         }
                                     }
 
@@ -495,29 +487,47 @@ fun UnifiedAstrolabeWheel(
                                         if (abs(totalMovedY) >= songChangeThreshold) {
                                             haptics.tick()
                                             if (totalMovedY < 0) {
-                                                onPreviousTrack()
+                                                onNextTrackState.value()
                                             } else {
-                                                onNextTrack()
+                                                onPreviousTrackState.value()
                                             }
                                             totalMovedY = 0f
                                         }
                                     } else if (gestureMode == 2) {
-                                        val deltaSec = (totalMovedX * 0.18f).toLong()
+                                        val deltaSec = (totalMovedX * 0.22f).toLong()
                                         val deltaMs = deltaSec * 1000L
                                         seekDeltaMs = deltaMs
-                                        activeSeekTargetMs = (startPosMs + deltaMs).coerceIn(0L, totalDurationMs)
+                                        activeSeekTargetMs = (startPosMs + deltaMs).coerceIn(0L, durMs)
                                     }
                                 } else {
                                     break
                                 }
-                            } while (true)
+                            }
 
                             if (gestureMode == 2) {
                                 haptics.toggle()
                                 isHoldSeeking = false
-                                onSeekTo(activeSeekTargetMs)
+                                onSeekToState.value(activeSeekTargetMs)
                                 seekDeltaMs = 0L
                                 lastTouchTimestamp = System.currentTimeMillis()
+                            } else if (gestureMode == 0) {
+                                val timeDiff = now - lastTapTimestamp
+                                val distDiff = hypot(downPos.x - lastTapPosition.x, downPos.y - lastTapPosition.y)
+                                if (timeDiff in 1..320 && distDiff < 70f) {
+                                    lastTapTimestamp = 0L
+                                    haptics.toggle()
+                                    onOpenOptionsModalState.value()
+                                } else {
+                                    lastTapTimestamp = now
+                                    lastTapPosition = downPos
+                                    if (isVinylExpanded) {
+                                        isVinylExpanded = false
+                                        lastTouchTimestamp = System.currentTimeMillis()
+                                    } else {
+                                        haptics.click()
+                                        onTogglePlayPauseState.value()
+                                    }
+                                }
                             }
                         }
                     }
