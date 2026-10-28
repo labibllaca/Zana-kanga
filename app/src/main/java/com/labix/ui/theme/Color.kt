@@ -29,25 +29,25 @@ val SleekLightOnTertiaryContainer = Color(0xFF000000)
 // Minimalist Monochrome Dark Palette (Pure black canvas, crisp white text & borders)
 val SleekDarkBg = Color(0xFF000000) // Pure black canvas
 val SleekDarkSurface = Color(0xFF000000) // Pure black surface
-val SleekDarkSurfaceVariant = Color(0xFF121212) // Very subtle dark gray container
+val SleekDarkSurfaceVariant = Color(0xFF0D0D0D) // Pure dark container
 val SleekDarkOnSurface = Color(0xFFFFFFFF) // Pure white text
-val SleekDarkOnSurfaceVariant = Color(0xFFDDDDDD) // Secondary light gray text
+val SleekDarkOnSurfaceVariant = Color(0xFFCCCCCC) // Secondary light gray text
 val SleekDarkOutline = Color(0xFFFFFFFF) // Pure white border
-val SleekDarkOutlineVariant = Color(0xFFAAAAAF)
+val SleekDarkOutlineVariant = Color(0xFF333338) // Subtle dark border
 
 val SleekDarkPrimary = Color(0xFFFFFFFF) // White primary against dark canvas
-val SleekDarkOnPrimary = Color(0xFF101014)
-val SleekDarkPrimaryContainer = Color(0xFF282832)
+val SleekDarkOnPrimary = Color(0xFF000000)
+val SleekDarkPrimaryContainer = Color(0xFF141414) // Pure dark container
 val SleekDarkOnPrimaryContainer = Color(0xFFFFFFFF)
 
 val SleekDarkSecondary = Color(0xFFE2E2EA)
-val SleekDarkOnSecondary = Color(0xFF101014)
-val SleekDarkSecondaryContainer = Color(0xFF26262E)
+val SleekDarkOnSecondary = Color(0xFF000000)
+val SleekDarkSecondaryContainer = Color(0xFF141414)
 val SleekDarkOnSecondaryContainer = Color(0xFFF0F0F5)
 
 val SleekDarkTertiary = Color(0xFFCCCCCC)
-val SleekDarkOnTertiary = Color(0xFF101014)
-val SleekDarkTertiaryContainer = Color(0xFF202026)
+val SleekDarkOnTertiary = Color(0xFF000000)
+val SleekDarkTertiaryContainer = Color(0xFF141414)
 val SleekDarkOnTertiaryContainer = Color(0xFFFFFFFF)
 
 // Semantic Accents (Refined, Desaturated Editorial Tones)
@@ -68,6 +68,16 @@ val SleekPillFlashbackBg = Color(0xFFF3ECE1)
 val SleekPillFlashbackIcon = Color(0xFFB57A2A)
 val SleekPillDiscoverBg = Color(0xFFE7E9E8)
 val SleekPillDiscoverIcon = Color(0xFF2D7A4F)
+
+// Sleek Card Accent Backgrounds & Icons (Editorial Dark style)
+val SleekPillLikedBgDark = Color(0xFF251414)
+val SleekPillLikedIconDark = Color(0xFFFF6B6B)
+val SleekPillMixBgDark = Color(0xFF1A1A1A)
+val SleekPillMixIconDark = Color(0xFFFFFFFF)
+val SleekPillFlashbackBgDark = Color(0xFF241C10)
+val SleekPillFlashbackIconDark = Color(0xFFFFB74D)
+val SleekPillDiscoverBgDark = Color(0xFF122018)
+val SleekPillDiscoverIconDark = Color(0xFF66BB6A)
 
 
 

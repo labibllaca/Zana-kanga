@@ -54,11 +54,11 @@ fun MiniPlayerBar(
     )
 
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val surfaceColor = if (isDark) Color(0xFF18181D) else Color.White
-    val contentColor = if (isDark) Color(0xFFF2F2F5) else Color.Black
-    val borderColor = if (isDark) Color(0xFF404048) else Color.Black
-    val subtextColor = if (isDark) Color(0xFFA0A0A8) else Color(0xFF555555)
-    val progressTrack = if (isDark) Color(0xFF2A2A32) else Color(0xFFE5E5E5)
+    val surfaceColor = if (isDark) Color(0xFF000000) else Color.White
+    val contentColor = if (isDark) Color(0xFFFFFFFF) else Color.Black
+    val borderColor = if (isDark) Color(0xFFFFFFFF) else Color.Black
+    val subtextColor = if (isDark) Color(0xFFCCCCCC) else Color(0xFF555555)
+    val progressTrack = if (isDark) Color(0xFF222222) else Color(0xFFE5E5E5)
 
     Surface(
         modifier = modifier
@@ -70,7 +70,7 @@ fun MiniPlayerBar(
         color = surfaceColor,
         border = androidx.compose.foundation.BorderStroke(1.5.dp, borderColor),
         tonalElevation = 0.dp,
-        shadowElevation = 3.dp
+        shadowElevation = if (isDark) 0.dp else 3.dp
     ) {
         Column {
             // Linear progress indicator

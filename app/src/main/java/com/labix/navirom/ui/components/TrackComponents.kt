@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -620,6 +621,8 @@ private fun TrackListItemContent(
         label = "trackItemScale"
     )
 
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -642,18 +645,18 @@ private fun TrackListItemContent(
             .testTag("track_item_${track.id}"),
         shape = RoundedCornerShape(20.dp),
         color = if (isCurrentTrack) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+            if (isDark) Color(0xFF18181A) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
         } else {
-            MaterialTheme.colorScheme.surface
+            if (isDark) Color(0xFF0A0A0A) else MaterialTheme.colorScheme.surface
         },
-        tonalElevation = if (isCurrentTrack) 3.dp else 1.5.dp,
-        shadowElevation = if (isCurrentTrack) 3.dp else 1.dp,
+        tonalElevation = 0.dp,
+        shadowElevation = if (isDark) 0.dp else (if (isCurrentTrack) 3.dp else 1.dp),
         border = BorderStroke(
             width = 1.dp,
             color = if (isCurrentTrack) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                if (isDark) Color.White else MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
             } else {
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                if (isDark) Color(0xFF222222) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
             }
         )
     ) {
@@ -892,6 +895,8 @@ fun AlbumCard(
         label = "albumCardScale"
     )
 
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -903,9 +908,9 @@ fun AlbumCard(
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
             .testTag("album_card_${album.id}"),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 1.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF0D0D0D) else MaterialTheme.colorScheme.surface),
+        elevation = if (isDark) CardDefaults.cardElevation(0.dp, 0.dp) else CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 1.dp),
+        border = BorderStroke(1.dp, if (isDark) Color(0xFF262626) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
             // Album Artwork Aspect 1:1
@@ -981,6 +986,8 @@ fun ArtistCard(
         label = "artistCardScale"
     )
 
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -992,9 +999,9 @@ fun ArtistCard(
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
             .testTag("artist_card_${artist.id}"),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 1.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF0D0D0D) else MaterialTheme.colorScheme.surface),
+        elevation = if (isDark) CardDefaults.cardElevation(0.dp, 0.dp) else CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 1.dp),
+        border = BorderStroke(1.dp, if (isDark) Color(0xFF262626) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -1004,7 +1011,7 @@ fun ArtistCard(
                 modifier = Modifier
                     .size(92.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                    .background(if (isDark) Color(0xFF1C1C1E) else MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
                 if (artist.coverArtUrl.isNotBlank()) {
@@ -1059,6 +1066,8 @@ fun PlaylistCard(
         label = "playlistCardScale"
     )
 
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -1070,9 +1079,9 @@ fun PlaylistCard(
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
             .testTag("playlist_card_${playlist.id}"),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 1.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF0D0D0D) else MaterialTheme.colorScheme.surface),
+        elevation = if (isDark) CardDefaults.cardElevation(0.dp, 0.dp) else CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 1.dp),
+        border = BorderStroke(1.dp, if (isDark) Color(0xFF262626) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
     ) {
         Row(
             modifier = Modifier
@@ -1185,6 +1194,8 @@ fun SleekFeatureCard(
         label = "sleekFeatureCardScale"
     )
 
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -1196,9 +1207,9 @@ fun SleekFeatureCard(
             .clip(RoundedCornerShape(20.dp))
             .clickable(interactionSource = interactionSource, indication = null) { onClick() },
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 1.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF0D0D0D) else MaterialTheme.colorScheme.surface),
+        elevation = if (isDark) CardDefaults.cardElevation(0.dp, 0.dp) else CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 1.dp),
+        border = BorderStroke(1.dp, if (isDark) Color(0xFF262626) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
     ) {
         Column(
             modifier = Modifier

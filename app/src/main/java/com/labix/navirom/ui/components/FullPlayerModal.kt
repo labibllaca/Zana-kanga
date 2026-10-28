@@ -79,6 +79,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import com.labix.navirom.player.SecureSettingsManager
 import com.labix.navirom.ui.components.SecureSettingsAssistantDialog
 import androidx.compose.ui.input.pointer.pointerInput
@@ -299,11 +300,11 @@ fun FullPlayerModal(
 
     val formatTime = ::formatMs
 
-    val isDark = false
-    val backgroundColor = Color.White
-    val cardColor = Color.White
-    val textOnCard = Color.Black
-    val textMutedOnCard = Color(0xFF444444)
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val backgroundColor = if (isDark) Color(0xFF000000) else Color.White
+    val cardColor = if (isDark) Color(0xFF000000) else Color.White
+    val textOnCard = if (isDark) Color(0xFFFFFFFF) else Color.Black
+    val textMutedOnCard = if (isDark) Color(0xFFB0B0B0) else Color(0xFF444444)
 
     var primaryCoverColor by remember(track.id) { mutableStateOf<Color?>(null) }
     var secondaryCoverColor by remember(track.id) { mutableStateOf<Color?>(null) }
@@ -2391,7 +2392,7 @@ fun FullPlayerModal(
                                 // Play/Pause Button (Circle outline)
                                 Surface(
                                     shape = CircleShape,
-                                    color = Color.White,
+                                    color = cardColor,
                                     border = androidx.compose.foundation.BorderStroke(2.dp, textOnCard),
                                     modifier = Modifier.size(64.dp).clickable { onTogglePlayPause() }
                                 ) {

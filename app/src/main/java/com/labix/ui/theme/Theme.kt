@@ -27,7 +27,8 @@ private val SleekDarkColorScheme = darkColorScheme(
     surfaceVariant = SleekDarkSurfaceVariant,
     onSurfaceVariant = SleekDarkOnSurfaceVariant,
     outline = SleekDarkOutline,
-    outlineVariant = SleekDarkOutlineVariant
+    outlineVariant = SleekDarkOutlineVariant,
+    surfaceTint = Color.Transparent
 )
 
 private val SleekLightColorScheme = lightColorScheme(

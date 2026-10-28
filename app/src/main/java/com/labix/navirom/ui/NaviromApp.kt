@@ -236,17 +236,16 @@ fun NaviromApp(
             }
         )
     ) {
-        val pagerState = rememberPagerState(initialPage = 1) { 3 }
+        val pagerState = rememberPagerState(initialPage = 0) { 2 }
         var libraryTotalItems by remember { mutableIntStateOf(1) }
         var libraryActiveIndex by remember { mutableIntStateOf(0) }
         var libraryActiveFilter by remember { mutableStateOf(LibraryFilterType.ALL) }
         var librarySourceFilter by remember { mutableStateOf(SourceFilter.ALL) }
-        var playerScrollOffsetYPx by remember { mutableFloatStateOf(0f) }
 
         LaunchedEffect(currentTab) {
             val targetPage = when (currentTab) {
-                NaviromTab.SETTINGS -> 2
-                else -> 1
+                NaviromTab.SETTINGS -> 1
+                else -> 0
             }
             if (pagerState.currentPage != targetPage) {
                 pagerState.animateScrollToPage(targetPage)
@@ -255,8 +254,8 @@ fun NaviromApp(
 
         LaunchedEffect(pagerState.currentPage) {
             when (pagerState.currentPage) {
-                1 -> if (currentTab == NaviromTab.SETTINGS) viewModel.setTab(NaviromTab.LIBRARY)
-                2 -> if (currentTab != NaviromTab.SETTINGS) viewModel.setTab(NaviromTab.SETTINGS)
+                0 -> if (currentTab == NaviromTab.SETTINGS) viewModel.setTab(NaviromTab.LIBRARY)
+                1 -> if (currentTab != NaviromTab.SETTINGS) viewModel.setTab(NaviromTab.SETTINGS)
             }
         }
 
@@ -278,56 +277,15 @@ fun NaviromApp(
                         onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() }
                     )
                 },
-                containerColor = Color.White
+                containerColor = MaterialTheme.colorScheme.background
             ) { paddingValues ->
-                Box(modifier = Modifier.fillMaxSize().padding(paddingValues).background(Color.White)) {
+                Box(modifier = Modifier.fillMaxSize().padding(paddingValues).background(MaterialTheme.colorScheme.background)) {
                     HorizontalPager(
                         state = pagerState,
                         modifier = Modifier.fillMaxSize()
                     ) { page ->
                         when (page) {
                             0 -> {
-                                AstrolabeFullPlayer(
-                                    state = AstrolabePlayerState(
-                                        playbackState = playbackState,
-                                        isFavorite = favoriteIds.contains(playbackState.currentTrack?.id),
-                                        queue = queue,
-                                        queueIndex = queueIndex,
-                                        appLanguage = appLanguage,
-                                        lyricsData = currentLyrics,
-                                        sleepTimerOptions = sleepTimerOptions,
-                                        isDualAudioEnabled = isDualAudioEnabled,
-                                        dualSpeakerMode = dualSpeakerMode,
-                                        isCrossfadeEnabled = isCrossfadeEnabled,
-                                        crossfadeDurationSeconds = crossfadeDurationSeconds,
-                                        isVinylEffectEnabled = isVinylEffectEnabled
-                                    ),
-                                    actions = AstrolabePlayerActions(
-                                        onDismiss = {},
-                                        onTogglePlayPause = { viewModel.togglePlayPause() },
-                                        onNext = { viewModel.next() },
-                                        onPrevious = { viewModel.previous() },
-                                        onSeekTo = { viewModel.seekTo(it) },
-                                        onToggleShuffle = { viewModel.toggleShuffle() },
-                                        onCycleRepeat = { viewModel.cycleRepeatMode() },
-                                        onToggleFavorite = { playbackState.currentTrack?.let { viewModel.toggleFavorite(it.id) } },
-                                        onTrackSelect = { track, list -> viewModel.playTrack(track, list) },
-                                        onOpenWlanCast = { viewModel.showWlanCastSheet() },
-                                        onToggleClassicView = { viewModel.toggleAstrolabeMode() },
-                                        onSetSleepTimer = { viewModel.setSleepTimer(it) },
-                                        onUpdateSleepTimerOptions = { viewModel.updateSleepTimerOptions(it) },
-                                        onToggleDualAudio = { viewModel.setDualAudioEnabled(!isDualAudioEnabled) },
-                                        onSetDualSpeakerMode = { viewModel.setDualSpeakerMode(it) },
-                                        onToggleCrossfade = { viewModel.setCrossfadeEnabled(!isCrossfadeEnabled) },
-                                        onSetCrossfadeDuration = { viewModel.setCrossfadeDurationSeconds(it) },
-                                        onToggleVinylEffect = { viewModel.setVinylEffectEnabled(!isVinylEffectEnabled) },
-                                        onOpenOptionsModal = {}
-                                    ),
-                                    hasExternalWheel = true,
-                                    onScrollOffsetChanged = { playerScrollOffsetYPx = it }
-                                )
-                            }
-                            1 -> {
                                 TabContent(
                                     viewModel = viewModel,
                                     currentTab = if (currentTab == NaviromTab.SETTINGS) NaviromTab.LIBRARY else currentTab,
@@ -342,7 +300,7 @@ fun NaviromApp(
                                     onLibrarySourceFilterChange = { librarySourceFilter = it }
                                 )
                             }
-                            2 -> {
+                            1 -> {
                                 TabContent(
                                     viewModel = viewModel,
                                     currentTab = NaviromTab.SETTINGS,
@@ -376,12 +334,11 @@ fun NaviromApp(
                         onTogglePlayPause = { viewModel.togglePlayPause() },
                         onOpenOptionsModal = { viewModel.setFullPlayerVisible(true) },
                         isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f,
-                        playerScrollOffsetYPx = playerScrollOffsetYPx,
                         modifier = Modifier.fillMaxSize()
                     )
 
                     // Persistent MiniPlayerBar
-                    if (playbackState.currentTrack != null && !isFullPlayerVisible && pagerState.currentPage != 0) {
+                    if (playbackState.currentTrack != null && !isFullPlayerVisible) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -594,7 +551,7 @@ fun AppTopBar(
                         Icon(
                             imageVector = Icons.Filled.Menu,
                             contentDescription = "Menu",
-                            tint = Color.Black,
+                            tint = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -607,7 +564,7 @@ fun AppTopBar(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 5.sp
                     ),
-                    color = Color.Black,
+                    color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier
                         .align(Alignment.Center)
                         .testTag("app_brand_title")
@@ -626,7 +583,7 @@ fun AppTopBar(
                         Icon(
                             imageVector = Icons.Filled.RotateRight,
                             contentDescription = if (isAstrolabeModeEnabled) "Switch to Classic Mode" else "Switch to Astrolabe Mode",
-                            tint = Color.Black,
+                            tint = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -640,7 +597,7 @@ fun AppTopBar(
                         Icon(
                             imageVector = Icons.Filled.Close,
                             contentDescription = "Close",
-                            tint = Color.Black,
+                            tint = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -649,7 +606,7 @@ fun AppTopBar(
 
             HorizontalDivider(
                 thickness = 1.dp,
-                color = Color.Black
+                color = MaterialTheme.colorScheme.outlineVariant
             )
         }
     }

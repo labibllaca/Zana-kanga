@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -2278,6 +2279,7 @@ fun LibraryScreen(
 
             LibrarySubTab.GENRES,
             LibrarySubTab.QUICK_MIX -> {
+                val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
                 LazyColumn(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -2295,7 +2297,7 @@ fun LibraryScreen(
                                         title = str("deck_liked"),
                                         subtitle = "${favoriteIds.size} ${str("deck_liked_sub")}",
                                         icon = Icons.Filled.Favorite,
-                                        iconBgColor = SleekPillLikedBg,
+                                        iconBgColor = if (isDark) SleekPillLikedBgDark else SleekPillLikedBg,
                                         iconColor = SleekPillLikedIcon,
                                         onClick = {
                                             if (favoriteTracks.isNotEmpty()) {
@@ -2312,7 +2314,7 @@ fun LibraryScreen(
                                         title = str("smart_shuffle"),
                                         subtitle = str("smart_shuffle_desc"),
                                         icon = Icons.Filled.AutoAwesome,
-                                        iconBgColor = SleekPillMixBg,
+                                        iconBgColor = if (isDark) SleekPillMixBgDark else SleekPillMixBg,
                                         iconColor = SleekPillMixIcon,
                                         onClick = {
                                             if (onSmartShuffle != null) {
@@ -2334,7 +2336,7 @@ fun LibraryScreen(
                                         title = str("deck_shuffle"),
                                         subtitle = str("deck_shuffle_sub"),
                                         icon = Icons.Filled.Shuffle,
-                                        iconBgColor = SleekPillFlashbackBg,
+                                        iconBgColor = if (isDark) SleekPillFlashbackBgDark else SleekPillFlashbackBg,
                                         iconColor = SleekPillFlashbackIcon,
                                         onClick = { onShuffleAll(quickMixTracks) }
                                     )
@@ -2344,7 +2346,7 @@ fun LibraryScreen(
                                         title = str("subtab_albums"),
                                         subtitle = "${albums.size} collections",
                                         icon = Icons.Filled.Album,
-                                        iconBgColor = SleekPillDiscoverBg,
+                                        iconBgColor = if (isDark) SleekPillDiscoverBgDark else SleekPillDiscoverBg,
                                         iconColor = SleekPillDiscoverIcon,
                                         onClick = { onSubTabSelected(LibrarySubTab.ALBUMS) }
                                     )
