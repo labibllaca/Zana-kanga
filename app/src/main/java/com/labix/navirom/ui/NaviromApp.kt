@@ -180,6 +180,9 @@ fun NaviromApp(
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(initialPage = 1) { 3 }
+    var playerScrollOffsetYPx by remember { mutableFloatStateOf(0f) }
+    var showAstrolabeOptionsModal by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     var backPressedOnce by remember { mutableStateOf(false) }
@@ -192,15 +195,22 @@ fun NaviromApp(
         }
     }
 
+    LaunchedEffect(isFullPlayerVisible) {
+        if (isFullPlayerVisible) {
+            pagerState.animateScrollToPage(0)
+            viewModel.setFullPlayerVisible(false)
+        }
+    }
+
     BackHandler(enabled = true) {
         if (drawerState.isOpen) {
             scope.launch { drawerState.close() }
-        } else if (isFullPlayerVisible) {
-            viewModel.setFullPlayerVisible(false)
         } else if (isQueueSheetVisible) {
             viewModel.setQueueSheetVisible(false)
         } else if (isStatsScreenVisible) {
             viewModel.setStatsScreenVisible(false)
+        } else if (pagerState.currentPage == 0) {
+            scope.launch { pagerState.animateScrollToPage(1) }
         } else if (selectedAlbumId != null || selectedPlaylistId != null || selectedArtistId != null) {
             viewModel.selectAlbum(null)
             viewModel.selectPlaylist(null)
@@ -236,7 +246,6 @@ fun NaviromApp(
             }
         )
     ) {
-        val pagerState = rememberPagerState(initialPage = 0) { 2 }
         var libraryTotalItems by remember { mutableIntStateOf(1) }
         var libraryActiveIndex by remember { mutableIntStateOf(0) }
         var libraryActiveFilter by remember { mutableStateOf(LibraryFilterType.ALL) }
@@ -244,18 +253,18 @@ fun NaviromApp(
 
         LaunchedEffect(currentTab) {
             val targetPage = when (currentTab) {
-                NaviromTab.SETTINGS -> 1
-                else -> 0
+                NaviromTab.SETTINGS -> 2
+                else -> 1
             }
-            if (pagerState.currentPage != targetPage) {
+            if (pagerState.currentPage != targetPage && pagerState.currentPage != 0) {
                 pagerState.animateScrollToPage(targetPage)
             }
         }
 
         LaunchedEffect(pagerState.currentPage) {
             when (pagerState.currentPage) {
-                0 -> if (currentTab == NaviromTab.SETTINGS) viewModel.setTab(NaviromTab.LIBRARY)
-                1 -> if (currentTab != NaviromTab.SETTINGS) viewModel.setTab(NaviromTab.SETTINGS)
+                1 -> if (currentTab == NaviromTab.SETTINGS) viewModel.setTab(NaviromTab.LIBRARY)
+                2 -> if (currentTab != NaviromTab.SETTINGS) viewModel.setTab(NaviromTab.SETTINGS)
             }
         }
 
@@ -267,25 +276,137 @@ fun NaviromApp(
         ) {
             Scaffold(
                 topBar = {
-                    AppTopBar(
-                        serverConnected = serverState.isConnected,
-                        onOpenSearch = { viewModel.setTab(NaviromTab.SEARCH) },
-                        onOpenSettings = { viewModel.setTab(NaviromTab.SETTINGS) },
-                        onCloseApp = { showExitDialog = true },
-                        onOpenSidebar = { scope.launch { drawerState.open() } },
-                        isAstrolabeModeEnabled = isAstrolabeModeEnabled,
-                        onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() }
-                    )
+                    if (pagerState.currentPage != 0) {
+                        AppTopBar(
+                            serverConnected = serverState.isConnected,
+                            onOpenSearch = { viewModel.setTab(NaviromTab.SEARCH) },
+                            onOpenSettings = { viewModel.setTab(NaviromTab.SETTINGS) },
+                            onCloseApp = { showExitDialog = true },
+                            onOpenSidebar = { scope.launch { drawerState.open() } },
+                            isAstrolabeModeEnabled = isAstrolabeModeEnabled,
+                            onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() }
+                        )
+                    }
                 },
                 containerColor = MaterialTheme.colorScheme.background
             ) { paddingValues ->
-                Box(modifier = Modifier.fillMaxSize().padding(paddingValues).background(MaterialTheme.colorScheme.background)) {
+                val topPadding = if (pagerState.currentPage == 0) 0.dp else paddingValues.calculateTopPadding()
+                Box(modifier = Modifier.fillMaxSize().padding(top = topPadding).background(MaterialTheme.colorScheme.background)) {
                     HorizontalPager(
                         state = pagerState,
                         modifier = Modifier.fillMaxSize()
                     ) { page ->
                         when (page) {
                             0 -> {
+                                if (isAstrolabeModeEnabled) {
+                                    AstrolabeFullPlayer(
+                                        state = AstrolabePlayerState(
+                                            playbackState = playbackState,
+                                            isFavorite = favoriteIds.contains(playbackState.currentTrack?.id),
+                                            queue = queue,
+                                            queueIndex = queueIndex,
+                                            appLanguage = appLanguage,
+                                            lyricsData = currentLyrics,
+                                            sleepTimerOptions = sleepTimerOptions,
+                                            isDualAudioEnabled = isDualAudioEnabled,
+                                            dualSpeakerMode = dualSpeakerMode,
+                                            isVinylEffectEnabled = isVinylEffectEnabled,
+                                            isCrossfadeEnabled = isCrossfadeEnabled,
+                                            crossfadeDurationSeconds = crossfadeDurationSeconds
+                                        ),
+                                        actions = AstrolabePlayerActions(
+                                            onDismiss = { scope.launch { pagerState.animateScrollToPage(1) } },
+                                            onTogglePlayPause = { viewModel.togglePlayPause() },
+                                            onNext = { viewModel.next() },
+                                            onPrevious = { viewModel.previous() },
+                                            onSeekTo = { viewModel.seekTo(it) },
+                                            onToggleShuffle = { viewModel.toggleShuffle() },
+                                            onCycleRepeat = { viewModel.cycleRepeatMode() },
+                                            onToggleFavorite = { playbackState.currentTrack?.let { viewModel.toggleFavorite(it.id) } },
+                                            onTrackSelect = { track, list -> viewModel.playTrack(track, list) },
+                                            onOpenWlanCast = { viewModel.showWlanCastSheet() },
+                                            onToggleClassicView = { viewModel.toggleAstrolabeMode() },
+                                            onSetSleepTimer = { mins -> viewModel.setSleepTimer(mins, sleepTimerOptions) },
+                                            onUpdateSleepTimerOptions = { viewModel.updateSleepTimerOptions(it) },
+                                            onSetDualSpeakerMode = { viewModel.setDualSpeakerMode(it) },
+                                            onOpenOptionsModal = { showAstrolabeOptionsModal = true }
+                                        ),
+                                        hasExternalWheel = true,
+                                        onScrollOffsetChanged = { playerScrollOffsetYPx = it },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    FullPlayerModal(
+                                        playbackState = playbackState,
+                                        isFavorite = favoriteIds.contains(playbackState.currentTrack?.id),
+                                        downloadStatus = downloadStatuses[playbackState.currentTrack?.id] ?: DownloadStatus.NOT_DOWNLOADED,
+                                        downloadProgress = downloadProgresses[playbackState.currentTrack?.id],
+                                        queueIndex = queueIndex,
+                                        queueSize = queue.size,
+                                        lyricsData = currentLyrics,
+                                        appLanguage = appLanguage,
+                                        isVinylEffectEnabled = isVinylEffectEnabled,
+                                        sleepTimerOptions = sleepTimerOptions,
+                                        isDualAudioEnabled = isDualAudioEnabled,
+                                        secondaryPlaybackState = secondaryPlaybackState,
+                                        isDeckSyncEnabled = isDeckSyncEnabled,
+                                        onToggleDeckSync = { viewModel.toggleDeckSync() },
+                                        dualSpeakerMode = dualSpeakerMode,
+                                        deckSyncBalance = deckSyncBalance,
+                                        onSetDualSpeakerMode = { viewModel.setDualSpeakerMode(it) },
+                                        onSetDeckSyncBalance = { viewModel.setDeckSyncBalance(it) },
+                                        onRealignDeckSync = { viewModel.realignDeckSync() },
+                                        availableOutputDevices = availableOutputDevices,
+                                        player1DeviceId = player1DeviceId,
+                                        player2DeviceId = player2DeviceId,
+                                        onSetPlayer1PreferredDevice = { viewModel.setPlayer1PreferredDevice(it) },
+                                        onSetPlayer2PreferredDevice = { viewModel.setPlayer2PreferredDevice(it) },
+                                        onRefreshOutputDevices = { viewModel.refreshOutputDevices() },
+                                        wlanSpeakerState = wlanSpeakerState,
+                                        onOpenWlanCast = { viewModel.showWlanCastSheet() },
+                                        queue = queue,
+                                        isAstrolabeModeEnabled = isAstrolabeModeEnabled,
+                                        onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() },
+                                        onTrackSelect = { track, list -> viewModel.playTrack(track, list) },
+                                        onToggleSecondaryPlayPause = { viewModel.toggleSecondaryPlayPause() },
+                                        onPlaySecondaryNext = { viewModel.playSecondaryNext() },
+                                        onPlaySecondaryPrevious = { viewModel.playSecondaryPrevious() },
+                                        onSeekSecondaryTo = { viewModel.seekSecondaryTo(it) },
+                                        onSeekSecondaryRelative = { viewModel.seekSecondaryRelative(it) },
+                                        onSetSecondaryVolume = { viewModel.setSecondaryVolume(it) },
+                                        onStopSecondaryTrack = { viewModel.stopSecondaryTrack() },
+                                        onDismiss = { scope.launch { pagerState.animateScrollToPage(1) } },
+                                        onTogglePlayPause = { viewModel.togglePlayPause() },
+                                        onNext = { viewModel.next() },
+                                        onPrevious = { viewModel.previous() },
+                                        onSeekTo = { viewModel.seekTo(it) },
+                                        onSeekRelative = { viewModel.seekRelative(it) },
+                                        onToggleShuffle = { viewModel.toggleShuffle() },
+                                        onCycleRepeat = { viewModel.cycleRepeatMode() },
+                                        onToggleFavorite = { playbackState.currentTrack?.let { viewModel.toggleFavorite(it.id) } },
+                                        onDownloadTrack = { playbackState.currentTrack?.let { viewModel.downloadTrack(it) } },
+                                        onOpenQueue = { viewModel.setQueueSheetVisible(true) },
+                                        onSetSpeed = { viewModel.setPlaybackSpeed(it) },
+                                        onSetSleepTimer = { minutes, options -> viewModel.setSleepTimer(minutes, options) },
+                                        onUpdateSleepTimerOptions = { viewModel.updateSleepTimerOptions(it) },
+                                        onRefetchLyrics = { viewModel.refetchCurrentLyrics() },
+                                        onFetchTeksteShqipLyrics = { url ->
+                                            viewModel.fetchLyricsFromTeksteShqip(url, playbackState.currentTrack)
+                                        },
+                                        onArtistClick = { artistId ->
+                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                            viewModel.setTab(NaviromTab.LIBRARY)
+                                            viewModel.selectArtist(artistId)
+                                        },
+                                        onAlbumClick = { albumId ->
+                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                            viewModel.setTab(NaviromTab.LIBRARY)
+                                            viewModel.selectAlbum(albumId)
+                                        }
+                                    )
+                                }
+                            }
+                            1 -> {
                                 TabContent(
                                     viewModel = viewModel,
                                     currentTab = if (currentTab == NaviromTab.SETTINGS) NaviromTab.LIBRARY else currentTab,
@@ -300,7 +421,7 @@ fun NaviromApp(
                                     onLibrarySourceFilterChange = { librarySourceFilter = it }
                                 )
                             }
-                            1 -> {
+                            2 -> {
                                 TabContent(
                                     viewModel = viewModel,
                                     currentTab = NaviromTab.SETTINGS,
@@ -332,13 +453,14 @@ fun NaviromApp(
                         onNextTrack = { viewModel.next() },
                         onSeekTo = { viewModel.seekTo(it) },
                         onTogglePlayPause = { viewModel.togglePlayPause() },
-                        onOpenOptionsModal = { viewModel.setFullPlayerVisible(true) },
+                        onOpenOptionsModal = { showAstrolabeOptionsModal = true },
                         isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f,
+                        playerScrollOffsetYPx = playerScrollOffsetYPx,
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    // Persistent MiniPlayerBar
-                    if (playbackState.currentTrack != null && !isFullPlayerVisible) {
+                    // Persistent MiniPlayerBar shown when not on player view (page > 0)
+                    if (playbackState.currentTrack != null && pagerState.currentPage > 0) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -348,7 +470,11 @@ fun NaviromApp(
                         ) {
                             MiniPlayerBar(
                                 playbackState = playbackState,
-                                onExpandPlayer = { viewModel.setFullPlayerVisible(true) },
+                                onExpandPlayer = {
+                                    scope.launch {
+                                        pagerState.animateScrollToPage(0)
+                                    }
+                                },
                                 onTogglePlayPause = { viewModel.togglePlayPause() },
                                 onNext = { viewModel.next() },
                                 onPrevious = { viewModel.previous() }
@@ -359,75 +485,27 @@ fun NaviromApp(
             }
         }
 
-        // Full Screen Player Modal
-        if (isFullPlayerVisible && playbackState.currentTrack != null) {
-            FullPlayerModal(
+        // Astrolabe Options Modal (Countdown timer, double player, crossfade, vinyl effect)
+        if (showAstrolabeOptionsModal) {
+            AstrolabeOptionsModal(
                 playbackState = playbackState,
-                isFavorite = favoriteIds.contains(playbackState.currentTrack?.id),
-                downloadStatus = downloadStatuses[playbackState.currentTrack?.id] ?: DownloadStatus.NOT_DOWNLOADED,
-                downloadProgress = downloadProgresses[playbackState.currentTrack?.id],
-                queueIndex = queueIndex,
-                queueSize = queue.size,
-                lyricsData = currentLyrics,
-                appLanguage = appLanguage,
-                isVinylEffectEnabled = isVinylEffectEnabled,
+                onSetSleepTimer = { mins -> viewModel.setSleepTimer(mins, sleepTimerOptions) },
                 sleepTimerOptions = sleepTimerOptions,
+                onUpdateSleepTimerOptions = { viewModel.updateSleepTimerOptions(it) },
                 isDualAudioEnabled = isDualAudioEnabled,
-                secondaryPlaybackState = secondaryPlaybackState,
-                isDeckSyncEnabled = isDeckSyncEnabled,
-                onToggleDeckSync = { viewModel.toggleDeckSync() },
+                onToggleDualAudio = { viewModel.setDualAudioEnabled(!isDualAudioEnabled) },
                 dualSpeakerMode = dualSpeakerMode,
-                deckSyncBalance = deckSyncBalance,
                 onSetDualSpeakerMode = { viewModel.setDualSpeakerMode(it) },
-                onSetDeckSyncBalance = { viewModel.setDeckSyncBalance(it) },
-                onRealignDeckSync = { viewModel.realignDeckSync() },
-                availableOutputDevices = availableOutputDevices,
-                player1DeviceId = player1DeviceId,
-                player2DeviceId = player2DeviceId,
-                onSetPlayer1PreferredDevice = { viewModel.setPlayer1PreferredDevice(it) },
-                onSetPlayer2PreferredDevice = { viewModel.setPlayer2PreferredDevice(it) },
-                onRefreshOutputDevices = { viewModel.refreshOutputDevices() },
-                wlanSpeakerState = wlanSpeakerState,
-                onOpenWlanCast = { viewModel.showWlanCastSheet() },
-                queue = queue,
-                isAstrolabeModeEnabled = isAstrolabeModeEnabled,
-                onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() },
-                onTrackSelect = { track, list -> viewModel.playTrack(track, list) },
-                onToggleSecondaryPlayPause = { viewModel.toggleSecondaryPlayPause() },
-                onPlaySecondaryNext = { viewModel.playSecondaryNext() },
-                onPlaySecondaryPrevious = { viewModel.playSecondaryPrevious() },
-                onSeekSecondaryTo = { viewModel.seekSecondaryTo(it) },
-                onSeekSecondaryRelative = { viewModel.seekSecondaryRelative(it) },
-                onSetSecondaryVolume = { viewModel.setSecondaryVolume(it) },
-                onStopSecondaryTrack = { viewModel.stopSecondaryTrack() },
-                onDismiss = { viewModel.setFullPlayerVisible(false) },
-                onTogglePlayPause = { viewModel.togglePlayPause() },
-                onNext = { viewModel.next() },
-                onPrevious = { viewModel.previous() },
-                onSeekTo = { viewModel.seekTo(it) },
-                onSeekRelative = { viewModel.seekRelative(it) },
+                isCrossfadeEnabled = isCrossfadeEnabled,
+                onToggleCrossfade = { viewModel.setCrossfadeEnabled(!isCrossfadeEnabled) },
+                crossfadeDurationSeconds = crossfadeDurationSeconds,
+                onSetCrossfadeDuration = { viewModel.setCrossfadeDurationSeconds(it) },
+                isVinylEffectEnabled = isVinylEffectEnabled,
+                onToggleVinylEffect = { viewModel.setVinylEffectEnabled(!isVinylEffectEnabled) },
                 onToggleShuffle = { viewModel.toggleShuffle() },
                 onCycleRepeat = { viewModel.cycleRepeatMode() },
-                onToggleFavorite = { playbackState.currentTrack?.let { viewModel.toggleFavorite(it.id) } },
-                onDownloadTrack = { playbackState.currentTrack?.let { viewModel.downloadTrack(it) } },
-                onOpenQueue = { viewModel.setQueueSheetVisible(true) },
-                onSetSpeed = { viewModel.setPlaybackSpeed(it) },
-                onSetSleepTimer = { minutes, options -> viewModel.setSleepTimer(minutes, options) },
-                onUpdateSleepTimerOptions = { viewModel.updateSleepTimerOptions(it) },
-                onRefetchLyrics = { viewModel.refetchCurrentLyrics() },
-                onFetchTeksteShqipLyrics = { url ->
-                    viewModel.fetchLyricsFromTeksteShqip(url, playbackState.currentTrack)
-                },
-                onArtistClick = { artistId ->
-                    viewModel.setFullPlayerVisible(false)
-                    viewModel.setTab(NaviromTab.LIBRARY)
-                    viewModel.selectArtist(artistId)
-                },
-                onAlbumClick = { albumId ->
-                    viewModel.setFullPlayerVisible(false)
-                    viewModel.setTab(NaviromTab.LIBRARY)
-                    viewModel.selectAlbum(albumId)
-                }
+                onOpenWlanCast = { viewModel.showWlanCastSheet() },
+                onDismiss = { showAstrolabeOptionsModal = false }
             )
         }
 

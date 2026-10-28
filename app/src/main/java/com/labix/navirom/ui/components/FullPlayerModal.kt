@@ -300,6 +300,19 @@ fun FullPlayerModal(
 
     val formatTime = ::formatMs
 
+    val lyricPreviewPair = remember(lyricsData, currentPosMs) {
+        val synced = lyricsData.syncedLines
+        if (synced.isNotEmpty()) {
+            val idx = synced.indexOfLast { (it.timeMs - 250L) <= currentPosMs }
+            val cur = if (idx in synced.indices) synced[idx].text else ""
+            val next = if (idx + 1 in synced.indices) synced[idx + 1].text else ""
+            Pair(cur, next)
+        } else {
+            val firstLine = lyricsData.plainLyrics.lines().firstOrNull { it.isNotBlank() } ?: ""
+            Pair(firstLine, "")
+        }
+    }
+
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val backgroundColor = if (isDark) Color(0xFF000000) else Color.White
     val cardColor = if (isDark) Color(0xFF000000) else Color.White
@@ -1670,44 +1683,36 @@ fun FullPlayerModal(
                 .widthIn(max = 680.dp)
                 .align(Alignment.Center)
         ) {
-            AstrolabeFullPlayer(
-                state = AstrolabePlayerState(
-                    playbackState = playbackState,
-                    isFavorite = isFavorite,
-                    queue = queue,
-                    queueIndex = queueIndex,
-                    appLanguage = appLanguage,
-                    lyricsData = lyricsData,
-                    sleepTimerOptions = sleepTimerOptions,
-                    isDualAudioEnabled = isDualAudioEnabled,
-                    dualSpeakerMode = dualSpeakerMode,
-                    isVinylEffectEnabled = isVinylEffectEnabled
-                ),
-                actions = AstrolabePlayerActions(
-                    onDismiss = onDismiss,
-                    onTogglePlayPause = onTogglePlayPause,
-                    onNext = onNext,
-                    onPrevious = onPrevious,
-                    onSeekTo = onSeekTo,
-                    onToggleShuffle = onToggleShuffle,
-                    onCycleRepeat = onCycleRepeat,
-                    onToggleFavorite = onToggleFavorite,
-                    onTrackSelect = onTrackSelect,
-                    onOpenWlanCast = onOpenWlanCast,
-                    onToggleClassicView = {},
-                    onSetSleepTimer = { mins -> onSetSleepTimer(mins, sleepTimerOptions) },
-                    onUpdateSleepTimerOptions = onUpdateSleepTimerOptions,
-                    onToggleDualAudio = null,
-                    onSetDualSpeakerMode = onSetDualSpeakerMode,
-                    onToggleVinylEffect = null
-                )
-            )
-        }
-    }
-}
+            if (viewMode == PlayerViewMode.ARTWORK) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                        .statusBarsPadding(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Top Action Header
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                haptics.click()
+                                onDismiss()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = textOnCard
+                            )
+                        }
 
-/*
-                                val songIndexText = remember(queueIndex, queueSize, track.id) {
+                        val songIndexText = remember(queueIndex, queueSize, track.id) {
                                     val currentNum = if (queueIndex in 0 until queueSize) {
                                         queueIndex + 1
                                     } else {
@@ -2557,7 +2562,6 @@ fun FullPlayerModal(
                                 }
                             }
                         }
-                    }
 
                     // Bottom Grouped & Scrollable Action Bar
                     Row(
@@ -2820,687 +2824,738 @@ fun FullPlayerModal(
                             }
                         }
                     }
-                }
             } else {
-                // Lyrics View
-                val listState = rememberLazyListState()
-                val plainScrollState = rememberScrollState()
+                FullPlayerLyricsView(
+                    playbackState = playbackState,
+                    track = track,
+                    lyricsData = lyricsData,
+                    appLanguage = appLanguage,
+                    isDark = isDark,
+                    textOnCard = textOnCard,
+                    textMutedOnCard = textMutedOnCard,
+                    cardColor = cardColor,
+                    haptics = haptics,
+                    viewMode = viewMode,
+                    onViewModeChange = { viewMode = it },
+                    onTogglePlayPause = onTogglePlayPause,
+                    onNext = onNext,
+                    onPrevious = onPrevious,
+                    onSeekTo = onSeekTo,
+                    onSeekRelative = onSeekRelative,
+                    onToggleFavorite = onToggleFavorite,
+                    onOpenQueue = onOpenQueue,
+                    onRefetchLyrics = onRefetchLyrics,
+                    onFetchTeksteShqipLyrics = onFetchTeksteShqipLyrics,
+                    onArtistClick = onArtistClick,
+                    onAlbumClick = onAlbumClick,
+                    isFavorite = isFavorite
+                )
+            }
+        }
+    }
+}
 
-                val validSyncedLines = remember(lyricsData.syncedLines) {
-                    lyricsData.syncedLines.filter { it.text.isNotBlank() }
+@Composable
+private fun FullPlayerLyricsView(
+        playbackState: PlaybackState,
+        track: NaviromTrack,
+        lyricsData: LyricsData,
+        appLanguage: AppLanguage,
+        isDark: Boolean,
+        textOnCard: Color,
+        textMutedOnCard: Color,
+        cardColor: Color,
+        haptics: com.labix.navirom.ui.util.NaviromHaptics,
+        viewMode: PlayerViewMode,
+        onViewModeChange: (PlayerViewMode) -> Unit,
+        onTogglePlayPause: () -> Unit,
+        onNext: () -> Unit,
+        onPrevious: () -> Unit,
+        onSeekTo: (Long) -> Unit,
+        onSeekRelative: ((Long) -> Unit)?,
+        onToggleFavorite: () -> Unit,
+        onOpenQueue: () -> Unit,
+        onRefetchLyrics: () -> Unit,
+        onFetchTeksteShqipLyrics: ((String?) -> Unit)?,
+        onArtistClick: ((String) -> Unit)?,
+        onAlbumClick: ((String) -> Unit)?,
+        isFavorite: Boolean
+    ) {
+        var showMenu by remember { mutableStateOf(false) }
+        var showSleepTimerDialog by remember { mutableStateOf(false) }
+        var showTeksteShqipDialog by remember { mutableStateOf(false) }
+        var teksteShqipUrlInput by remember { mutableStateOf("") }
+        var isDraggingSlider by remember { mutableStateOf(false) }
+        var dragPositionMs by remember { mutableLongStateOf(0L) }
+
+        val totalDurationMs = (playbackState.durationMs.takeIf { it > 0 }
+            ?: track.durationSeconds.toLong().times(1000L) ?: 1L).coerceAtLeast(1L)
+        val currentPosMs = if (isDraggingSlider) dragPositionMs else playbackState.currentPositionMs.coerceIn(0L, totalDurationMs)
+
+        val listState = rememberLazyListState()
+        val plainScrollState = rememberScrollState()
+
+        val validSyncedLines = remember(lyricsData.syncedLines) {
+            lyricsData.syncedLines.filter { it.text.isNotBlank() }
+        }
+        val hasAnyLyrics = validSyncedLines.isNotEmpty() || lyricsData.plainLyrics.isNotBlank()
+        val isLyricsAvailable = !lyricsData.isLoading && lyricsData.error == null && hasAnyLyrics
+
+        var accumulatedDownwardDrag by remember { mutableFloatStateOf(0f) }
+
+        val lyricsNestedScrollConnection = remember {
+            object : NestedScrollConnection {
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    if (available.y < 0f && accumulatedDownwardDrag > 0f) {
+                        val consumed = (-available.y).coerceAtMost(accumulatedDownwardDrag)
+                        accumulatedDownwardDrag -= consumed
+                        return Offset(0f, -consumed)
+                    }
+                    return Offset.Zero
                 }
-                val hasAnyLyrics = validSyncedLines.isNotEmpty() || lyricsData.plainLyrics.isNotBlank()
-                val isLyricsAvailable = !lyricsData.isLoading && lyricsData.error == null && hasAnyLyrics
 
-                var accumulatedDownwardDrag by remember { mutableFloatStateOf(0f) }
-
-                val lyricsNestedScrollConnection = remember {
-                    object : NestedScrollConnection {
-                        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                            if (available.y < 0f && accumulatedDownwardDrag > 0f) {
-                                val consumed = (-available.y).coerceAtMost(accumulatedDownwardDrag)
-                                accumulatedDownwardDrag -= consumed
-                                return Offset(0f, -consumed)
-                            }
-                            return Offset.Zero
-                        }
-
-                        override fun onPostScroll(
-                            consumed: Offset,
-                            available: Offset,
-                            source: NestedScrollSource
-                        ): Offset {
-                            // When child scrollable is at the top and cannot scroll down any further, available.y > 0
-                            if (available.y > 0f) {
-                                accumulatedDownwardDrag += available.y
-                                if (accumulatedDownwardDrag > 45f) {
-                                    accumulatedDownwardDrag = 0f
-                                    haptics.toggle()
-                                    viewMode = PlayerViewMode.ARTWORK
-                                    return available
-                                }
-                            }
-                            return Offset.Zero
-                        }
-
-                        override suspend fun onPreFling(available: Velocity): Velocity {
+                override fun onPostScroll(
+                    consumed: Offset,
+                    available: Offset,
+                    source: NestedScrollSource
+                ): Offset {
+                    if (available.y > 0f) {
+                        accumulatedDownwardDrag += available.y
+                        if (accumulatedDownwardDrag > 45f) {
                             accumulatedDownwardDrag = 0f
-                            return Velocity.Zero
-                        }
-
-                        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                            accumulatedDownwardDrag = 0f
-                            if (available.y > 150f) {
-                                haptics.toggle()
-                                viewMode = PlayerViewMode.ARTWORK
-                            }
-                            return Velocity.Zero
+                            haptics.toggle()
+                            onViewModeChange(PlayerViewMode.ARTWORK)
+                            return available
                         }
                     }
+                    return Offset.Zero
                 }
 
-                val noLyricsDragModifier = if (!isLyricsAvailable) {
-                    Modifier.pointerInput(Unit) {
+                override suspend fun onPreFling(available: Velocity): Velocity {
+                    accumulatedDownwardDrag = 0f
+                    return Velocity.Zero
+                }
+
+                override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                    accumulatedDownwardDrag = 0f
+                    if (available.y > 150f) {
+                        haptics.toggle()
+                        onViewModeChange(PlayerViewMode.ARTWORK)
+                    }
+                    return Velocity.Zero
+                }
+            }
+        }
+
+        val noLyricsDragModifier = if (!isLyricsAvailable) {
+            Modifier.pointerInput(Unit) {
+                var totalY = 0f
+                var handled = false
+                detectDragGestures(
+                    onDragStart = { totalY = 0f; handled = false },
+                    onDragEnd = { totalY = 0f; handled = false },
+                    onDragCancel = { totalY = 0f; handled = false },
+                    onDrag = { change, dragAmount ->
+                        if (!handled) {
+                            totalY += dragAmount.y
+                            if (totalY > 35f) {
+                                change.consume()
+                                handled = true
+                                haptics.toggle()
+                                onViewModeChange(PlayerViewMode.ARTWORK)
+                            }
+                        }
+                    }
+                )
+            }
+        } else {
+            Modifier
+        }
+
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pointerInput(Unit) {
+                        var totalX = 0f
                         var totalY = 0f
                         var handled = false
                         detectDragGestures(
-                            onDragStart = { totalY = 0f; handled = false },
-                            onDragEnd = { totalY = 0f; handled = false },
-                            onDragCancel = { totalY = 0f; handled = false },
+                            onDragStart = { totalX = 0f; totalY = 0f; handled = false },
+                            onDragEnd = { totalX = 0f; totalY = 0f; handled = false },
+                            onDragCancel = { totalX = 0f; totalY = 0f; handled = false },
                             onDrag = { change, dragAmount ->
                                 if (!handled) {
+                                    totalX += dragAmount.x
                                     totalY += dragAmount.y
-                                    if (totalY > 35f) {
+                                    val th = 50f
+                                    if (kotlin.math.abs(totalX) > kotlin.math.abs(totalY) * 1.2f && kotlin.math.abs(totalX) > th) {
+                                        change.consume()
+                                        handled = true
+                                        if (totalX < -th) {
+                                            haptics.click()
+                                            onNext()
+                                        } else if (totalX > th) {
+                                            haptics.click()
+                                            onPrevious()
+                                        }
+                                    } else if (totalY > th) {
                                         change.consume()
                                         handled = true
                                         haptics.toggle()
-                                        viewMode = PlayerViewMode.ARTWORK
+                                        onViewModeChange(PlayerViewMode.ARTWORK)
                                     }
                                 }
                             }
                         )
-                    }
-                } else {
-                    Modifier
-                }
-
+                    },
+                color = cardColor,
+                shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+                shadowElevation = 8.dp
+            ) {
                 Column(
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Top Persistent Mini Player Card (always visible on top of lyrics)
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .pointerInput(Unit) {
-                                var totalX = 0f
-                                var totalY = 0f
-                                var handled = false
-                                detectDragGestures(
-                                    onDragStart = { totalX = 0f; totalY = 0f; handled = false },
-                                    onDragEnd = { totalX = 0f; totalY = 0f; handled = false },
-                                    onDragCancel = { totalX = 0f; totalY = 0f; handled = false },
-                                    onDrag = { change, dragAmount ->
-                                        if (!handled) {
-                                            totalX += dragAmount.x
-                                            totalY += dragAmount.y
-                                            val th = 50f
-                                            if (kotlin.math.abs(totalX) > kotlin.math.abs(totalY) * 1.2f && kotlin.math.abs(totalX) > th) {
-                                                change.consume()
-                                                handled = true
-                                                if (totalX < -th) {
-                                                    haptics.click()
-                                                    onNext()
-                                                } else if (totalX > th) {
-                                                    haptics.click()
-                                                    onPrevious()
-                                                }
-                                            } else if (totalY > th) {
-                                                change.consume()
-                                                handled = true
-                                                haptics.toggle()
-                                                viewMode = PlayerViewMode.ARTWORK
-                                            }
-                                        }
-                                    }
-                                )
-                            },
-                        color = cardColor,
-                        shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
-                        shadowElevation = 8.dp
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        IconButton(
+                            onClick = {
+                                haptics.click()
+                                onViewModeChange(PlayerViewMode.ARTWORK)
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back to Player",
+                                tint = textOnCard,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        SongAlbumCover(
+                            coverArtUrl = track.coverArtUrl,
+                            contentDescription = "Cover",
+                            isAlbum = false,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clickable {
+                                    haptics.click()
+                                    onViewModeChange(PlayerViewMode.ARTWORK)
+                                }
+                        )
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
                         Column(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .statusBarsPadding()
-                                .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .weight(1f)
+                                .clickable {
+                                    haptics.click()
+                                    onViewModeChange(PlayerViewMode.ARTWORK)
+                                }
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                IconButton(
-                                    onClick = {
+                            Text(
+                                text = track.title,
+                                color = textOnCard,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = track.artist,
+                                color = textMutedOnCard,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            HoldablePlaybackButton(
+                                onClick = {
+                                    haptics.click()
+                                    onPrevious()
+                                },
+                                onHoldTick = {
+                                    haptics.tick()
+                                    if (onSeekRelative != null) {
+                                        onSeekRelative(-5000L)
+                                    } else {
+                                        onSeekTo((playbackState.currentPositionMs - 5000L).coerceAtLeast(0L))
+                                    }
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) { isHolding ->
+                                Icon(
+                                    imageVector = if (isHolding) Icons.Filled.FastRewind else Icons.Filled.SkipPrevious,
+                                    contentDescription = "Previous",
+                                    tint = if (isHolding) MaterialTheme.colorScheme.primary else textOnCard,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            Surface(
+                                shape = CircleShape,
+                                color = textOnCard,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .clickable {
                                         haptics.click()
-                                        viewMode = PlayerViewMode.ARTWORK
-                                    },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
+                                        onTogglePlayPause()
+                                    }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "Back to Player",
-                                        tint = textOnCard,
+                                        imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                        contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
+                                        tint = cardColor,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
-
-                                Spacer(modifier = Modifier.width(4.dp))
-
-                                SongAlbumCover(
-                                    coverArtUrl = track.coverArtUrl,
-                                    contentDescription = "Cover",
-                                    isAlbum = false,
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .clickable {
-                                            haptics.click()
-                                            viewMode = PlayerViewMode.ARTWORK
-                                        }
-                                )
-
-                                Spacer(modifier = Modifier.width(10.dp))
-
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable {
-                                            haptics.click()
-                                            viewMode = PlayerViewMode.ARTWORK
-                                        }
-                                ) {
-                                    Text(
-                                        text = track.title,
-                                        color = textOnCard,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = track.artist,
-                                        color = textMutedOnCard,
-                                        fontSize = 12.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(4.dp))
-
-                                // Playback controls in the top player header
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                ) {
-                                    HoldablePlaybackButton(
-                                        onClick = {
-                                            haptics.click()
-                                            onPrevious()
-                                        },
-                                        onHoldTick = {
-                                            haptics.tick()
-                                            if (onSeekRelative != null) {
-                                                onSeekRelative(-5000L)
-                                            } else {
-                                                onSeekTo((playbackState.currentPositionMs - 5000L).coerceAtLeast(0L))
-                                            }
-                                        },
-                                        modifier = Modifier.size(36.dp)
-                                    ) { isHolding ->
-                                        Icon(
-                                            imageVector = if (isHolding) Icons.Filled.FastRewind else Icons.Filled.SkipPrevious,
-                                            contentDescription = "Previous",
-                                            tint = if (isHolding) MaterialTheme.colorScheme.primary else textOnCard,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    }
-
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = textOnCard,
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(CircleShape)
-                                            .clickable {
-                                                haptics.click()
-                                                onTogglePlayPause()
-                                            }
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                                contentDescription = if (playbackState.isPlaying) "Pause" else "Play",
-                                                tint = cardColor,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        }
-                                    }
-
-                                    HoldablePlaybackButton(
-                                        onClick = {
-                                            haptics.click()
-                                            onNext()
-                                        },
-                                        onHoldTick = {
-                                            haptics.tick()
-                                            if (onSeekRelative != null) {
-                                                onSeekRelative(5000L)
-                                            } else {
-                                                onSeekTo((playbackState.currentPositionMs + 5000L).coerceAtMost(playbackState.durationMs))
-                                            }
-                                        },
-                                        modifier = Modifier.size(36.dp)
-                                    ) { isHolding ->
-                                        Icon(
-                                            imageVector = if (isHolding) Icons.Filled.FastForward else Icons.Filled.SkipNext,
-                                            contentDescription = "Next",
-                                            tint = if (isHolding) MaterialTheme.colorScheme.primary else textOnCard,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    }
-
-                                    IconButton(
-                                        onClick = onToggleFavorite,
-                                        modifier = Modifier.size(36.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                            contentDescription = "Favorite",
-                                            tint = if (isFavorite) Color(0xFF1DB954) else textMutedOnCard,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-
-                                    Box {
-                                        IconButton(
-                                            onClick = {
-                                                haptics.click()
-                                                showMenu = true
-                                            },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.MoreVert,
-                                                contentDescription = "More",
-                                                tint = textMutedOnCard,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        }
-                                        DropdownMenu(
-                                            expanded = showMenu,
-                                            onDismissRequest = { showMenu = false }
-                                        ) {
-                                            DropdownMenuItem(
-                                                text = { Text("Reload Lyrics") },
-                                                onClick = {
-                                                    showMenu = false
-                                                    onRefetchLyrics()
-                                                },
-                                                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("Go to Artist") },
-                                                onClick = {
-                                                    showMenu = false
-                                                    onArtistClick?.invoke(track.artistId)
-                                                },
-                                                leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("Go to Album") },
-                                                onClick = {
-                                                    showMenu = false
-                                                    onAlbumClick?.invoke(track.albumId)
-                                                },
-                                                leadingIcon = { Icon(Icons.Filled.Album, contentDescription = null) }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("Sleep Timer") },
-                                                onClick = {
-                                                    showMenu = false
-                                                    showSleepTimerDialog = true
-                                                },
-                                                leadingIcon = { Icon(Icons.Filled.Timer, contentDescription = null) }
-                                            )
-                                        }
-                                    }
-                                }
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Subtle progress indicator
-                            val progressFraction = if (totalDurationMs > 0L) {
-                                (currentPosMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
-                            } else 0f
-                            LinearProgressIndicator(
-                                progress = { progressFraction },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(3.dp)
-                                    .clip(RoundedCornerShape(2.dp)),
-                                color = Color(0xFFF3D959),
-                                trackColor = textMutedOnCard.copy(alpha = 0.2f)
-                            )
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            // Drag handle to slide back down
-                            Box(
-                                modifier = Modifier
-                                    .width(36.dp)
-                                    .height(3.5.dp)
-                                    .clip(CircleShape)
-                                    .background(textMutedOnCard.copy(alpha = 0.35f))
-                                    .clickable {
-                                        haptics.toggle()
-                                        viewMode = PlayerViewMode.ARTWORK
+                            HoldablePlaybackButton(
+                                onClick = {
+                                    haptics.click()
+                                    onNext()
+                                },
+                                onHoldTick = {
+                                    haptics.tick()
+                                    if (onSeekRelative != null) {
+                                        onSeekRelative(5000L)
+                                    } else {
+                                        onSeekTo((playbackState.currentPositionMs + 5000L).coerceAtMost(playbackState.durationMs))
                                     }
-                            )
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) { isHolding ->
+                                Icon(
+                                    imageVector = if (isHolding) Icons.Filled.FastForward else Icons.Filled.SkipNext,
+                                    contentDescription = "Next",
+                                    tint = if (isHolding) MaterialTheme.colorScheme.primary else textOnCard,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = onToggleFavorite,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                    contentDescription = "Favorite",
+                                    tint = if (isFavorite) Color(0xFF1DB954) else textMutedOnCard,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Box {
+                                IconButton(
+                                    onClick = {
+                                        haptics.click()
+                                        showMenu = true
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Filled.MoreVert,
+                                        contentDescription = "More",
+                                        tint = textMutedOnCard,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showMenu,
+                                    onDismissRequest = { showMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Reload Lyrics") },
+                                        onClick = {
+                                            showMenu = false
+                                            onRefetchLyrics()
+                                        },
+                                        leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Go to Artist") },
+                                        onClick = {
+                                            showMenu = false
+                                            onArtistClick?.invoke(track.artistId)
+                                        },
+                                        leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Go to Album") },
+                                        onClick = {
+                                            showMenu = false
+                                            onAlbumClick?.invoke(track.albumId)
+                                        },
+                                        leadingIcon = { Icon(Icons.Filled.Album, contentDescription = null) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Sleep Timer") },
+                                        onClick = {
+                                            showMenu = false
+                                            showSleepTimerDialog = true
+                                        },
+                                        leadingIcon = { Icon(Icons.Filled.Timer, contentDescription = null) }
+                                    )
+                                }
+                            }
                         }
                     }
-                    // Lyrics Area
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val progressFraction = if (totalDurationMs > 0L) {
+                        (currentPosMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 1f)
+                    } else 0f
+                    LinearProgressIndicator(
+                        progress = { progressFraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = Color(0xFFF3D959),
+                        trackColor = textMutedOnCard.copy(alpha = 0.2f)
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
                     Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .nestedScroll(lyricsNestedScrollConnection)
-                            .then(noLyricsDragModifier)
+                            .width(36.dp)
+                            .height(3.5.dp)
+                            .clip(CircleShape)
+                            .background(textMutedOnCard.copy(alpha = 0.35f))
+                            .clickable {
+                                haptics.toggle()
+                                onViewModeChange(PlayerViewMode.ARTWORK)
+                            }
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .nestedScroll(lyricsNestedScrollConnection)
+                    .then(noLyricsDragModifier)
+            ) {
+                if (lyricsData.isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center),
+                        color = Color.White
+                    )
+                } else if (lyricsData.error != null || (lyricsData.plainLyrics.isEmpty() && lyricsData.syncedLines.isEmpty())) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(horizontal = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (lyricsData.isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.align(Alignment.Center),
-                                color = Color.White
-                            )
-                        } else if (lyricsData.error != null || (lyricsData.plainLyrics.isEmpty() && lyricsData.syncedLines.isEmpty())) {
-                            Column(
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .padding(horizontal = 32.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                        Icon(
+                            imageVector = Icons.Outlined.MusicOff,
+                            contentDescription = null,
+                            tint = Color.Gray,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Lyrics not available",
+                            color = Color.LightGray,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = onRefetchLyrics,
+                                shape = CircleShape,
+                                contentPadding = PaddingValues(0.dp),
+                                modifier = Modifier.size(42.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.Gray.copy(alpha = 0.5f))
                             ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.MusicOff,
-                                    contentDescription = null,
-                                    tint = Color.Gray,
-                                    modifier = Modifier.size(48.dp)
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = "Lyrics not available",
-                                    color = Color.LightGray,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Row(
-                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    OutlinedButton(
-                                        onClick = onRefetchLyrics,
-                                        shape = CircleShape,
-                                        contentPadding = PaddingValues(0.dp),
-                                        modifier = Modifier.size(42.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.Gray.copy(alpha = 0.5f))
-                                    ) {
-                                        Icon(Icons.Filled.Refresh, contentDescription = "Retry", modifier = Modifier.size(20.dp))
-                                    }
-
-                                    OutlinedButton(
-                                        onClick = {
-                                            if (teksteShqipUrlInput.isBlank()) {
-                                                if (track.artist.contains("leonora", ignoreCase = true) ||
-                                                    track.title.contains("vritet", ignoreCase = true)
-                                                ) {
-                                                    teksteShqipUrlInput = "https://teksteshqip.com/leonora-jakupi/teksti/1848928"
-                                                }
-                                            }
-                                            showTeksteShqipDialog = true
-                                        },
-                                        shape = CircleShape,
-                                        contentPadding = PaddingValues(0.dp),
-                                        modifier = Modifier.size(42.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFFD54F)),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD54F).copy(alpha = 0.6f))
-                                    ) {
-                                        Icon(Icons.Filled.Language, contentDescription = "TeksteShqip", modifier = Modifier.size(20.dp))
-                                    }
-                                }
-                            }
-                        } else {
-                            // Top indicator bar with source and TeksteShqip button
-                            Row(
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color.Black.copy(alpha = 0.45f),
-                                    modifier = Modifier.padding(2.dp)
-                                ) {
-                                    val srcText = when (lyricsData.source) {
-                                        LyricsSource.EMBEDDED_FILE -> "Embedded in File"
-                                        LyricsSource.NAVIDROME_SERVER -> "Navidrome Server"
-                                        LyricsSource.ONLINE_LRCLIB -> "LrcLib Synced"
-                                        LyricsSource.ONLINE_TEKSTESHQIP -> "TeksteShqip"
-                                        LyricsSource.NOT_FOUND -> ""
-                                    }
-                                    Text(
-                                        text = srcText,
-                                        color = Color.LightGray,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color.Black.copy(alpha = 0.45f),
-                                    modifier = Modifier.clickable {
-                                        if (teksteShqipUrlInput.isBlank()) {
-                                            if (track.artist.contains("leonora", ignoreCase = true) ||
-                                                track.title.contains("vritet", ignoreCase = true)
-                                            ) {
-                                                teksteShqipUrlInput = "https://teksteshqip.com/leonora-jakupi/teksti/1848928"
-                                            }
-                                        }
-                                        showTeksteShqipDialog = true
-                                    }
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.Language,
-                                            contentDescription = null,
-                                            tint = Color(0xFFFFD54F),
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            "TeksteShqip",
-                                            color = Color(0xFFFFD54F),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                }
-                            }
-                            val validSyncedLines = remember(lyricsData.syncedLines) {
-                                lyricsData.syncedLines.filter { it.text.isNotBlank() }
+                                Icon(Icons.Filled.Refresh, contentDescription = "Retry", modifier = Modifier.size(20.dp))
                             }
 
-                            if (validSyncedLines.isNotEmpty()) {
-                                // Find active line with 0.5s anticipation
-                                val activeLineIndex = validSyncedLines.indexOfLast { (it.timeMs - 500L) <= currentPosMs }.coerceAtLeast(0)
-                                
-                                LaunchedEffect(activeLineIndex) {
-                                    if (activeLineIndex >= 0 && validSyncedLines.isNotEmpty()) {
-                                        listState.animateScrollToItem(index = activeLineIndex, scrollOffset = 0)
-                                    }
-                                }
-
-                                BoxWithConstraints(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = 20.dp)
-                                ) {
-                                    val verticalPadding = (maxHeight / 2 - 36.dp).coerceAtLeast(60.dp)
-
-                                    LazyColumn(
-                                        state = listState,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentPadding = PaddingValues(top = verticalPadding, bottom = verticalPadding),
-                                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                                    ) {
-                                        itemsIndexed(validSyncedLines) { index, line ->
-                                            val isActive = index == activeLineIndex
-                                            val isPast = index < activeLineIndex
-
-                                            val textColor by animateColorAsState(
-                                                targetValue = when {
-                                                    isActive -> Color.White
-                                                    isPast -> Color.White.copy(alpha = 0.55f)
-                                                    else -> Color.White.copy(alpha = 0.35f)
-                                                },
-                                                animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
-                                                label = "modal_lyric_color"
-                                            )
-
-                                            val bgColor by animateColorAsState(
-                                                targetValue = if (isActive) Color.White.copy(alpha = 0.16f) else Color.Transparent,
-                                                animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
-                                                label = "modal_lyric_bg"
-                                            )
-
-                                            val scale by animateFloatAsState(
-                                                targetValue = if (isActive) 1.03f else 1.0f,
-                                                animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
-                                                label = "modal_lyric_scale"
-                                            )
-
-                                            Surface(
-                                                color = bgColor,
-                                                shape = RoundedCornerShape(14.dp),
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .graphicsLayer {
-                                                        scaleX = scale
-                                                        scaleY = scale
-                                                    }
-                                                    .clickable {
-                                                        haptics.click()
-                                                        onSeekTo(line.timeMs)
-                                                    }
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    AnimatedVisibility(
-                                                        visible = isActive,
-                                                        enter = fadeIn(tween(300)),
-                                                        exit = fadeOut(tween(200))
-                                                    ) {
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            Icon(
-                                                                imageVector = Icons.Filled.PlayArrow,
-                                                                contentDescription = "Current",
-                                                                tint = Color(0xFFF3D959), // Yellow play icon
-                                                                modifier = Modifier.size(18.dp)
-                                                            )
-                                                            Spacer(modifier = Modifier.width(8.dp))
-                                                        }
-                                                    }
-                                                    if (!isActive) {
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                    }
-                                                    Text(
-                                                        text = line.text,
-                                                        color = textColor,
-                                                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                                                        fontSize = if (isActive) 21.sp else 16.sp,
-                                                        lineHeight = if (isActive) 28.sp else 22.sp,
-                                                        modifier = Modifier.weight(1f)
-                                                    )
-                                                }
-                                            }
+                            OutlinedButton(
+                                onClick = {
+                                    if (teksteShqipUrlInput.isBlank()) {
+                                        if (track.artist.contains("leonora", ignoreCase = true) ||
+                                            track.title.contains("vritet", ignoreCase = true)
+                                        ) {
+                                            teksteShqipUrlInput = "https://teksteshqip.com/leonora-jakupi/teksti/1848928"
                                         }
                                     }
-                                }
-                            } else {
-                                // Plain lyrics
-                                Box(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 48.dp).verticalScroll(plainScrollState)) {
-                                    Text(
-                                        text = lyricsData.plainLyrics,
-                                        color = Color.White,
-                                        fontSize = 18.sp,
-                                        lineHeight = 28.sp
-                                    )
-                                }
+                                    showTeksteShqipDialog = true
+                                },
+                                shape = CircleShape,
+                                contentPadding = PaddingValues(0.dp),
+                                modifier = Modifier.size(42.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFFD54F)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD54F).copy(alpha = 0.6f))
+                            ) {
+                                Icon(Icons.Filled.Language, contentDescription = "TeksteShqip", modifier = Modifier.size(20.dp))
                             }
                         }
                     }
-
-                    // Bottom Controls
+                } else {
                     Row(
                         modifier = Modifier
+                            .align(Alignment.TopCenter)
                             .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(horizontal = 24.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .padding(horizontal = 24.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = Color.White,
-                            modifier = Modifier.size(48.dp).clickable { onTogglePlayPause() }
+                            color = Color.Black.copy(alpha = 0.45f),
+                            modifier = Modifier.padding(2.dp)
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                    contentDescription = "Play/Pause",
-                                    tint = Color.Black
-                                )
+                            val srcText = when (lyricsData.source) {
+                                LyricsSource.EMBEDDED_FILE -> "Embedded in File"
+                                LyricsSource.NAVIDROME_SERVER -> "Navidrome Server"
+                                LyricsSource.ONLINE_LRCLIB -> "LrcLib Synced"
+                                LyricsSource.ONLINE_TEKSTESHQIP -> "TeksteShqip"
+                                LyricsSource.NOT_FOUND -> ""
                             }
+                            Text(
+                                text = srcText,
+                                color = Color.LightGray,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
                         }
-                        
-                        Slider(
-                            value = currentPosMs.toFloat(),
-                            onValueChange = {
-                                isDraggingSlider = true
-                                dragPositionMs = it.toLong()
-                            },
-                            onValueChangeFinished = {
-                                isDraggingSlider = false
-                                onSeekTo(dragPositionMs)
-                            },
-                            valueRange = 0f..(totalDurationMs.toFloat().takeIf { it > 0f } ?: 100f),
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color.White,
-                                activeTrackColor = Color.White,
-                                inactiveTrackColor = Color.Gray
-                            ),
-                            modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
-                        )
 
                         Surface(
                             shape = CircleShape,
-                            color = Color(0xFF2C2C2C),
-                            modifier = Modifier.size(48.dp).clickable { onOpenQueue() }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Filled.QueueMusic, contentDescription = "Queue", tint = Color.White)
+                            color = Color.Black.copy(alpha = 0.45f),
+                            modifier = Modifier.clickable {
+                                if (teksteShqipUrlInput.isBlank()) {
+                                    if (track.artist.contains("leonora", ignoreCase = true) ||
+                                        track.title.contains("vritet", ignoreCase = true)
+                                    ) {
+                                        teksteShqipUrlInput = "https://teksteshqip.com/leonora-jakupi/teksti/1848928"
+                                    }
+                                }
+                                showTeksteShqipDialog = true
                             }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Language,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFFD54F),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    "TeksteShqip",
+                                    color = Color(0xFFFFD54F),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                    val validSyncedLines = remember(lyricsData.syncedLines) {
+                        lyricsData.syncedLines.filter { it.text.isNotBlank() }
+                    }
+
+                    if (validSyncedLines.isNotEmpty()) {
+                        val activeLineIndex = validSyncedLines.indexOfLast { (it.timeMs - 500L) <= currentPosMs }.coerceAtLeast(0)
+
+                        LaunchedEffect(activeLineIndex) {
+                            if (activeLineIndex >= 0 && validSyncedLines.isNotEmpty()) {
+                                listState.animateScrollToItem(index = activeLineIndex, scrollOffset = 0)
+                            }
+                        }
+
+                        BoxWithConstraints(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 20.dp)
+                        ) {
+                            val verticalPadding = (maxHeight / 2 - 36.dp).coerceAtLeast(60.dp)
+
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(top = verticalPadding, bottom = verticalPadding),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                itemsIndexed(validSyncedLines) { index, line ->
+                                    val isActive = index == activeLineIndex
+                                    val isPast = index < activeLineIndex
+
+                                    val textColor by animateColorAsState(
+                                        targetValue = when {
+                                            isActive -> Color.White
+                                            isPast -> Color.White.copy(alpha = 0.55f)
+                                            else -> Color.White.copy(alpha = 0.35f)
+                                        },
+                                        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+                                        label = "modal_lyric_color"
+                                    )
+
+                                    val bgColor by animateColorAsState(
+                                        targetValue = if (isActive) Color.White.copy(alpha = 0.16f) else Color.Transparent,
+                                        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+                                        label = "modal_lyric_bg"
+                                    )
+
+                                    val scale by animateFloatAsState(
+                                        targetValue = if (isActive) 1.03f else 1.0f,
+                                        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+                                        label = "modal_lyric_scale"
+                                    )
+
+                                    Surface(
+                                        color = bgColor,
+                                        shape = RoundedCornerShape(14.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .graphicsLayer {
+                                                scaleX = scale
+                                                scaleY = scale
+                                            }
+                                            .clickable {
+                                                haptics.click()
+                                                onSeekTo(line.timeMs)
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            AnimatedVisibility(
+                                                visible = isActive,
+                                                enter = fadeIn(tween(300)),
+                                                exit = fadeOut(tween(200))
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.PlayArrow,
+                                                        contentDescription = "Current",
+                                                        tint = Color(0xFFF3D959),
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                }
+                                            }
+                                            if (!isActive) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                            }
+                                            Text(
+                                                text = line.text,
+                                                color = textColor,
+                                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                                                fontSize = if (isActive) 21.sp else 16.sp,
+                                                lineHeight = if (isActive) 28.sp else 22.sp,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 48.dp).verticalScroll(plainScrollState)) {
+                            Text(
+                                text = lyricsData.plainLyrics,
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                lineHeight = 28.sp
+                            )
                         }
                     }
                 }
             }
-        }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color.White,
+                    modifier = Modifier.size(48.dp).clickable { onTogglePlayPause() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = "Play/Pause",
+                            tint = Color.Black
+                        )
+                    }
+                }
+
+                Slider(
+                    value = currentPosMs.toFloat(),
+                    onValueChange = {
+                        isDraggingSlider = true
+                        dragPositionMs = it.toLong()
+                    },
+                    onValueChangeFinished = {
+                        isDraggingSlider = false
+                        onSeekTo(dragPositionMs)
+                    },
+                    valueRange = 0f..(totalDurationMs.toFloat().takeIf { it > 0f } ?: 100f),
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color.White,
+                        inactiveTrackColor = Color.Gray
+                    ),
+                    modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
+                )
+
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF2C2C2C),
+                    modifier = Modifier.size(48.dp).clickable { onOpenQueue() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.QueueMusic, contentDescription = "Queue", tint = Color.White)
+                    }
+                }
+            }
         }
     }
-}
-*/
 
 @Composable
 private fun AutoResizingSingleLineLyric(
