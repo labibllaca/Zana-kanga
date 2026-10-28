@@ -1373,214 +1373,158 @@ fun LibraryScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .testTag("local_folder_card_${folder.id.hashCode()}"),
-                                    shape = RoundedCornerShape(18.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     colors = CardDefaults.cardColors(
                                         containerColor = if (isFolderEnabled) {
-                                            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f)
+                                            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f)
                                         } else {
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
                                         }
                                     ),
                                     border = if (isFolderEnabled) {
-                                        androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.6f))
+                                        androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.5f))
                                     } else {
-                                        androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                        androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                                     }
                                 ) {
-                                    Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-                                        // Top Row: Folder Icon, Names, Status Badge & Checkbox
+                                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
-                                            Row(
-                                                modifier = Modifier.weight(1f),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = if (isFolderEnabled) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surfaceVariant,
+                                                modifier = Modifier.size(36.dp)
                                             ) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(12.dp),
-                                                    color = if (isFolderEnabled) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surfaceVariant,
-                                                    modifier = Modifier.size(42.dp)
-                                                ) {
-                                                    Box(contentAlignment = Alignment.Center) {
-                                                        Icon(
-                                                            imageVector = if (isFolderEnabled) Icons.Filled.Folder else Icons.Outlined.FolderOff,
-                                                            contentDescription = null,
-                                                            tint = if (isFolderEnabled) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            modifier = Modifier.size(22.dp)
-                                                        )
-                                                    }
-                                                }
-
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = folder.name,
-                                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                                            color = if (isFolderEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-
-                                                        Surface(
-                                                            shape = RoundedCornerShape(6.dp),
-                                                            color = if (isFolderEnabled) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                                            modifier = Modifier.clickable {
-                                                                haptics.toggle()
-                                                                onToggleLocalFolder(folder.id)
-                                                            }
-                                                        ) {
-                                                            Text(
-                                                                text = if (isFolderEnabled) "Aktiv" else "Deaktiviert",
-                                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                                                color = if (isFolderEnabled) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                            )
-                                                        }
-                                                    }
-
-                                                    Spacer(modifier = Modifier.height(2.dp))
-
-                                                    Text(
-                                                        text = "${folder.trackCount} ${str("tracks_count")} • " +
-                                                                "${if (folder.totalDurationSeconds >= 3600) "${folder.totalDurationSeconds / 3600}h ${(folder.totalDurationSeconds % 3600) / 60}m" else "${folder.totalDurationSeconds / 60} min"}",
-                                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = if (isFolderEnabled) Icons.Filled.Folder else Icons.Outlined.FolderOff,
+                                                        contentDescription = null,
+                                                        tint = if (isFolderEnabled) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.size(20.dp)
                                                     )
+                                                }
+                                            }
 
+                                            Column(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clickable {
+                                                        haptics.toggle()
+                                                        onToggleLocalFolder(folder.id)
+                                                    }
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
                                                     Text(
-                                                        text = folder.displayPath,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                                        text = folder.name,
+                                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                                                        color = if (isFolderEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                                                         maxLines = 1,
                                                         overflow = TextOverflow.Ellipsis
                                                     )
+
+                                                    if (isFolderEnabled) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            color = MaterialTheme.colorScheme.tertiaryContainer
+                                                        ) {
+                                                            Text(
+                                                                text = "Aktiv",
+                                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                            )
+                                                        }
+                                                    }
                                                 }
+
+                                                val durationStr = if (folder.totalDurationSeconds >= 3600) {
+                                                    "${folder.totalDurationSeconds / 3600}h ${(folder.totalDurationSeconds % 3600) / 60}m"
+                                                } else {
+                                                    "${folder.totalDurationSeconds / 60} min"
+                                                }
+
+                                                Text(
+                                                    text = "${folder.trackCount} ${str("tracks_count")} • $durationStr • ${folder.displayPath}",
+                                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
                                             }
 
-                                            // Checkbox toggle for activating/deactivating this folder
-                                            Checkbox(
-                                                checked = isFolderEnabled,
-                                                onCheckedChange = {
-                                                    haptics.toggle()
-                                                    onToggleLocalFolder(folder.id)
-                                                },
-                                                colors = CheckboxDefaults.colors(
-                                                    checkedColor = MaterialTheme.colorScheme.tertiary
-                                                ),
-                                                modifier = Modifier.testTag("toggle_local_folder_${folder.id.hashCode()}")
-                                            )
-                                        }
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                IconButton(
+                                                    onClick = {
+                                                        haptics.click()
+                                                        if (!isFolderEnabled) onToggleLocalFolder(folder.id)
+                                                        onPlayAll(folder.tracks)
+                                                    },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.PlayArrow,
+                                                        contentDescription = str("local_folder_play_all"),
+                                                        tint = MaterialTheme.colorScheme.tertiary,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
 
-                                        Spacer(modifier = Modifier.height(10.dp))
+                                                IconButton(
+                                                    onClick = {
+                                                        haptics.click()
+                                                        if (!isFolderEnabled) onToggleLocalFolder(folder.id)
+                                                        onShuffleAll(folder.tracks)
+                                                    },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Shuffle,
+                                                        contentDescription = str("local_folder_shuffle"),
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
 
-                                        // Actions Row: Play All Folder, Shuffle Folder, Expand/Collapse
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .horizontalScroll(rememberScrollState()),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            FilledTonalButton(
-                                                onClick = {
-                                                    haptics.click()
-                                                    if (!isFolderEnabled) {
+                                                IconButton(
+                                                    onClick = {
+                                                        haptics.click()
+                                                        isExpanded = !isExpanded
+                                                    },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+
+                                                Checkbox(
+                                                    checked = isFolderEnabled,
+                                                    onCheckedChange = {
+                                                        haptics.toggle()
                                                         onToggleLocalFolder(folder.id)
-                                                    }
-                                                    onPlayAll(folder.tracks)
-                                                },
-                                                shape = CircleShape,
-                                                modifier = Modifier.size(36.dp),
-                                                colors = ButtonDefaults.filledTonalButtonColors(
-                                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                                ),
-                                                contentPadding = PaddingValues(0.dp)
-                                            ) {
-                                                Icon(Icons.Filled.PlayArrow, contentDescription = str("local_folder_play_all"), modifier = Modifier.size(18.dp))
-                                            }
-
-                                            FilledTonalButton(
-                                                onClick = {
-                                                    haptics.click()
-                                                    if (!isFolderEnabled) {
-                                                        onToggleLocalFolder(folder.id)
-                                                    }
-                                                    onShuffleAll(folder.tracks)
-                                                },
-                                                shape = CircleShape,
-                                                modifier = Modifier.size(36.dp),
-                                                colors = ButtonDefaults.filledTonalButtonColors(
-                                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f),
-                                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                                ),
-                                                contentPadding = PaddingValues(0.dp)
-                                            ) {
-                                                Icon(Icons.Filled.Shuffle, contentDescription = str("local_folder_shuffle"), modifier = Modifier.size(18.dp))
-                                            }
-
-                                            FilledTonalButton(
-                                                onClick = {
-                                                    haptics.click()
-                                                    if (!isFolderEnabled) {
-                                                        onToggleLocalFolder(folder.id)
-                                                    }
-                                                    onPlayTracksNext?.invoke(folder.tracks)
-                                                    android.widget.Toast.makeText(context, String.format(str("toast_added_next"), folder.tracks.size), android.widget.Toast.LENGTH_SHORT).show()
-                                                },
-                                                shape = CircleShape,
-                                                modifier = Modifier.size(36.dp).testTag("local_folder_play_next_${folder.id.hashCode()}"),
-                                                colors = ButtonDefaults.filledTonalButtonColors(
-                                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f),
-                                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                                ),
-                                                contentPadding = PaddingValues(0.dp)
-                                            ) {
-                                                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = str("folder_play_next"), modifier = Modifier.size(18.dp))
-                                            }
-
-                                            FilledTonalButton(
-                                                onClick = {
-                                                    haptics.click()
-                                                    if (!isFolderEnabled) {
-                                                        onToggleLocalFolder(folder.id)
-                                                    }
-                                                    onAddTracksToQueue?.invoke(folder.tracks)
-                                                    android.widget.Toast.makeText(context, String.format(str("toast_added_queue"), folder.tracks.size), android.widget.Toast.LENGTH_SHORT).show()
-                                                },
-                                                shape = CircleShape,
-                                                modifier = Modifier.size(36.dp).testTag("local_folder_add_to_queue_${folder.id.hashCode()}"),
-                                                colors = ButtonDefaults.filledTonalButtonColors(
-                                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f),
-                                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                                ),
-                                                contentPadding = PaddingValues(0.dp)
-                                            ) {
-                                                Icon(Icons.Filled.QueueMusic, contentDescription = str("folder_add_to_queue"), modifier = Modifier.size(18.dp))
-                                            }
-
-                                            IconButton(
-                                                onClick = {
-                                                    haptics.click()
-                                                    isExpanded = !isExpanded
-                                                },
-                                                modifier = Modifier.size(36.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                                                    contentDescription = if (isExpanded) "Collapse" else "Expand",
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    },
+                                                    colors = CheckboxDefaults.colors(
+                                                        checkedColor = MaterialTheme.colorScheme.tertiary
+                                                    ),
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .testTag("toggle_local_folder_${folder.id.hashCode()}")
                                                 )
                                             }
                                         }
 
-                                        // Expandable Track List inside Folder
                                         AnimatedVisibility(
                                             visible = isExpanded,
                                             enter = expandVertically() + fadeIn(),
@@ -1589,7 +1533,7 @@ fun LibraryScreen(
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .padding(top = 10.dp),
+                                                    .padding(top = 8.dp),
                                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                                             ) {
                                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))

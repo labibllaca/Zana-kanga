@@ -1,6 +1,6 @@
 [versions]
-appVersionCode = "60"
-appVersionName = "1.60.0"
+appVersionCode = "61"
+appVersionName = "1.61.0"
 paletteKtx = "1.0.0"
 agp = "9.1.1"
 coreKtx = "1.18.0"
