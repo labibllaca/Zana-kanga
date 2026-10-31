@@ -322,14 +322,6 @@ fun LibraryScreen(
     }
 
     val isAllLibrariesSelected = selectedMusicFolderIds.isEmpty() || (musicFolders.isNotEmpty() && selectedMusicFolderIds.size >= musicFolders.size)
-    val activeFolderName = when {
-        isAllLibrariesSelected -> str("all_libraries_title")
-        selectedMusicFolderIds.size == 1 -> musicFolders.find { it.id == selectedMusicFolderIds.first() }?.name ?: str("all_libraries_title")
-        else -> {
-            val matching = musicFolders.filter { it.id in selectedMusicFolderIds }.map { it.name }
-            if (matching.isNotEmpty()) matching.joinToString(", ") else String.format(str("multi_libraries_selected"), selectedMusicFolderIds.size)
-        }
-    }
 
     var isSearchVisible by remember { mutableStateOf(true) }
     var librarySearchQuery by remember { mutableStateOf("") }
@@ -348,59 +340,6 @@ fun LibraryScreen(
                 isSearchVisible = isSearchVisible,
                 onToggleSearch = { isSearchVisible = !isSearchVisible }
             )
-
-            // 2. Editorial Library Active Folder Bar (Clean, serene layout)
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                onClick = { onOpenSidebar() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .testTag("library_folder_switcher")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = str("switch_library_prompt").uppercase(),
-                            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = activeFolderName,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                        modifier = Modifier.clickable { onOpenSidebar() }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = if (musicFolders.isNotEmpty()) "${musicFolders.size} ${str("subtab_libraries").lowercase()} +" else "${str("subtab_libraries")} +",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-            }
 
             // Universal Library Search Bar
             AnimatedVisibility(
