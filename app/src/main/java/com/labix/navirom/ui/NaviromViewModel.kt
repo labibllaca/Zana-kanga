@@ -1106,16 +1106,22 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
                     
                     _currentArtistSongs.value = allSongs.distinctBy { it.id }.sortedBy { it.title.lowercase() }
                 }.onFailure {
-                    // Fallback to local/offline filtering
-                    val localArtist = _artists.value.find { it.id == artistId }
-                    if (localArtist != null) {
-                        _currentArtist.value = localArtist
-                        val localAlbums = _newestAlbums.value.filter { it.artistId == artistId || it.artist.equals(localArtist.name, ignoreCase = true) }
-                        _currentArtistAlbums.value = localAlbums
-                        
-                        val localSongs = _rawLibrarySongs.value.filter { it.artistId == artistId || it.artist.equals(localArtist.name, ignoreCase = true) }
-                        _currentArtistSongs.value = localSongs.sortedBy { it.title.lowercase() }
+                    // Fallback to local/offline filtering (by ID or artist name)
+                    val localArtist = _artists.value.find { it.id == artistId || it.name.equals(artistId, ignoreCase = true) }
+                    val targetName = localArtist?.name ?: artistId
+                    val targetId = localArtist?.id ?: artistId
+
+                    _currentArtist.value = localArtist ?: NaviromArtist(id = targetId, name = targetName)
+
+                    val localAlbums = _newestAlbums.value.filter {
+                        it.artistId == targetId || it.artist.equals(targetName, ignoreCase = true)
                     }
+                    _currentArtistAlbums.value = localAlbums
+
+                    val localSongs = _rawLibrarySongs.value.filter {
+                        it.artistId == targetId || it.artist.equals(targetName, ignoreCase = true)
+                    }
+                    _currentArtistSongs.value = localSongs.distinctBy { it.id }.sortedBy { it.title.lowercase() }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("NaviromViewModel", "Error loading artist details", e)

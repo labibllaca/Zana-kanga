@@ -331,17 +331,22 @@ fun LibraryScreen(
         }
     }
 
+    var isSearchVisible by remember { mutableStateOf(true) }
+    var librarySearchQuery by remember { mutableStateOf("") }
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("library_screen")
         ) {
-            // 1. Time-of-day greeting header with profile name
+            // 1. Time-of-day greeting header with profile name & search toggle
             GreetingHeader(
                 profileName = profileName,
                 appLanguage = appLanguage,
-                onOpenSidebar = onOpenSidebar
+                onOpenSidebar = onOpenSidebar,
+                isSearchVisible = isSearchVisible,
+                onToggleSearch = { isSearchVisible = !isSearchVisible }
             )
 
             // 2. Editorial Library Active Folder Bar (Clean, serene layout)
@@ -356,7 +361,7 @@ fun LibraryScreen(
                     .testTag("library_folder_switcher")
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -397,7 +402,77 @@ fun LibraryScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            // Universal Library Search Bar
+            AnimatedVisibility(
+                visible = isSearchVisible || librarySearchQuery.isNotEmpty(),
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        0.5.dp,
+                        if (librarySearchQuery.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .testTag("library_search_container")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = str("tab_search"),
+                            tint = if (librarySearchQuery.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = librarySearchQuery,
+                            onValueChange = { librarySearchQuery = it },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("library_search_input"),
+                            decorationBox = { innerTextField ->
+                                if (librarySearchQuery.isEmpty()) {
+                                    Text(
+                                        text = str("search_hint"),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        )
+
+                        if (librarySearchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { librarySearchQuery = "" },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Clear,
+                                    contentDescription = "Clear",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(2.dp))
 
             // 3. Editorial Minimalist SubTabs (Inspired by ELOME navigation)
             Row(
@@ -986,7 +1061,7 @@ fun LibraryScreen(
                 }
                 LibrarySubTab.SONGS -> {
                     // List view for songs in library with sorting controls
-                    val effectiveSongs = if (librarySongs.isNotEmpty()) librarySongs else {
+                    val baseSongs = if (librarySongs.isNotEmpty()) librarySongs else {
                         val sorted = when (songSortOrder) {
                             SongSortOrder.NAME -> quickMixTracks.sortedBy { it.title.lowercase() }
                             SongSortOrder.DURATION -> quickMixTracks.sortedByDescending { it.durationSeconds }
@@ -994,6 +1069,14 @@ fun LibraryScreen(
                             SongSortOrder.ARTIST -> quickMixTracks.sortedBy { it.artist.lowercase() }
                         }
                         if (isSongSortReversed) sorted.reversed() else sorted
+                    }
+                    val effectiveSongs = remember(baseSongs, librarySearchQuery) {
+                        if (librarySearchQuery.isBlank()) baseSongs
+                        else baseSongs.filter {
+                            it.title.contains(librarySearchQuery, ignoreCase = true) ||
+                            it.artist.contains(librarySearchQuery, ignoreCase = true) ||
+                            it.album.contains(librarySearchQuery, ignoreCase = true)
+                        }
                     }
                     LazyColumn(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 80.dp),
@@ -1189,104 +1272,81 @@ fun LibraryScreen(
                     val allLocalSelected = remember(musicLocalFolders, disabledLocalFolderIds) { musicLocalFolders.none { disabledLocalFolderIds.contains(it.id) } }
                     val isAllServerSelected = isAllLibrariesSelected
 
-                    var libraryFolderQuery by remember { mutableStateOf("") }
-                    val searchedLocalFolders = remember(musicLocalFolders, libraryFolderQuery) {
-                        if (libraryFolderQuery.isBlank()) musicLocalFolders
+                    val searchedLocalFolders = remember(musicLocalFolders, librarySearchQuery) {
+                        if (librarySearchQuery.isBlank()) musicLocalFolders
                         else musicLocalFolders.filter {
-                            it.name.contains(libraryFolderQuery, ignoreCase = true) ||
-                            it.displayPath.contains(libraryFolderQuery, ignoreCase = true)
+                            it.name.contains(librarySearchQuery, ignoreCase = true) ||
+                            it.displayPath.contains(librarySearchQuery, ignoreCase = true)
                         }
                     }
-                    val searchedServerFolders = remember(musicFolders, libraryFolderQuery) {
-                        if (libraryFolderQuery.isBlank()) musicFolders
+                    val searchedServerFolders = remember(musicFolders, librarySearchQuery) {
+                        if (librarySearchQuery.isBlank()) musicFolders
                         else musicFolders.filter {
-                            it.name.contains(libraryFolderQuery, ignoreCase = true) ||
-                            it.id.contains(libraryFolderQuery, ignoreCase = true)
+                            it.name.contains(librarySearchQuery, ignoreCase = true) ||
+                            it.id.contains(librarySearchQuery, ignoreCase = true)
                         }
                     }
 
                     LazyColumn(
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 88.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize().testTag("local_files_tab_list")
                     ) {
-                        // Section 0: Search input bar for Libraries/Folders
-                        item {
-                            OutlinedTextField(
-                                value = libraryFolderQuery,
-                                onValueChange = { libraryFolderQuery = it },
-                                placeholder = { Text("Search active libraries & folders...", style = MaterialTheme.typography.bodyMedium) },
-                                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "Search Libraries") },
-                                trailingIcon = {
-                                    if (libraryFolderQuery.isNotEmpty()) {
-                                        IconButton(onClick = { libraryFolderQuery = "" }) {
-                                            Icon(Icons.Filled.Clear, contentDescription = "Clear Search")
-                                        }
-                                    }
-                                },
-                                singleLine = true,
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("libraries_search_field")
-                            )
-                        }
-
-                        // Section 1: Local On-Device Audio Folders Banner
+                        // Section 1: Local On-Device Audio Folders Banner (Compact)
                         item {
                             Card(
-                                shape = RoundedCornerShape(24.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)),
                                 modifier = Modifier.fillMaxWidth().testTag("local_device_music_card")
                             ) {
-                                Column(modifier = Modifier.padding(20.dp)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.size(34.dp)
                                     ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(14.dp),
-                                            color = MaterialTheme.colorScheme.tertiary,
-                                            modifier = Modifier.size(44.dp)
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.SdStorage,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.onTertiary,
-                                                    modifier = Modifier.size(24.dp)
-                                                )
-                                            }
-                                        }
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = str("local_music_folders_title"),
-                                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.onTertiaryContainer
-                                            )
-                                            Text(
-                                                text = if (musicLocalFolders.isNotEmpty()) {
-                                                    String.format(str("local_folders_active"), activeLocalFolderCount, musicLocalFolders.size) + " • ${musicLocalFolders.sumOf { it.trackCount }} ${str("tracks_count")}"
-                                                } else {
-                                                    str("local_music_folders_subtitle")
-                                                },
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f)
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Filled.SdStorage,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onTertiary,
+                                                modifier = Modifier.size(18.dp)
                                             )
                                         }
                                     }
-
-                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = str("local_music_folders_title"),
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = if (musicLocalFolders.isNotEmpty()) {
+                                                String.format(str("local_folders_active"), activeLocalFolderCount, musicLocalFolders.size) + " • ${musicLocalFolders.sumOf { it.trackCount }} ${str("tracks_count")}"
+                                            } else {
+                                                str("local_music_folders_subtitle")
+                                            },
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
 
                                     Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         if (musicLocalFolders.isNotEmpty()) {
-                                            Button(
+                                            IconButton(
                                                 onClick = {
                                                     haptics.click()
                                                     if (allLocalSelected) {
@@ -1295,48 +1355,55 @@ fun LibraryScreen(
                                                         onSelectAllLocalFolders()
                                                     }
                                                 },
-                                                shape = CircleShape,
-                                                contentPadding = PaddingValues(0.dp),
-                                                modifier = Modifier.size(44.dp),
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = MaterialTheme.colorScheme.tertiary,
-                                                    contentColor = MaterialTheme.colorScheme.onTertiary
-                                                )
+                                                modifier = Modifier.size(36.dp)
                                             ) {
-                                                Icon(
-                                                    imageVector = if (allLocalSelected) Icons.Filled.Deselect else Icons.Filled.SelectAll,
-                                                    contentDescription = if (allLocalSelected) str("deselect_all_local_folders") else str("select_all_local_folders"),
-                                                    modifier = Modifier.size(20.dp)
-                                                )
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = MaterialTheme.colorScheme.tertiary,
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Icon(
+                                                            imageVector = if (allLocalSelected) Icons.Filled.Deselect else Icons.Filled.SelectAll,
+                                                            contentDescription = if (allLocalSelected) str("deselect_all_local_folders") else str("select_all_local_folders"),
+                                                            tint = MaterialTheme.colorScheme.onTertiary,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
 
-                                        OutlinedButton(
+                                        IconButton(
                                             onClick = {
                                                 haptics.click()
                                                 requestLocalPermission()
                                             },
-                                            shape = CircleShape,
-                                            contentPadding = PaddingValues(0.dp),
-                                            modifier = Modifier.size(44.dp),
                                             enabled = !isScanningLocalAudio,
-                                            colors = ButtonDefaults.outlinedButtonColors(
-                                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                            ),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.35f))
+                                            modifier = Modifier.size(36.dp)
                                         ) {
-                                            if (isScanningLocalAudio) {
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(18.dp),
-                                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                                    strokeWidth = 2.dp
-                                                )
-                                            } else {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Refresh,
-                                                    contentDescription = if (musicLocalFolders.isEmpty()) str("scan_device_folders") else str("rescan_device_folders"),
-                                                    modifier = Modifier.size(20.dp)
-                                                )
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.3f)),
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    if (isScanningLocalAudio) {
+                                                        CircularProgressIndicator(
+                                                            modifier = Modifier.size(14.dp),
+                                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                            strokeWidth = 1.5.dp
+                                                        )
+                                                    } else {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Refresh,
+                                                            contentDescription = if (musicLocalFolders.isEmpty()) str("scan_device_folders") else str("rescan_device_folders"),
+                                                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -1348,18 +1415,18 @@ fun LibraryScreen(
                         if (musicLocalFolders.isNotEmpty()) {
                             item {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 2.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "${str("local_folders_header")} (${musicLocalFolders.size})",
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        text = "${str("local_folders_header")} (${searchedLocalFolders.size})",
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
                                         text = "${activeLocalFolderCount} ${str("deck_discover").lowercase()} / ${musicLocalFolders.size}",
-                                        style = MaterialTheme.typography.labelMedium,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.tertiary
                                     )
                                 }
@@ -1373,37 +1440,42 @@ fun LibraryScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .testTag("local_folder_card_${folder.id.hashCode()}"),
-                                    shape = RoundedCornerShape(14.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     colors = CardDefaults.cardColors(
                                         containerColor = if (isFolderEnabled) {
-                                            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f)
+                                            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
                                         } else {
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)
                                         }
                                     ),
                                     border = if (isFolderEnabled) {
-                                        androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.5f))
+                                        androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.45f))
                                     } else {
                                         androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                                     }
                                 ) {
-                                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             Surface(
-                                                shape = RoundedCornerShape(10.dp),
+                                                shape = RoundedCornerShape(8.dp),
                                                 color = if (isFolderEnabled) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surfaceVariant,
-                                                modifier = Modifier.size(36.dp)
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .clickable {
+                                                        haptics.toggle()
+                                                        onToggleLocalFolder(folder.id)
+                                                    }
                                             ) {
                                                 Box(contentAlignment = Alignment.Center) {
                                                     Icon(
                                                         imageVector = if (isFolderEnabled) Icons.Filled.Folder else Icons.Outlined.FolderOff,
                                                         contentDescription = null,
                                                         tint = if (isFolderEnabled) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.size(20.dp)
+                                                        modifier = Modifier.size(18.dp)
                                                     )
                                                 }
                                             }
@@ -1416,32 +1488,13 @@ fun LibraryScreen(
                                                         onToggleLocalFolder(folder.id)
                                                     }
                                             ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                ) {
-                                                    Text(
-                                                        text = folder.name,
-                                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
-                                                        color = if (isFolderEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-
-                                                    if (isFolderEnabled) {
-                                                        Surface(
-                                                            shape = RoundedCornerShape(6.dp),
-                                                            color = MaterialTheme.colorScheme.tertiaryContainer
-                                                        ) {
-                                                            Text(
-                                                                text = "Aktiv",
-                                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
-                                                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                                                            )
-                                                        }
-                                                    }
-                                                }
+                                                Text(
+                                                    text = folder.name,
+                                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
+                                                    color = if (isFolderEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
 
                                                 val durationStr = if (folder.totalDurationSeconds >= 3600) {
                                                     "${folder.totalDurationSeconds / 3600}h ${(folder.totalDurationSeconds % 3600) / 60}m"
@@ -1450,7 +1503,7 @@ fun LibraryScreen(
                                                 }
 
                                                 Text(
-                                                    text = "${folder.trackCount} ${str("tracks_count")} • $durationStr • ${folder.displayPath}",
+                                                    text = "${folder.trackCount} ${str("tracks_count")} • $durationStr",
                                                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                                                     maxLines = 1,
@@ -1533,11 +1586,11 @@ fun LibraryScreen(
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .padding(top = 8.dp),
+                                                    .padding(top = 6.dp),
                                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                                             ) {
-                                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                                Spacer(modifier = Modifier.height(4.dp))
+                                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                                Spacer(modifier = Modifier.height(2.dp))
 
                                                 folder.tracks.forEachIndexed { idx, track ->
                                                     val isTrackPlaying = currentTrack?.id == track.id && isPlaying
@@ -1565,21 +1618,21 @@ fun LibraryScreen(
                             item {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(20.dp),
+                                    shape = RoundedCornerShape(16.dp),
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
                                 ) {
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(20.dp),
+                                            .padding(16.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.FolderOff,
                                             contentDescription = null,
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(40.dp)
+                                            modifier = Modifier.size(36.dp)
                                         )
                                         Text(
                                             text = str("no_local_folders_found"),
@@ -1592,112 +1645,119 @@ fun LibraryScreen(
                             }
                         }
 
-                        // Section 2: Navidrome Server Libraries Header
+                        // Section 2: Navidrome Server Libraries Header (Compact)
                         item {
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Card(
-                                shape = RoundedCornerShape(24.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(20.dp)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(34.dp)
                                     ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(14.dp),
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(44.dp)
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.FolderSpecial,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                                    modifier = Modifier.size(24.dp)
-                                                )
-                                            }
-                                        }
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = str("all_libraries_title"),
-                                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
-                                            Text(
-                                                text = if (isAllServerSelected) {
-                                                    "${str("all_libraries_combined")} (${musicFolders.size} folders)"
-                                                } else {
-                                                    "${selectedMusicFolderIds.size} / ${musicFolders.size} folders active"
-                                                },
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Filled.FolderSpecial,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onPrimary,
+                                                modifier = Modifier.size(18.dp)
                                             )
                                         }
                                     }
-
-                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = str("all_libraries_title"),
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = if (isAllServerSelected) {
+                                                "${str("all_libraries_combined")} (${musicFolders.size} folders)"
+                                            } else {
+                                                "${selectedMusicFolderIds.size} / ${musicFolders.size} folders active"
+                                            },
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
 
                                     Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Button(
+                                        IconButton(
                                             onClick = {
                                                 haptics.click()
                                                 onSelectAllMusicFolders()
                                             },
-                                            shape = CircleShape,
-                                            contentPadding = PaddingValues(0.dp),
-                                            modifier = Modifier.size(44.dp),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.primary,
-                                                contentColor = MaterialTheme.colorScheme.onPrimary
-                                            )
+                                            modifier = Modifier.size(36.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = if (isAllServerSelected) Icons.Filled.DoneAll else Icons.Filled.SelectAll,
-                                                contentDescription = if (isAllServerSelected) "Reset Filter" else "Select All",
-                                                modifier = Modifier.size(20.dp)
-                                            )
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = if (isAllServerSelected) Icons.Filled.DoneAll else Icons.Filled.SelectAll,
+                                                        contentDescription = if (isAllServerSelected) "Reset Filter" else "Select All",
+                                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
                                         }
 
-                                        OutlinedButton(
+                                        IconButton(
                                             onClick = {
                                                 haptics.click()
                                                 onGoToSettings()
                                             },
-                                            shape = CircleShape,
-                                            contentPadding = PaddingValues(0.dp),
-                                            modifier = Modifier.size(44.dp),
-                                            colors = ButtonDefaults.outlinedButtonColors(
-                                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                            ),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.3f))
+                                            modifier = Modifier.size(36.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Settings,
-                                                contentDescription = "Settings",
-                                                modifier = Modifier.size(20.dp)
-                                            )
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.3f)),
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Settings,
+                                                        contentDescription = "Settings",
+                                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // Navidrome Server Music Folders List
+                        // Navidrome Server Music Folders List (Compact)
                         if (musicFolders.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "${str("server_libraries_title")} (${musicFolders.size})",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    text = "${str("server_libraries_title")} (${searchedServerFolders.size})",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                     color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                                    modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
                                 )
                             }
 
@@ -1711,41 +1771,43 @@ fun LibraryScreen(
                                             haptics.toggle()
                                             onSelectMusicFolder(folder.id)
                                         },
-                                    shape = RoundedCornerShape(16.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     colors = CardDefaults.cardColors(
                                         containerColor = if (isChecked) {
-                                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
                                         } else {
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
                                         }
                                     ),
                                     border = if (isChecked) {
-                                        androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
-                                    } else null
+                                        androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                                    } else {
+                                        androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                    }
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(16.dp),
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                                             modifier = Modifier.weight(1f)
                                         ) {
                                             Surface(
-                                                shape = RoundedCornerShape(12.dp),
+                                                shape = RoundedCornerShape(8.dp),
                                                 color = if (isChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                                modifier = Modifier.size(40.dp)
+                                                modifier = Modifier.size(32.dp)
                                             ) {
                                                 Box(contentAlignment = Alignment.Center) {
                                                     Icon(
                                                         imageVector = Icons.Filled.Folder,
                                                         contentDescription = null,
                                                         tint = if (isChecked) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.size(22.dp)
+                                                        modifier = Modifier.size(18.dp)
                                                     )
                                                 }
                                             }
@@ -1753,13 +1815,17 @@ fun LibraryScreen(
                                             Column {
                                                 Text(
                                                     text = folder.name,
-                                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                                    color = MaterialTheme.colorScheme.onSurface
+                                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                                 Text(
                                                     text = "Folder ID: ${folder.id}",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                             }
                                         }
@@ -1772,7 +1838,8 @@ fun LibraryScreen(
                                             },
                                             colors = CheckboxDefaults.colors(
                                                 checkedColor = MaterialTheme.colorScheme.primary
-                                            )
+                                            ),
+                                            modifier = Modifier.size(32.dp)
                                         )
                                     }
                                 }
@@ -2186,6 +2253,13 @@ fun LibraryScreen(
             }
 
             LibrarySubTab.ALBUMS -> {
+                val filteredAlbums = remember(albums, librarySearchQuery) {
+                    if (librarySearchQuery.isBlank()) albums
+                    else albums.filter {
+                        it.name.contains(librarySearchQuery, ignoreCase = true) ||
+                        it.artist.contains(librarySearchQuery, ignoreCase = true)
+                    }
+                }
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 160.dp),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
@@ -2193,7 +2267,7 @@ fun LibraryScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(albums, key = { it.id }) { album ->
+                    items(filteredAlbums, key = { it.id }) { album ->
                         AlbumCard(
                             album = album,
                             onClick = { onSelectAlbum(album.id) }
@@ -2203,6 +2277,12 @@ fun LibraryScreen(
             }
 
             LibrarySubTab.ARTISTS -> {
+                val filteredArtists = remember(artists, librarySearchQuery) {
+                    if (librarySearchQuery.isBlank()) artists
+                    else artists.filter {
+                        it.name.contains(librarySearchQuery, ignoreCase = true)
+                    }
+                }
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 140.dp),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
@@ -2210,7 +2290,7 @@ fun LibraryScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(artists, key = { it.id }) { artist ->
+                    items(filteredArtists, key = { it.id }) { artist ->
                         ArtistCard(
                             artist = artist,
                             onClick = {
@@ -2716,6 +2796,8 @@ private fun GreetingHeader(
     profileName: String,
     appLanguage: AppLanguage,
     onOpenSidebar: () -> Unit,
+    isSearchVisible: Boolean = false,
+    onToggleSearch: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     fun str(key: String): String = NaviromStrings.get(key, appLanguage)
@@ -2736,7 +2818,7 @@ private fun GreetingHeader(
         color = Color.Transparent,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .padding(horizontal = 20.dp, vertical = 8.dp)
             .testTag("library_greeting_header")
     ) {
         Row(
@@ -2756,7 +2838,7 @@ private fun GreetingHeader(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = str("greeting_subtitle"),
                     style = MaterialTheme.typography.bodySmall.copy(letterSpacing = 0.4.sp),
@@ -2764,25 +2846,50 @@ private fun GreetingHeader(
                 )
             }
 
-            // User Profile avatar badge (Inspired by MenuMobile.jpg profile circular avatar)
-            Surface(
-                shape = androidx.compose.foundation.shape.CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                onClick = onOpenSidebar,
-                modifier = Modifier
-                    .size(40.dp)
-                    .testTag("greeting_profile_avatar")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = displayName.take(1).uppercase(),
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Serif
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                // Search toggle button
+                Surface(
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = if (isSearchVisible) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    onClick = onToggleSearch,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .testTag("library_search_toggle_btn")
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = str("tab_search"),
+                            tint = if (isSearchVisible) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // User Profile avatar badge
+                Surface(
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    onClick = onOpenSidebar,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .testTag("greeting_profile_avatar")
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = displayName.take(1).uppercase(),
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Serif
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
         }
