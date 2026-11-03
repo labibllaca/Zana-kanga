@@ -49,6 +49,8 @@ import com.labix.navirom.ui.AppLanguage
 import com.labix.navirom.ui.NaviromStrings
 import com.labix.navirom.ui.util.rememberNaviromHaptics
 import java.io.File
+import com.labix.ui.theme.PoppinsFamily
+import com.labix.ui.theme.LatoFamily
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -171,7 +173,7 @@ fun MusicFoldersScreen(
                                 Text(
                                     text = str("folders_title"),
                                     style = MaterialTheme.typography.headlineMedium.copy(
-                                        fontFamily = FontFamily.Serif,
+                                        fontFamily = PoppinsFamily,
                                         fontWeight = FontWeight.Bold
                                     ),
                                     color = MaterialTheme.colorScheme.onBackground
@@ -537,7 +539,7 @@ fun MusicFoldersScreen(
                             Text(
                                 text = str("folders_empty_title"),
                                 style = MaterialTheme.typography.titleMedium.copy(
-                                    fontFamily = FontFamily.Serif,
+                                    fontFamily = PoppinsFamily,
                                     fontWeight = FontWeight.Bold
                                 ),
                                 color = MaterialTheme.colorScheme.onSurface,
@@ -660,7 +662,7 @@ fun MusicFoldersScreen(
                             text = "${str("folders_subfolders")} (${filteredSubfolders.size})",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Serif
+                                fontFamily = PoppinsFamily
                             ),
                             color = MaterialTheme.colorScheme.onBackground
                         )
@@ -707,7 +709,7 @@ fun MusicFoldersScreen(
                             text = "${str("folders_tracks")} (${filteredTracks.size})",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Serif
+                                fontFamily = PoppinsFamily
                             ),
                             color = MaterialTheme.colorScheme.onBackground
                         )
@@ -1082,7 +1084,7 @@ fun FileDetailsDialog(
             Text(
                 text = str("folders_file_info"),
                 style = MaterialTheme.typography.titleLarge.copy(
-                    fontFamily = FontFamily.Serif,
+                    fontFamily = PoppinsFamily,
                     fontWeight = FontWeight.Bold
                 )
             )
@@ -1125,7 +1127,7 @@ fun FileDetailsDialog(
                         ) {
                             Text(
                                 text = track.path.ifBlank { track.streamUrl },
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp),
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = LatoFamily, fontSize = 11.sp),
                                 modifier = Modifier.weight(1f)
                             )
                             Icon(Icons.Filled.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(16.dp))

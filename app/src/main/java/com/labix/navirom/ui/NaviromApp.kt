@@ -46,7 +46,6 @@ import com.labix.navirom.ui.screens.*
 import com.labix.navirom.ui.util.RememberShakeDetector
 import com.labix.navirom.ui.SongSortOrder
 import com.labix.ui.theme.AccentEmerald
-import com.labix.navirom.ui.radial.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,7 +74,6 @@ fun NaviromApp(
     val isCrossfadeEnabled by viewModel.isCrossfadeEnabled.collectAsStateWithLifecycle()
     val crossfadeDurationSeconds by viewModel.crossfadeDurationSeconds.collectAsStateWithLifecycle()
     val isVinylEffectEnabled by viewModel.isVinylEffectEnabled.collectAsStateWithLifecycle()
-    val isAstrolabeModeEnabled by viewModel.isAstrolabeModeEnabled.collectAsStateWithLifecycle()
     val focusUsernameTrigger by viewModel.focusUsernameTrigger.collectAsStateWithLifecycle()
     val userName by viewModel.userName.collectAsStateWithLifecycle()
 
@@ -182,7 +180,6 @@ fun NaviromApp(
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(initialPage = 1) { 3 }
     var playerScrollOffsetYPx by remember { mutableFloatStateOf(0f) }
-    var showAstrolabeOptionsModal by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     var backPressedOnce by remember { mutableStateOf(false) }
@@ -246,10 +243,6 @@ fun NaviromApp(
             }
         )
     ) {
-        var libraryTotalItems by remember { mutableIntStateOf(1) }
-        var libraryActiveIndex by remember { mutableIntStateOf(0) }
-        var libraryActiveFilter by remember { mutableStateOf(LibraryFilterType.ALL) }
-        var librarySourceFilter by remember { mutableStateOf(SourceFilter.ALL) }
 
         LaunchedEffect(currentTab) {
             val targetPage = when (currentTab) {
@@ -283,8 +276,6 @@ fun NaviromApp(
                             onOpenSettings = { viewModel.setTab(NaviromTab.SETTINGS) },
                             onCloseApp = { showExitDialog = true },
                             onOpenSidebar = { scope.launch { drawerState.open() } },
-                            isAstrolabeModeEnabled = isAstrolabeModeEnabled,
-                            onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() }
                         )
                     }
                 },
@@ -298,44 +289,6 @@ fun NaviromApp(
                     ) { page ->
                         when (page) {
                             0 -> {
-                                if (isAstrolabeModeEnabled) {
-                                    AstrolabeFullPlayer(
-                                        state = AstrolabePlayerState(
-                                            playbackState = playbackState,
-                                            isFavorite = favoriteIds.contains(playbackState.currentTrack?.id),
-                                            queue = queue,
-                                            queueIndex = queueIndex,
-                                            appLanguage = appLanguage,
-                                            lyricsData = currentLyrics,
-                                            sleepTimerOptions = sleepTimerOptions,
-                                            isDualAudioEnabled = isDualAudioEnabled,
-                                            dualSpeakerMode = dualSpeakerMode,
-                                            isVinylEffectEnabled = isVinylEffectEnabled,
-                                            isCrossfadeEnabled = isCrossfadeEnabled,
-                                            crossfadeDurationSeconds = crossfadeDurationSeconds
-                                        ),
-                                        actions = AstrolabePlayerActions(
-                                            onDismiss = { scope.launch { pagerState.animateScrollToPage(1) } },
-                                            onTogglePlayPause = { viewModel.togglePlayPause() },
-                                            onNext = { viewModel.next() },
-                                            onPrevious = { viewModel.previous() },
-                                            onSeekTo = { viewModel.seekTo(it) },
-                                            onToggleShuffle = { viewModel.toggleShuffle() },
-                                            onCycleRepeat = { viewModel.cycleRepeatMode() },
-                                            onToggleFavorite = { playbackState.currentTrack?.let { viewModel.toggleFavorite(it.id) } },
-                                            onTrackSelect = { track, list -> viewModel.playTrack(track, list) },
-                                            onOpenWlanCast = { viewModel.showWlanCastSheet() },
-                                            onToggleClassicView = { viewModel.toggleAstrolabeMode() },
-                                            onSetSleepTimer = { mins -> viewModel.setSleepTimer(mins, sleepTimerOptions) },
-                                            onUpdateSleepTimerOptions = { viewModel.updateSleepTimerOptions(it) },
-                                            onSetDualSpeakerMode = { viewModel.setDualSpeakerMode(it) },
-                                            onOpenOptionsModal = { showAstrolabeOptionsModal = true }
-                                        ),
-                                        hasExternalWheel = true,
-                                        onScrollOffsetChanged = { playerScrollOffsetYPx = it },
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                } else {
                                     FullPlayerModal(
                                         playbackState = playbackState,
                                         isFavorite = favoriteIds.contains(playbackState.currentTrack?.id),
@@ -365,8 +318,6 @@ fun NaviromApp(
                                         wlanSpeakerState = wlanSpeakerState,
                                         onOpenWlanCast = { viewModel.showWlanCastSheet() },
                                         queue = queue,
-                                        isAstrolabeModeEnabled = isAstrolabeModeEnabled,
-                                        onToggleAstrolabeMode = { viewModel.toggleAstrolabeMode() },
                                         onTrackSelect = { track, list -> viewModel.playTrack(track, list) },
                                         onToggleSecondaryPlayPause = { viewModel.toggleSecondaryPlayPause() },
                                         onPlaySecondaryNext = { viewModel.playSecondaryNext() },
@@ -404,21 +355,12 @@ fun NaviromApp(
                                             viewModel.selectAlbum(albumId)
                                         }
                                     )
-                                }
                             }
                             1 -> {
                                 TabContent(
                                     viewModel = viewModel,
                                     currentTab = if (currentTab == NaviromTab.SETTINGS) NaviromTab.LIBRARY else currentTab,
                                     onOpenSidebar = { scope.launch { drawerState.open() } },
-                                    libraryActiveIndex = libraryActiveIndex,
-                                    onLibraryActiveIndexChange = { libraryActiveIndex = it },
-                                    libraryTotalItems = libraryTotalItems,
-                                    onLibraryTotalItemsChange = { libraryTotalItems = it },
-                                    libraryActiveFilter = libraryActiveFilter,
-                                    onLibraryActiveFilterChange = { libraryActiveFilter = it },
-                                    librarySourceFilter = librarySourceFilter,
-                                    onLibrarySourceFilterChange = { librarySourceFilter = it }
                                 )
                             }
                             2 -> {
@@ -426,38 +368,11 @@ fun NaviromApp(
                                     viewModel = viewModel,
                                     currentTab = NaviromTab.SETTINGS,
                                     onOpenSidebar = { scope.launch { drawerState.open() } },
-                                    libraryActiveIndex = libraryActiveIndex,
-                                    onLibraryActiveIndexChange = { libraryActiveIndex = it },
-                                    libraryTotalItems = libraryTotalItems,
-                                    onLibraryTotalItemsChange = { libraryTotalItems = it },
-                                    libraryActiveFilter = libraryActiveFilter,
-                                    onLibraryActiveFilterChange = { libraryActiveFilter = it },
-                                    librarySourceFilter = librarySourceFilter,
-                                    onLibrarySourceFilterChange = { librarySourceFilter = it }
                                 )
                             }
                         }
                     }
 
-                    UnifiedAstrolabeWheel(
-                        pagerState = pagerState,
-                        isAstrolabeModeEnabled = isAstrolabeModeEnabled,
-                        playbackState = playbackState,
-                        currentTrack = queue.getOrNull(queueIndex) ?: playbackState.currentTrack,
-                        queue = queue,
-                        queueIndex = queueIndex,
-                        libraryTotalItems = libraryTotalItems,
-                        libraryActiveIndex = libraryActiveIndex,
-                        onLibraryIndexChanged = { libraryActiveIndex = it },
-                        onPreviousTrack = { viewModel.previous() },
-                        onNextTrack = { viewModel.next() },
-                        onSeekTo = { viewModel.seekTo(it) },
-                        onTogglePlayPause = { viewModel.togglePlayPause() },
-                        onOpenOptionsModal = { showAstrolabeOptionsModal = true },
-                        isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f,
-                        playerScrollOffsetYPx = playerScrollOffsetYPx,
-                        modifier = Modifier.fillMaxSize()
-                    )
 
                     // Persistent MiniPlayerBar shown when not on player view (page > 0)
                     if (playbackState.currentTrack != null && pagerState.currentPage > 0) {
@@ -485,29 +400,6 @@ fun NaviromApp(
             }
         }
 
-        // Astrolabe Options Modal (Countdown timer, double player, crossfade, vinyl effect)
-        if (showAstrolabeOptionsModal) {
-            AstrolabeOptionsModal(
-                playbackState = playbackState,
-                onSetSleepTimer = { mins -> viewModel.setSleepTimer(mins, sleepTimerOptions) },
-                sleepTimerOptions = sleepTimerOptions,
-                onUpdateSleepTimerOptions = { viewModel.updateSleepTimerOptions(it) },
-                isDualAudioEnabled = isDualAudioEnabled,
-                onToggleDualAudio = { viewModel.setDualAudioEnabled(!isDualAudioEnabled) },
-                dualSpeakerMode = dualSpeakerMode,
-                onSetDualSpeakerMode = { viewModel.setDualSpeakerMode(it) },
-                isCrossfadeEnabled = isCrossfadeEnabled,
-                onToggleCrossfade = { viewModel.setCrossfadeEnabled(!isCrossfadeEnabled) },
-                crossfadeDurationSeconds = crossfadeDurationSeconds,
-                onSetCrossfadeDuration = { viewModel.setCrossfadeDurationSeconds(it) },
-                isVinylEffectEnabled = isVinylEffectEnabled,
-                onToggleVinylEffect = { viewModel.setVinylEffectEnabled(!isVinylEffectEnabled) },
-                onToggleShuffle = { viewModel.toggleShuffle() },
-                onCycleRepeat = { viewModel.cycleRepeatMode() },
-                onOpenWlanCast = { viewModel.showWlanCastSheet() },
-                onDismiss = { showAstrolabeOptionsModal = false }
-            )
-        }
 
         // Queue Bottom Sheet
         if (isQueueSheetVisible) {
@@ -605,8 +497,6 @@ fun AppTopBar(
     onOpenSettings: () -> Unit,
     onCloseApp: () -> Unit,
     onOpenSidebar: (() -> Unit)? = null,
-    isAstrolabeModeEnabled: Boolean = false,
-    onToggleAstrolabeMode: () -> Unit = {}
 ) {
     Surface(
         color = MaterialTheme.colorScheme.background,
@@ -653,20 +543,6 @@ fun AppTopBar(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
-                        onClick = onToggleAstrolabeMode,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag("toggle_astrolabe_mode_btn")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.RotateRight,
-                            contentDescription = if (isAstrolabeModeEnabled) "Switch to Classic Mode" else "Switch to Astrolabe Mode",
-                            tint = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-
-                    IconButton(
                         onClick = onCloseApp,
                         modifier = Modifier
                             .size(40.dp)
@@ -695,21 +571,12 @@ fun TabContent(
     viewModel: NaviromViewModel,
     currentTab: NaviromTab,
     onOpenSidebar: () -> Unit = {},
-    libraryActiveIndex: Int = 0,
-    onLibraryActiveIndexChange: (Int) -> Unit = {},
-    libraryTotalItems: Int = 1,
-    onLibraryTotalItemsChange: (Int) -> Unit = {},
-    libraryActiveFilter: LibraryFilterType = LibraryFilterType.ALL,
-    onLibraryActiveFilterChange: (LibraryFilterType) -> Unit = {},
-    librarySourceFilter: SourceFilter = SourceFilter.ALL,
-    onLibrarySourceFilterChange: (SourceFilter) -> Unit = {}
 ) {
     val appLanguage by viewModel.appLanguage.collectAsStateWithLifecycle()
     val appThemeMode by viewModel.appThemeMode.collectAsStateWithLifecycle()
     val isCrossfadeEnabled by viewModel.isCrossfadeEnabled.collectAsStateWithLifecycle()
     val crossfadeDurationSeconds by viewModel.crossfadeDurationSeconds.collectAsStateWithLifecycle()
     val isVinylEffectEnabled by viewModel.isVinylEffectEnabled.collectAsStateWithLifecycle()
-    val isAstrolabeModeEnabled by viewModel.isAstrolabeModeEnabled.collectAsStateWithLifecycle()
     val focusUsernameTrigger by viewModel.focusUsernameTrigger.collectAsStateWithLifecycle()
     val userName by viewModel.userName.collectAsStateWithLifecycle()
 
@@ -786,29 +653,6 @@ fun TabContent(
     ) { activeTab ->
         when (activeTab) {
             NaviromTab.LIBRARY -> {
-                if (isAstrolabeModeEnabled && selectedAlbumId == null && selectedArtistId == null && selectedPlaylistId == null) {
-                    AstrolabeLibraryView(
-                        artists = artists,
-                        albums = albums,
-                        librarySongs = librarySongs,
-                        playlists = playlists,
-                        appLanguage = appLanguage,
-                        onSelectAlbum = { viewModel.selectAlbum(it) },
-                        onSelectPlaylist = { viewModel.selectPlaylist(it) },
-                        onTrackClick = { track, list -> viewModel.playTrack(track, list) },
-                        onPlayAll = { viewModel.playAll(it) },
-                        onToggleClassicView = { viewModel.toggleAstrolabeMode() },
-                        userName = userName,
-                        hasExternalWheel = true,
-                        externalActiveListIndex = libraryActiveIndex,
-                        onExternalActiveIndexChange = onLibraryActiveIndexChange,
-                        onTotalItemsCountChange = onLibraryTotalItemsChange,
-                        externalActiveFilter = libraryActiveFilter,
-                        onActiveFilterChange = onLibraryActiveFilterChange,
-                        externalSourceFilter = librarySourceFilter,
-                        onSourceFilterChange = onLibrarySourceFilterChange
-                    )
-                } else {
                     LibraryScreen(
                         subTab = librarySubTab,
                         onSubTabSelected = { viewModel.setLibrarySubTab(it) },
@@ -873,7 +717,6 @@ fun TabContent(
                         isScanningLocalAudio = isScanningLocalAudio,
                         onScanLocalAudio = { viewModel.scanLocalAudio() }
                     )
-                }
             }
             NaviromTab.PLAYLISTS -> {
                 PlaylistsScreen(
@@ -903,20 +746,6 @@ fun TabContent(
                 )
             }
             NaviromTab.SEARCH -> {
-                if (isAstrolabeModeEnabled) {
-                    AstrolabeSearchScreen(
-                        query = searchQuery,
-                        onQueryChange = { viewModel.onSearchQueryChange(it) },
-                        searchResults = searchResults,
-                        allSongs = librarySongs,
-                        allAlbums = albums,
-                        allArtists = artists,
-                        appLanguage = appLanguage,
-                        onTrackClick = { track, list -> viewModel.playTrack(track, list) },
-                        onSelectAlbum = { viewModel.selectAlbum(it) },
-                        onToggleClassicView = { viewModel.toggleAstrolabeMode() }
-                    )
-                } else {
                     SearchScreen(
                         query = searchQuery,
                         onQueryChange = { viewModel.onSearchQueryChange(it) },
@@ -939,7 +768,6 @@ fun TabContent(
                         onAddToQueue = { viewModel.addToQueue(it) },
                         searchFocusTrigger = searchFocusTrigger
                     )
-                }
             }
             NaviromTab.FOLDERS -> {
                 MusicFoldersScreen(
@@ -963,21 +791,6 @@ fun TabContent(
                 )
             }
             NaviromTab.SETTINGS -> {
-                if (isAstrolabeModeEnabled) {
-                    AstrolabeSettingsScreen(
-                        serverState = serverState,
-                        totalCacheSizeBytes = totalCacheSizeBytes,
-                        appLanguage = appLanguage,
-                        appThemeMode = appThemeMode,
-                        onSetThemeMode = { viewModel.setThemeMode(it) },
-                        onConnectServer = { viewModel.connectServer() },
-                        onSyncLibrary = { viewModel.syncLibrary() },
-                        onClearAllCache = { viewModel.clearAllCache() },
-                        onToggleClassicView = { viewModel.toggleAstrolabeMode() },
-                        userName = userName,
-                        onSetUserName = { viewModel.setUserName(it) }
-                    )
-                } else {
                     ServerSettingsScreen(
                         serverState = serverState,
                         allServers = allServers,
@@ -1006,6 +819,7 @@ fun TabContent(
                         onSelectMusicFolder = { viewModel.selectMusicFolder(it) },
                         onToggleMusicFolder = { viewModel.toggleMusicFolder(it) },
                         onSelectAllMusicFolders = { viewModel.selectAllMusicFolders() },
+                        onDeselectAllMusicFolders = { viewModel.deselectAllMusicFolders() },
                         allDiscoveredLocalFolders = allDiscoveredLocalFolders,
                         settingsEnabledLocalFolderIds = settingsEnabledLocalFolderIds,
                         onToggleSettingsLocalFolder = { viewModel.toggleSettingsLocalFolder(it) },
@@ -1025,7 +839,6 @@ fun TabContent(
                         onSetGithubRepo = { viewModel.setUpdateGithubRepo(it) },
                         onDismissUpdate = { viewModel.dismissAppUpdate() }
                     )
-                }
             }
         }
     }

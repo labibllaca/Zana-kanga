@@ -44,6 +44,7 @@ import com.labix.navirom.ui.NaviromStrings
 import com.labix.navirom.ui.util.rememberNaviromHaptics
 import com.labix.ui.theme.AccentEmerald
 import kotlinx.coroutines.launch
+import com.labix.ui.theme.PoppinsFamily
 
 private enum class InitialSetupStage {
     PERMISSIONS,
@@ -221,7 +222,7 @@ private fun PermissionsStageContent(
                 text = str("perm_welcome_title"),
                 style = MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Serif,
+                    fontFamily = PoppinsFamily,
                     letterSpacing = (-0.5).sp
                 ),
                 color = MaterialTheme.colorScheme.onBackground,
@@ -585,7 +586,7 @@ private fun OnboardingTourContent(
                     text = str(slide.titleKey),
                     style = MaterialTheme.typography.headlineSmall.copy(
                         fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Serif,
+                        fontFamily = PoppinsFamily,
                         letterSpacing = (-0.3).sp
                     ),
                     color = MaterialTheme.colorScheme.onBackground,

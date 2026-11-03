@@ -45,6 +45,7 @@ import com.labix.navirom.ui.components.TrackListItem
 import com.labix.navirom.ui.util.rememberNaviromHaptics
 import com.labix.ui.theme.AccentEmerald
 import com.labix.ui.theme.AccentRose
+import com.labix.ui.theme.PoppinsFamily
 
 @Composable
 fun PlaylistsScreen(
@@ -141,7 +142,7 @@ fun PlaylistsScreen(
                         Text(
                             text = str("playlists_title"),
                             style = MaterialTheme.typography.headlineMedium.copy(
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                                fontFamily = PoppinsFamily,
                                 fontWeight = FontWeight.Normal,
                                 letterSpacing = 0.5.sp
                             ),
@@ -422,7 +423,7 @@ fun PlaylistDetailView(
                     Text(
                         text = playlist?.name ?: "Playlist",
                         style = MaterialTheme.typography.headlineSmall.copy(
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                            fontFamily = PoppinsFamily,
                             fontWeight = FontWeight.Normal,
                             letterSpacing = 0.3.sp
                         ),

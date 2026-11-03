@@ -111,7 +111,6 @@ import com.labix.navirom.ui.AppLanguage
 import com.labix.navirom.ui.NaviromStrings
 import com.labix.navirom.ui.util.rememberNaviromHaptics
 import com.labix.ui.theme.*
-import com.labix.navirom.ui.radial.*
 
 enum class PlayerViewMode {
     ARTWORK,
@@ -174,8 +173,6 @@ fun FullPlayerModal(
     wlanSpeakerState: WlanSpeakerState? = null,
     onOpenWlanCast: (() -> Unit)? = null,
     queue: List<NaviromTrack> = emptyList(),
-    isAstrolabeModeEnabled: Boolean = false,
-    onToggleAstrolabeMode: () -> Unit = {},
     onTrackSelect: (NaviromTrack, List<NaviromTrack>) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
@@ -1688,6 +1685,7 @@ fun FullPlayerModal(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 24.dp, vertical = 8.dp)
+                        .padding(bottom = 96.dp)
                         .statusBarsPadding(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -1732,19 +1730,6 @@ fun FullPlayerModal(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    IconButton(
-                                        onClick = {
-                                            haptics.click()
-                                            onToggleAstrolabeMode()
-                                        }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.RotateRight,
-                                            contentDescription = "Astrolabe Wheel View",
-                                            tint = if (isAstrolabeModeEnabled) com.labix.navirom.ui.radial.AstrolabeTheme.AstrolabeGold else textOnCard
-                                        )
-                                    }
-
                                     // Saved / Favorite Icon at Top Right
                                     val savedFavScale by animateFloatAsState(
                                         targetValue = if (isFavorite) 1.25f else 1.0f,
@@ -2566,6 +2551,7 @@ fun FullPlayerModal(
                     // Bottom Grouped & Scrollable Action Bar
                     Row(
                         modifier = Modifier
+                            .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .navigationBarsPadding()
                             .padding(horizontal = 16.dp, vertical = 14.dp)

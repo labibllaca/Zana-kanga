@@ -35,6 +35,7 @@ import com.labix.navirom.ui.AppLanguage
 import com.labix.navirom.ui.NaviromStrings
 import com.labix.navirom.ui.util.rememberNaviromHaptics
 import kotlinx.coroutines.launch
+import com.labix.ui.theme.LatoFamily
 
 @Composable
 fun SecureSettingsAssistantDialog(
@@ -333,7 +334,7 @@ fun SecureSettingsAssistantDialog(
                         ) {
                             Text(
                                 text = adbCommand,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = LatoFamily,
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(10.dp)

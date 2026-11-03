@@ -187,6 +187,8 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
     private val _selectedPlaylistId = MutableStateFlow<String?>(null)
     val selectedPlaylistId: StateFlow<String?> = _selectedPlaylistId.asStateFlow()
 
+    private var folderSelectionSyncJob: Job? = null
+
     private val _selectedArtistId = MutableStateFlow<String?>(null)
     val selectedArtistId: StateFlow<String?> = _selectedArtistId.asStateFlow()
 
@@ -253,20 +255,6 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
         playerController.wlanSpeakerManager.addCustomDevice(ip, port, name)
     }
 
-    // Astrolabe Radial Wheel System Mode
-    private val _isAstrolabeModeEnabled = MutableStateFlow(
-        prefs.getBoolean("astrolabe_mode_enabled", false)
-    )
-    val isAstrolabeModeEnabled: StateFlow<Boolean> = _isAstrolabeModeEnabled.asStateFlow()
-
-    fun setAstrolabeMode(enabled: Boolean) {
-        _isAstrolabeModeEnabled.value = enabled
-        prefs.edit().putBoolean("astrolabe_mode_enabled", enabled).apply()
-    }
-
-    fun toggleAstrolabeMode() {
-        setAstrolabeMode(!_isAstrolabeModeEnabled.value)
-    }
 
     // Offline only mode toggle
     private val _isOfflineOnlyMode = MutableStateFlow(false)
@@ -1273,7 +1261,12 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         if (_serverState.value.isConnected) {
-            syncLibrary()
+            folderSelectionSyncJob?.cancel()
+            folderSelectionSyncJob = viewModelScope.launch {
+                // Batch rapid folder/playlist toggles before rebuilding the library.
+                delay(2_000)
+                syncLibrary()
+            }
         }
     }
 

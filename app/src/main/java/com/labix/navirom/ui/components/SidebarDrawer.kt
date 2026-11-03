@@ -30,6 +30,7 @@ import com.labix.navirom.data.api.dto.MusicFolderDto
 import com.labix.navirom.data.local.LocalMusicFolder
 import com.labix.navirom.player.wlan.*
 import com.labix.navirom.ui.NaviromTab
+import com.labix.ui.theme.PoppinsFamily
 
 @Composable
 fun LibrariesSidebarContent(
@@ -51,8 +52,6 @@ fun LibrariesSidebarContent(
     onOpenWlanCast: (() -> Unit)? = null,
     profileName: String = "",
     serverConnected: Boolean = true,
-    isAstrolabeModeEnabled: Boolean = false,
-    onToggleAstrolabeMode: () -> Unit = {},
     onNavigateToTab: ((NaviromTab) -> Unit)? = null,
     currentTab: NaviromTab = NaviromTab.LIBRARY,
     str: (String) -> String
@@ -83,7 +82,7 @@ fun LibrariesSidebarContent(
                 Text(
                     text = "ZANA",
                     style = MaterialTheme.typography.headlineMedium.copy(
-                        fontFamily = FontFamily.Serif,
+                        fontFamily = PoppinsFamily,
                         fontWeight = FontWeight.Normal,
                         letterSpacing = 4.sp
                     ),
@@ -371,59 +370,6 @@ fun LibrariesSidebarContent(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Astrolabe Radial Wheel System Toggle Tile
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = if (isAstrolabeModeEnabled) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                border = BorderStroke(1.dp, if (isAstrolabeModeEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        onToggleAstrolabeMode()
-                    }
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(if (isAstrolabeModeEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.RotateRight,
-                            contentDescription = "Astrolabe Mode",
-                            tint = if (isAstrolabeModeEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Astrolabe Wheel System",
-                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = if (isAstrolabeModeEnabled) "Planisphere & Radial Dials Active" else "Classic Modern View Active",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Switch(
-                        checked = isAstrolabeModeEnabled,
-                        onCheckedChange = { onToggleAstrolabeMode() },
-                        modifier = Modifier.height(24.dp)
-                    )
-                }
-            }
 
             Spacer(modifier = Modifier.height(14.dp))
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
@@ -451,7 +397,7 @@ fun LibrariesSidebarContent(
                                 text = displayName.take(1).uppercase(),
                                 style = MaterialTheme.typography.titleSmall.copy(
                                     fontWeight = FontWeight.SemiBold,
-                                    fontFamily = FontFamily.Serif
+                                    fontFamily = PoppinsFamily
                                 ),
                                 color = MaterialTheme.colorScheme.onSurface
                             )

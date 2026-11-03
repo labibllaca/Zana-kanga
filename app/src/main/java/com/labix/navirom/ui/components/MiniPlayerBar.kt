@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.labix.navirom.data.model.PlaybackState
 import com.labix.navirom.ui.util.rememberNaviromHaptics
+import com.labix.ui.theme.PoppinsFamily
 
 @Composable
 fun MiniPlayerBar(
@@ -174,7 +175,7 @@ fun MiniPlayerBar(
                             Text(
                                 text = track.title,
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                                    fontFamily = PoppinsFamily,
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 0.5.sp
                                 ),
@@ -185,7 +186,7 @@ fun MiniPlayerBar(
                             Text(
                                 text = track.artist,
                                 style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                                    fontFamily = PoppinsFamily,
                                     letterSpacing = 0.2.sp
                                 ),
                                 color = subtextColor,

@@ -32,6 +32,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
+import com.labix.ui.theme.PoppinsFamily
 
 @Composable
 fun SearchScreen(
@@ -277,7 +278,7 @@ fun SearchScreen(
                                 Text(
                                     text = str("search_artists"),
                                     style = MaterialTheme.typography.titleLarge.copy(
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                                        fontFamily = PoppinsFamily,
                                         fontWeight = FontWeight.Normal,
                                         letterSpacing = 0.4.sp
                                     ),
@@ -306,7 +307,7 @@ fun SearchScreen(
                                 Text(
                                     text = str("search_albums"),
                                     style = MaterialTheme.typography.titleLarge.copy(
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                                        fontFamily = PoppinsFamily,
                                         fontWeight = FontWeight.Normal,
                                         letterSpacing = 0.4.sp
                                     ),
@@ -335,7 +336,7 @@ fun SearchScreen(
                                 Text(
                                     text = "${str("search_tracks")} (${tracks.size})",
                                     style = MaterialTheme.typography.titleLarge.copy(
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                                        fontFamily = PoppinsFamily,
                                         fontWeight = FontWeight.Normal,
                                         letterSpacing = 0.4.sp
                                     ),

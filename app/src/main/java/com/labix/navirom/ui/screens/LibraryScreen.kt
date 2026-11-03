@@ -58,6 +58,7 @@ import com.labix.navirom.ui.util.rememberNaviromHaptics
 import com.labix.ui.theme.*
 
 import com.labix.navirom.ui.components.ArtistDetailView
+import com.labix.ui.theme.PoppinsFamily
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -157,6 +158,8 @@ fun LibraryScreen(
     }
 
     var showFolderSwitcherDialog by remember { mutableStateOf(false) }
+    var librarySearchQuery by remember { mutableStateOf("") }
+    var localOnly by remember { mutableStateOf(false) }
 
     // If an album is selected, show the Album Detail view (placed before artist detail view to allow navigating from artist -> album)
     if (selectedAlbumId != null) {
@@ -321,6 +324,24 @@ fun LibraryScreen(
         return
     }
 
+    val searchQuery = librarySearchQuery.trim()
+    val localAlbumNames = remember(localTracks) {
+        localTracks.map { it.album.trim().lowercase() }.filter { it.isNotBlank() }.toSet()
+    }
+    val localArtistNames = remember(localTracks) {
+        localTracks.map { it.artist.trim().lowercase() }.filter { it.isNotBlank() }.toSet()
+    }
+    val filteredAlbums = albums.filter { album ->
+        (!localOnly || localAlbumNames.contains(album.name.trim().lowercase())) &&
+            (searchQuery.isBlank() ||
+                album.name.contains(searchQuery, ignoreCase = true) ||
+                album.artist.contains(searchQuery, ignoreCase = true))
+    }
+    val filteredArtists = artists.filter { artist ->
+        (!localOnly || localArtistNames.contains(artist.name.trim().lowercase())) &&
+            (searchQuery.isBlank() || artist.name.contains(searchQuery, ignoreCase = true))
+    }
+
     val isAllLibrariesSelected = selectedMusicFolderIds.isEmpty() || (musicFolders.isNotEmpty() && selectedMusicFolderIds.size >= musicFolders.size)
     val activeFolderName = when {
         isAllLibrariesSelected -> str("all_libraries_title")
@@ -344,58 +365,36 @@ fun LibraryScreen(
                 onOpenSidebar = onOpenSidebar
             )
 
-            // 2. Editorial Library Active Folder Bar (Clean, serene layout)
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                onClick = { onOpenSidebar() },
+            // 2. Library search
+            OutlinedTextField(
+                value = librarySearchQuery,
+                onValueChange = { query ->
+                    librarySearchQuery = query
+                    if (query.isNotBlank() && subTab != LibrarySubTab.SONGS) {
+                        onSubTabSelected(LibrarySubTab.SONGS)
+                    }
+                },
+                placeholder = {
+                    Text(
+                        text = if (appLanguage == AppLanguage.ALBANIAN) "Kërko në bibliotekë…" else "Bibliothek durchsuchen…",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "Search") },
+                trailingIcon = {
+                    if (librarySearchQuery.isNotEmpty()) {
+                        IconButton(onClick = { librarySearchQuery = "" }) {
+                            Icon(Icons.Filled.Clear, contentDescription = "Clear")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .testTag("library_folder_switcher")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = str("switch_library_prompt").uppercase(),
-                            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = activeFolderName,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                        modifier = Modifier.clickable { onOpenSidebar() }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = if (musicFolders.isNotEmpty()) "${musicFolders.size} ${str("subtab_libraries").lowercase()} +" else "${str("subtab_libraries")} +",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-            }
+                    .testTag("library_search_field")
+            )
 
             Spacer(modifier = Modifier.height(4.dp))
 
@@ -986,7 +985,7 @@ fun LibraryScreen(
                 }
                 LibrarySubTab.SONGS -> {
                     // List view for songs in library with sorting controls
-                    val effectiveSongs = if (librarySongs.isNotEmpty()) librarySongs else {
+                    val baseSongs = if (librarySongs.isNotEmpty()) librarySongs else {
                         val sorted = when (songSortOrder) {
                             SongSortOrder.NAME -> quickMixTracks.sortedBy { it.title.lowercase() }
                             SongSortOrder.DURATION -> quickMixTracks.sortedByDescending { it.durationSeconds }
@@ -994,6 +993,15 @@ fun LibraryScreen(
                             SongSortOrder.ARTIST -> quickMixTracks.sortedBy { it.artist.lowercase() }
                         }
                         if (isSongSortReversed) sorted.reversed() else sorted
+                    }
+                    val scopedSongs = if (localOnly) {
+                        val localIds = localTracks.map { it.id }.toSet()
+                        (localTracks + baseSongs.filter { it.id in localIds }).distinctBy { it.id }
+                    } else baseSongs
+                    val effectiveSongs = if (searchQuery.isBlank()) scopedSongs else scopedSongs.filter {
+                        it.title.contains(searchQuery, ignoreCase = true) ||
+                            it.artist.contains(searchQuery, ignoreCase = true) ||
+                            it.album.contains(searchQuery, ignoreCase = true)
                     }
                     LazyColumn(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 80.dp),
@@ -1057,6 +1065,34 @@ fun LibraryScreen(
                                             modifier = Modifier.size(38.dp).testTag("songs_smart_shuffle_btn")
                                         ) {
                                             Icon(Icons.Filled.AutoAwesome, contentDescription = str("smart_shuffle"), modifier = Modifier.size(19.dp))
+                                        }
+
+                                        IconToggleButton(
+                                            checked = localOnly,
+                                            onCheckedChange = {
+                                                haptics.click()
+                                                localOnly = it
+                                            },
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .background(
+                                                    if (localOnly) MaterialTheme.colorScheme.primary
+                                                    else MaterialTheme.colorScheme.surfaceVariant,
+                                                    CircleShape
+                                                )
+                                                .testTag("songs_local_only_toggle")
+                                        ) {
+                                            Icon(
+                                                imageVector = if (localOnly) Icons.Filled.CloudOff else Icons.Filled.Cloud,
+                                                contentDescription = if (localOnly) {
+                                                    "Nur lokale Titel"
+                                                } else {
+                                                    "Alle Titel (online & lokal)"
+                                                },
+                                                tint = if (localOnly) MaterialTheme.colorScheme.onPrimary
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(19.dp)
+                                            )
                                         }
                                     }
                                 }
@@ -2249,7 +2285,7 @@ fun LibraryScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(albums, key = { it.id }) { album ->
+                    items(filteredAlbums, key = { it.id }) { album ->
                         AlbumCard(
                             album = album,
                             onClick = { onSelectAlbum(album.id) }
@@ -2266,7 +2302,7 @@ fun LibraryScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(artists, key = { it.id }) { artist ->
+                    items(filteredArtists, key = { it.id }) { artist ->
                         ArtistCard(
                             artist = artist,
                             onClick = {
@@ -2804,7 +2840,7 @@ private fun GreetingHeader(
                 Text(
                     text = greetingText,
                     style = MaterialTheme.typography.headlineMedium.copy(
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                        fontFamily = PoppinsFamily,
                         fontWeight = FontWeight.Normal,
                         letterSpacing = 0.5.sp
                     ),
@@ -2835,7 +2871,7 @@ private fun GreetingHeader(
                         text = displayName.take(1).uppercase(),
                         style = MaterialTheme.typography.titleSmall.copy(
                             fontWeight = FontWeight.SemiBold,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Serif
+                            fontFamily = PoppinsFamily
                         ),
                         color = MaterialTheme.colorScheme.onSurface
                     )

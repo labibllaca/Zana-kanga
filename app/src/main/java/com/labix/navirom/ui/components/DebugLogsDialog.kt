@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import com.labix.navirom.diagnostics.AppDiagnostics
 import com.labix.navirom.diagnostics.LogEntry
 import com.labix.navirom.diagnostics.LogLevel
+import com.labix.ui.theme.LatoFamily
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -309,7 +310,7 @@ private fun LogEntryCard(entry: LogEntry) {
                         text = "[${entry.errorCode}]",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = LatoFamily,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -325,7 +326,7 @@ private fun LogEntryCard(entry: LogEntry) {
                     Text(
                         text = entry.formattedTime,
                         fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = LatoFamily,
                         color = MaterialTheme.colorScheme.outline
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -382,7 +383,7 @@ private fun LogEntryCard(entry: LogEntry) {
                         Text(
                             text = "Context: ${entry.contextInfo}",
                             fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = LatoFamily,
                             color = MaterialTheme.colorScheme.secondary
                         )
                     }
@@ -407,7 +408,7 @@ private fun LogEntryCard(entry: LogEntry) {
                                 Text(
                                     text = entry.stackTrace,
                                     fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = LatoFamily,
                                     color = Color(0xFFE57373)
                                 )
                             }

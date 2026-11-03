@@ -95,6 +95,7 @@ fun ServerSettingsScreen(
     onSelectMusicFolder: (String?) -> Unit = {},
     onToggleMusicFolder: (String) -> Unit = {},
     onSelectAllMusicFolders: () -> Unit = {},
+    onDeselectAllMusicFolders: () -> Unit = {},
     allDiscoveredLocalFolders: List<LocalMusicFolder> = emptyList(),
     settingsEnabledLocalFolderIds: Set<String> = emptySet(),
     onToggleSettingsLocalFolder: (String) -> Unit = {},
@@ -822,7 +823,9 @@ fun ServerSettingsScreen(
         // Multi-Select Library Filter (if server has music folders) - Foldable & Initially Closed
         if (serverState.musicFolders.isNotEmpty()) {
             var isLibraryFilterExpanded by remember { mutableStateOf(false) }
-            val isAllSelected = serverState.selectedMusicFolderIds.isEmpty() || (serverState.selectedMusicFolderIds.size >= serverState.musicFolders.size)
+            val isAllSelected = serverState.selectedMusicFolderIds.contains("__ALL__") ||
+                (serverState.musicFolders.isNotEmpty() &&
+                    serverState.selectedMusicFolderIds.size >= serverState.musicFolders.size)
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -904,7 +907,9 @@ fun ServerSettingsScreen(
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = if (isAllSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                                onClick = onSelectAllMusicFolders,
+                                onClick = {
+                                    if (isAllSelected) onDeselectAllMusicFolders() else onSelectAllMusicFolders()
+                                },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
@@ -919,17 +924,17 @@ fun ServerSettingsScreen(
                                         Icon(Icons.Filled.AllInclusive, contentDescription = null, tint = if (isAllSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                                         Text(str("all_libraries_combined"), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                                     }
-                                    Checkbox(checked = isAllSelected, onCheckedChange = { onSelectAllMusicFolders() })
+                                    Checkbox(checked = isAllSelected, onCheckedChange = null)
                                 }
                             }
 
                             // Individual Folders
                             serverState.musicFolders.forEach { folder ->
-                                val isChecked = !isAllSelected && serverState.selectedMusicFolderIds.contains(folder.id)
+                                val isChecked = isAllSelected || serverState.selectedMusicFolderIds.contains(folder.id)
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
                                     color = if (isChecked) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                                    onClick = { onSelectMusicFolder(folder.id) },
+                                    onClick = { onToggleMusicFolder(folder.id) },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
@@ -947,7 +952,7 @@ fun ServerSettingsScreen(
                                                 Text("Folder ID: ${folder.id}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                         }
-                                        Checkbox(checked = isChecked, onCheckedChange = { onToggleMusicFolder(folder.id) })
+                                        Checkbox(checked = isChecked, onCheckedChange = null)
                                     }
                                 }
                             }

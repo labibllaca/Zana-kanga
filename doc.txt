@@ -1,0 +1,1294 @@
+# NaviCircle — Architektur (Ist-Stand) und Leitfaden zur Reproduktion
+
+Diese Dokumentation beschreibt die **implementierte** Architektur der Web-App vollständig genug, um sie als **native Android-App** nachzubauen. Sie ist bewusst code-nah: Konstanten, Algorithmen, Datenfelder und API-Verträge sind aus dem Quelltext übernommen.
+
+Begleitende Dokumente:
+
+| Dokument | Inhalt |
+| --- | --- |
+| [`docs/ANDROID-PORT.md`](./ANDROID-PORT.md) | Zielarchitektur der Android-App, Modulgrenzen, Code-Skizzen, Paritäts-Checkliste, Phasenplan |
+| [`docs/API-REFERENZ.md`](./API-REFERENZ.md) | Vollständiger HTTP-Vertrag der Web-App und Mapping auf Subsonic/OpenSubsonic |
+
+---
+
+## 1. Produktüberblick
+
+NaviCircle ist ein **Navidrome-/Subsonic-Client** mit ungewöhnlicher, druckgrafisch inspirierter Oberfläche:
+
+- Die Sammlung liegt **um ein Vinyl-Rad** herum; jedes Album/jede Playlist belegt ein Winkelstück, jeder Song eine eigene radiale Zeile.
+- Vier Ansichten liegen auf einer **horizontalen Leinwand**: *Ganzes Rad* (Lyrics) → *Player-Nahaufnahme* → *Bibliothek* → *Einstellungen*.
+- Metadaten kommen **aus Navidrome oder aus lokalen Dateien**; Audio wird **nur bei Wiedergabe** gestreamt, die nächsten vier Songs werden im Hintergrund vorgepuffert.
+- Lyrics werden **zuerst aus der Datei/dem Server**, erst danach online gesucht.
+
+### 1.1 Funktionsinventar (Ist-Stand)
+
+| Bereich | Funktion | Verifikation |
+| --- | --- | --- |
+| Sammlung | Navidrome-Sync (Metadaten), Import lokaler Ordner inkl. Tags, CRUD für Künstler/Alben/Tracks/Playlists, Genre-Filter, Suche | `scripts/verify-library-ux.mjs` |
+| Wiedergabe | Streaming, Play/Pause/Next/Prev, Seek, Shuffle, Repeat (off/all/one), Favoriten, Play-Count | `scripts/verify-readability.mjs` |
+| Puffer | FIFO-Vorwärmung der nächsten 4 Songs, Cache 5, Abbrechen bei Sprüngen | `scripts/audio-cache.test.ts` |
+| Rad | Drehen per Drag/Wheel/Tastatur, Snap pro Zeile, Vollkreis- und Nahansicht, sichtbares Fenster | `scripts/wheel-layout.test.ts`, `scripts/verify-wheel-hydration.mjs` |
+| Lyrics | Datei/Server/Online, synchrone Zeilen, aktueller + 2 nächste, manueller Modus, Quelle sichtbar | `scripts/lyrics.test.ts` |
+| Design | 5 Themes (`noir`, `light`, `midnight`, `salon`, `salon-light`), Salon mit Walnuss/Messing/Leder | `scripts/verify-club-ring.mjs`, `verify-club-themes.mjs` |
+| Sprachen | Englisch, Deutsch, Albanisch – vollständig, inkl. Zahlen-Pluralformen | `scripts/verify-salon-settings.mjs` |
+| Betrieb | SQLite-Datei, automatische Migration, Diagnoseseite statt Stacktrace, `/api/health` | `scripts/database.test.ts` |
+
+---
+
+## 2. Systemüberblick (C4)
+
+### 2.1 Kontext
+
+```mermaid
+flowchart LR
+  U[Benutzer] -->|Browser| W[NaviCircle Web-App<br/>Next.js 16 / React 19]
+  W -->|Metadaten + Streams<br/>Subsonic-API| N[Navidrome-Server<br/>im Heimnetz]
+  W -->|Lyrics-Fallback| L[LRCLIB<br/>lrclib.net]
+  W -->|liest/schreibt| D[(SQLite<br/>data/navicircle.db)]
+  W -->|Blob-URLs im Tab| F[Lokale Audiodateien]
+```
+
+### 2.2 Container
+
+```mermaid
+flowchart TB
+  subgraph Client ["Browser (React 19)"]
+    UI[Composables/Components<br/>4 Ansichten]
+    STATE[React Query Cache<br/>+ Contexts<br/>+ externer Playback-Clock-Store]
+    AUDIO[HTMLAudioElement]
+    AC[FifoAudioCache<br/>5 Slots]
+    UI --> STATE --> AUDIO
+    STATE --> AC
+  end
+  subgraph Server ["Next.js Server (Node 22)"]
+    RSC[Server Components<br/>page.tsx / layout.tsx]
+    API[Route Handlers /api/*]
+    SYNC[Sync-Service]
+    LYR[Lyrics-Service<br/>+ Cache + Drossel]
+    SUB[Subsonic-Client<br/>Token-Auth]
+    RSC --> DB[(SQLite via Drizzle)]
+    API --> DB
+    SYNC --> SUB --> N[Navidrome]
+    LYR --> SUB
+    LYR --> LRCLIB[LRCLIB]
+    API -->|Stream/Cover-Proxy| SUB
+  end
+  AUDIO -->|/api/stream/:id| API
+  UI -->|/api/* JSON| API
+```
+
+**Wichtige Entscheidung:** Der Browser spricht **nie direkt** mit Navidrome. Streams, Cover und Metadaten laufen über den Next.js-Server. Damit bleiben Server-Zugangsdaten serverseitig. Für Android entfällt dieser Proxy (die App ist selbst der Client) – siehe Android-Dokument.
+
+---
+
+## 3. Technologie-Stack (Ist)
+
+| Schicht | Technologie | Version |
+| --- | --- | --- |
+| Framework | Next.js (App Router, Turbopack) | 16.2.6 |
+| UI | React | 19.2.6 |
+| Sprache | TypeScript (strict) | 5.9 |
+| Styling | Tailwind CSS 4 + handgeschriebene CSS-Token-Schicht | 4.1 |
+| Daten | SQLite (`better-sqlite3`) | 13.x |
+| ORM/Migrationen | Drizzle ORM + drizzle-kit | 0.45 / 0.31 |
+| Server-State | TanStack React Query | 5.x |
+| Icons | lucide-react | 1.x |
+| Validierung | zod | 4.x |
+| Metadaten aus Dateien | music-metadata (dynamisch geladen) | 12.x |
+| Tests | node:test (Unit), Playwright (Chromium/Firefox) | – |
+
+**Keine externen Schriften**: Die App nutzt System-Font-Stacks (`--font-display`, `--font-body`, `--font-mono`), damit Builds offline funktionieren.
+
+---
+
+## 4. Domänenmodell
+
+Alle Tabellen liegen in **einer** SQLite-Datei (Standard `data/navicircle.db`, überschreibbar über `DATABASE_PATH`). Migrationen liegen in `drizzle/` und werden beim ersten Öffnen der Verbindung automatisch angewendet (`migrate()`), WAL-Modus, `foreign_keys = ON`, `busy_timeout = 5000`.
+
+### 4.1 Entitäten und Beziehungen
+
+```mermaid
+erDiagram
+  ARTISTS ||--o{ ALBUMS : hat
+  ALBUMS ||--o{ TRACKS : enthält
+  PLAYLISTS ||--o{ PLAYLIST_TRACKS : listet
+  TRACKS ||--o{ PLAYLIST_TRACKS : "in"
+  TRACKS ||--o| LYRICS_CACHE : "cache"
+  SERVERS }o--|| SETTINGS : "eine aktive"
+```
+
+### 4.2 Felder (verbindlich)
+
+**`artists`**
+| Feld | Typ | Hinweise |
+| --- | --- | --- |
+| `id` | TEXT PK | `crypto.randomUUID()` |
+| `source` | TEXT | `navidrome` \| `local`, Default `navidrome` |
+| `external_id` | TEXT NULL | Navidrome-ID |
+| `name`, `bio` | TEXT | `bio` Default `''` |
+| `image_url` | TEXT NULL | |
+| `accent_color` | TEXT | Default `#e5e5e5` |
+| `created_at` | INTEGER (ms) | Index `artists_source_idx` |
+
+**`albums`** – Felder wie oben, zusätzlich `artist_id` (FK → `artists`, `ON DELETE CASCADE`), `title`, `year` (INTEGER NULL), `genre` (Default `''`), `cover_art_id`, `cover_url`. Index `albums_artist_idx`.
+
+**`tracks`**
+| Feld | Typ | Hinweise |
+| --- | --- | --- |
+| `id` | TEXT PK | |
+| `source` | TEXT | `navidrome` \| `local` |
+| `external_id` | TEXT NULL | Navidrome-Song-ID (Streamschlüssel) |
+| `cover_art_id`, `local_key` | TEXT NULL | `local_key` = relativer Dateipfad |
+| `embedded_lyrics` | TEXT(JSON) NULL | `LyricsDocument` |
+| `lyrics_checked` | INTEGER(0/1) | Datei-Tags bereits geprüft? |
+| `album_id` | TEXT FK → `albums` CASCADE | |
+| `title`, `track_number`, `disc_number`, `duration_seconds` | | Default 1/1/180 |
+| `favorite`, `play_count` | 0/1, INT | |
+| `created_at` | INTEGER | Indizes `tracks_album_idx`, `tracks_local_key_idx` |
+
+**`playlists`** – `id`, `source` (Default `local`), `name`, `description`, `accent_color`, `created_at`, `updated_at`.
+
+**`playlist_tracks`** – `id`, `playlist_id` FK CASCADE, `track_id` FK CASCADE, `position`, `added_at`; **eindeutig** über `(playlist_id, track_id)`.
+
+**`servers`** – `id`, `name`, `host`, `port` (4533), `use_https`, `username`, `password`, `is_active`, `last_ping_ok`, `last_ping_at`, `last_ping_message`, `created_at`. Genau ein Datensatz ist aktiv; Löschen des aktiven Servers aktiviert den nächsten.
+
+**`settings`** (Singleton, `id = 1`)
+
+| Feld | Typ | Default | Bedeutung |
+| --- | --- | --- | --- |
+| `language` | TEXT | `en` | `en` \| `de` \| `sq` |
+| `theme` | TEXT | `noir` | `noir` \| `light` \| `midnight` \| `salon` \| `salon-light` |
+| `volume` | REAL | 0.8 | 0…1 |
+| `lyrics_autoscroll` | INTEGER | 1 | Automatisches Mitlaufen der Lyrics |
+| `lyrics_source` | TEXT | `lrclib` | `lrclib` (Datei→Server→Internet) \| `file_only` |
+| `updated_at` | INTEGER | | |
+
+**`lyrics_cache`** – `track_id` PK/FK CASCADE, `fingerprint` (SHA-256), `result` (JSON `LyricsResult`), `expires_at`, `updated_at`. Bewusst **getrennt** von den Listen-Endpunkten, damit die Bibliotheksantworten klein bleiben.
+
+### 4.3 Portierungshinweis
+
+Das Schema ist **1:1 nach Room übertragbar** (SQLite-Dialekt identisch). Enums werden zu `@TypeConverter`/`enum class`, Booleans zu `INTEGER`, Zeitstempel zu `INTEGER (epoch millis)`.
+
+---
+
+## 5. Server-API
+
+Vollständige Details in [`docs/API-REFERENZ.md`](./API-REFERENZ.md). Kurzfassung:
+
+| Gruppe | Endpunkte |
+| --- | --- |
+| Gesundheit | `GET /api/health` |
+| Einstellungen | `GET/PATCH /api/settings` |
+| Server | `GET/POST /api/servers`, `PATCH/DELETE /api/servers/:id`, `POST /api/servers/:id/activate`, `POST /api/servers/:id/test`, `POST /api/servers/test`, `GET /api/servers/discover` |
+| Sammlung | `GET/POST /api/artists`, `PATCH/DELETE /api/artists/:id`, dito `albums`, `tracks`, `playlists` |
+| Playlist-Inhalt | `POST /api/playlists/:id/tracks`, `DELETE /api/playlists/:id/tracks/:trackId`, `PATCH /api/playlists/:id/tracks` (Reihenfolge) |
+| Import | `POST /api/navidrome/sync`, `POST/DELETE /api/local/import` |
+| Medien | `GET /api/stream/:id` (Range-Forwarding), `GET /api/cover/:id?size=` |
+| Lyrics | `GET /api/tracks/:id/lyrics`, `POST /api/tracks/:id/lyrics` (nur lokale Metadaten) |
+
+---
+
+## 6. Kernalgorithmen (reproduzierbar)
+
+### 6.1 Rad-Geometrie (`src/lib/wheel-layout.ts`)
+
+Alle Längen sind **Design-Einheiten** relativ zum Radmittelpunkt; gezeichnet wird in einem skalierten Container.
+
+```ts
+export const WHEEL = {
+  disc: 230,       // Radius Vinyl
+  text: 262,       // Radius Beschriftungsband
+  progress: 300,   // Fortschrittsbogen
+  rim: 356,        // Radius der Gruppenbögen
+  item: 392,       // Abstand, an dem Zeilen beginnen
+  extent: 388,     // halbe SVG-Kantenlänge
+  visibleAngle: 74 // ±Grad im Nahmodus
+} as const;
+
+export const RHYTHM = { header: 96, track: 84, gap: 48 } as const;
+```
+
+Layout (einmal pro Bibliothek, **linear**):
+
+```
+cursor = 0
+für jede Gruppe (Alben, dann Playlists):
+  start       = cursor
+  firstTrack  = start + headingUnits      // Salon: headingUnits = 0
+  count       = max(tracks.length, album.trackCount)
+  end         = firstTrack + count * RHYTHM.track
+  cursor      = end + RHYTHM.gap
+```
+
+Zusätzlich wird `trackPositions[trackId] = firstTrack + i * track` gefüllt (für Auto-Drehung zur spielenden Zeile) und `maxPosition` aus der letzten Gruppe berechnet.
+
+### 6.2 Sichtbares Fenster
+
+Nur ein begrenzter Winkelbereich wird als DOM/SVG gerendert (Bibliotheken mit tausenden Alben bleiben flüssig).
+
+```
+degreesPerUnit = 180 / (π * WHEEL.item * closeScale)
+rimAngle       = lerp(170°, 74°, zoom)      // Vollkreis → Nahansicht
+start          = position - rimAngle / degreesPerUnit
+end            = position + rimAngle / degreesPerUnit
+```
+
+Binärsuche findet die erste sichtbare Gruppe; danach werden Zeilen nur im Fenster erzeugt. Alle Winkel werden **relativ zu `position`** übergeben und auf 3 Nachkommastellen gerundet (`coordinate()`), damit Server- und Browser-Rendering identisch serialisieren (V8/SpiderMonkey unterscheiden sich sonst in den letzten Bits).
+
+### 6.3 Snap und Tastaturschritte
+
+- `snapPosition`: nächster Anker (Gruppenstart oder Zeilenposition) unter den Nachbargruppen.
+- `stepPosition(±1)`: nächster Anker strikt größer/kleiner; an den Rändern stabil.
+- Sichtbarkeit einer Zeile: `opacityAt(angle)` (Fade ab 78 % des sichtbaren Winkels) **×** `bandVisibility(angle)` (Fade an Timer/Transport).
+
+### 6.4 Ring-Beschriftung (Salon)
+
+`ringLabel(title, radius)` passt die Schriftgröße an die Bogenlänge an:
+
+```
+limit      = 0.93 * 2πr
+charWidth  = font * 0.62 + 5
+font       = clamp(floor((limit/len - 5)/0.62), 15, 32)
+Rest passt nicht? -> Kürzen auf Platz bei 15 px, explizites „…“
+```
+
+Rendering: **ein** Titel auf einem Kreisbogen, der bei 12 Uhr beginnt (`M 0 -R A …`), `text-anchor="start"`, `startOffset="0%"`; die Gruppe rotiert per `<animateTransform from="0 0 0" to="360 0 0">` exakt um den Vinylmittelpunkt. Kontrast über `paint-order: stroke` mit `--bg`-Halo. Kein `textLength`/`lengthAdjust` (Firefox beschneidet Glyphen).
+
+### 6.5 Audio-FIFO-Cache (`src/lib/audio-cache.ts`)
+
+```
+Klasse FifoAudioCache(capacity = 5)
+  prefetch(currentKey, upcoming[4])
+    1. protected = {current} ∪ upcoming
+    2. nicht mehr benötigte, nicht-fertige Einträge abbrechen
+    3. neue Ziele in Download-Warteschlange (FIFO)
+    4. evict(): ältester nicht geschützter Eintrag zuerst
+    5. pump(): genau EIN Download gleichzeitig
+```
+
+Details: `AbortController` je Download; abgebrochene Downloads halten ihren Slot bis zum `finally` (kein Overlap); nur echte Audio-Antworten werden gespeichert (JSON/HTML/404 nie); Fehler sind nicht fatal (dann Streaming); Object-URLs werden bei Eviction `revokeObjectURL`-t. `PREFETCH_AHEAD = 4`, Cache = 5. Bei `navigator.connection.saveData` wird nicht vorgepuffert.
+
+### 6.6 Lyrics-Pipeline
+
+**Parsing (`src/lib/lyrics.ts`)**
+- LRC: `[mm:ss.xx]`, mehrere Zeitstempel je Zeile, `[offset:]` (ms, positiv = früher), Einfügen von Instrumentallücken, Sortierung, Deduplizierung gleicher Zeit.
+- Reiner Text: `synced = false`, **nie** erfundene Zeitstempel.
+- OpenSubsonic `structuredLyrics`: `start`/`offset` in **Millisekunden**, `start - offset` → Sekunden.
+- Musikdatei: `music-metadata` → `common.lyrics` (SYLT/USLT/LYRICS/©lyr); SYLT wird nur bei `timeStampFormat = 2` (ms) als synchron übernommen, Frame-Nummern (1) gelten als unsynchronisiert.
+
+**Auswahl (`src/lib/lyrics-service.ts`)**
+
+```
+1. tracks.embedded_lyrics vorhanden?           -> source = embedded
+2. lokale Datei, lyrics_checked = 0            -> status = needs_file (Browser liest Tags, POSTet sie)
+3. Navidrome: getLyricsBySongId.view
+      sonst   getLyrics.view (Alt-Server)      -> source = navidrome
+4. falls erlaubt: LRCLIB                        -> source = lrclib
+5. sonst                                        -> not_found / unavailable
+```
+
+**Online-Matching (`src/lib/lyrics-online.ts`)**
+- `GET https://lrclib.net/api/get` (track_name, artist_name, album_name, duration) → exakter Treffer, sonst **ein** `GET /api/search` (max. 20 Kandidaten).
+- Akzeptanz nur bei normalisiert gleichem Titel **und** Künstler und `|duration − track.duration| ≤ 3 s`; Präferenz: gleiches Album → synced → nächste Dauer.
+- Kein Audio, keine Navidrome-Zugangsdaten im Request; Timeout 6,5 s; Antwortgröße gedeckelt.
+- `LYRICS_ONLINE_ENABLED=false` oder `settings.lyrics_source = file_only` deaktiviert Schritt 4.
+
+**Cache**
+- Fingerprint = SHA-256 aus Titel, Künstler, Album, Dauer, externalId, Online-Flag, Serveridentität.
+- TTL: Treffer 7 Tage, „nicht gefunden“ 1 Tag; `unavailable` wird **nicht** gecacht.
+- In-Flight-Deduplizierung pro Fingerprint, max. 3 parallele Lookups (Queue).
+
+**Anzeige (`src/components/lyrics-panel.tsx`)**
+- `lyricIndexAt()` = Binärsuche auf `time ≤ position` (funktioniert auch rückwärts/bei Pausen).
+- Fenster = aktueller + 2 nächste Zeilen; Klick auf zeitgestempelte Zeile springt (`seekTo`).
+- `settings.lyricsAutoscroll = off` friert die Zeile ein, Pfeiltasten bleiben nutzbar; unsynchronisierte Texte immer manuell.
+
+### 6.7 Playback-Zeit ohne Re-Render (`src/lib/playback-clock.ts`)
+
+Der Fortschritt liegt **nicht** im Player-Context, sondern in einem externen Store. Nur drei kleine Subscriber lesen ihn:
+
+| Subscriber | Abonnement |
+| --- | --- |
+| Timer (`PlayerRegister`) | jede Sekunde |
+| Fortschrittsbogen (`PlaybackProgressArc`) | jede Sekunde |
+| Lyrics | **Zeilenindex** (nur bei Zeilenwechsel) |
+
+Nachgewiesen im Browser-Test: Uhr läuft (10→14 Ticks), `PlayerContext`-Renders bleiben konstant (3→3). Beim Android-Port ersetzt `player.currentPosition` per `snapshotFlow { }` dieses Muster.
+
+### 6.8 Leinwand/Zoom (`src/lib/canvas-store.ts`)
+
+Vier Snap-Panels; der Rad-Bühnenknoten ist `sticky` und nimmt keine Breite ein. Beim Scrollen:
+
+```
+zoom  = clamp((scrollLeft - left0) / (left1 - left0), 0, 1)
+shift = max(0, scrollLeft - left1)
+span  = left2 - left1
+```
+
+`scale`, `cx`, `cy` werden zwischen Vollkreis- und Nahaufnahme-Rahmung interpoliert; `shift` verschiebt die Bühne mit den Panels und blendet sie ab 60 % aus. Vertikales Mausrad über dem Rad dreht — der Canvas fängt es non-passive ab, damit die Ansicht nicht springt.
+
+### 6.9 Server-Erkennung (`src/lib/discover.ts`)
+
+- Ermittelt IPv4-`/24`-Subnetze aller nicht-internen Interfaces (Fallback `192.168.1`).
+- TCP-Probe auf `:4533`, `:443`, `:80`, Timeout 400 ms, 48 parallele Worker → sortiert nach Latenz.
+- Anschließend Test per `ping.view` (Token-Auth, 2,5 s Timeout).
+
+**Android-Hinweis:** TCP-Scan ist dort technisch möglich, aber Akku-/Policy-feindlich. Bevorzugt NSD/mDNS + manuelle Eingabe (siehe Android-Dokument).
+
+### 6.10 Subsonic-Client (`src/lib/subsonic.ts`)
+
+Token-Auth nach Spezifikation: `t = md5(password + salt)`, Parameter `u, t, s, v=1.16.1, c=NaviCircle, f=json`. Endpunkte: `ping`, `getArtists`, `getArtist`, `getAlbum`, `getPlaylists`, `getPlaylist`, `getLyricsBySongId`, `getLyrics`, `stream`, `getCoverArt`. Sync ersetzt ausschließlich `source = navidrome` und lässt lokale Importe unangetastet.
+
+---
+
+## 7. Client-Architektur (Web)
+
+### 7.1 Komponentenbaum
+
+```
+app/layout.tsx (Dokument-Shell, ohne DB-Zugriff)
+app/page.tsx (Server Component)
+├─ liest DB (Alben, Künstler, Playlists, Tracks, Server, Settings)
+├─ Bei DB-Fehler: <DatabaseSetup issue=…>
+└─ <Providers initialSettings initialTracks initialAlbums …>
+   ├─ QueryClient (Snapshots vorbefüllt → kein Nachladen)
+   ├─ AppSettingsProvider (Sprache/Theme, `t()`, optimistisches PATCH)
+   └─ PlayerProvider (Queue, isPlaying, shuffle, repeat, audioCache, PlaybackClock)
+      └─ <DashboardApp>
+         ├─ Canvas (4 Panels)
+         │  ├─ PlayerPage  ← eine „Bühne“: Rad, Hub, Lyrics, Timer, Transport
+         │  ├─ LibraryPage (lazy gemountet, memoized)
+         │  └─ SettingsPage (lazy gemountet, memoized)
+         ├─ PlayerRegister (der EINE Timer, über der Leinwand)
+         └─ Punkte-Navigation (4 Snap-Punkte)
+```
+
+### 7.2 State-Regeln
+
+| Zustand | Ort | Warum |
+| --- | --- | --- |
+| Serverdaten | React Query (`staleTime` 5 min) | Mutationen invalidieren gezielt |
+| UI-Einstellungen | `AppSettingsProvider` | sofortige UI, PATCH im Hintergrund |
+| Player (Queue, Flags) | `PlayerProvider` | nicht hochfrequent |
+| Abspielzeit | externer `PlaybackClock` | verhindert Massen-Rerender |
+| Radposition | lokaler State + `requestAnimationFrame` | 60 fps ohne React-Overhead |
+| Canvas-Scroll/Zoom | `canvasStore` + `useSyncExternalStore` | nur das Rad hört zu |
+
+### 7.3 Performance-Regeln (übertragbar)
+
+1. Keine hochfrequenten Werte in großen Contexts.
+2. Sichtbarkeitsfenster statt Vollrender; Serverseitig gerundete Geometrie.
+3. Lazy Mount der Nicht-Player-Ansichten, danach memoized.
+4. Indizes per `useMemo` (Alben→Tracks, Tracks je Künstler), Suche mit `useDeferredValue`.
+5. Import in Batches (50 Dateien/POST, max. 3 parallele Tag-Reads).
+6. Object-URLs erst bei Bedarf erzeugen.
+
+---
+
+## 8. UI/UX-Spezifikation
+
+### 8.1 Ansichten und Gesten
+
+| Index | Ansicht | Inhalt |
+| --- | --- | --- |
+| 0 | Ganzes Rad | kompletter Kreis + Lyrics-Panel (aktuell + 2 nächste) |
+| 1 | Player-Nahaufnahme | Rad angeschnitten, Songzeilen groß |
+| 2 | Bibliothek | Tabs (Alben/Künstler/Playlists/Tracks), Suche, Genre, CRUD |
+| 3 | Einstellungen | Sprache, Theme, Lyrics (Autoscroll, Quelle), Server, Sync/Import |
+
+Horizontal = Ansichtswechsel (Swipe, Trackpad, Punkte). Vertikal über dem Rad = Rad drehen. Drag = Rotation mit Snap. Tastatur: Pfeile = Zeile, `Home`/`End`, Leertaste = Play.
+
+### 8.2 Design-Tokens
+
+Fünf Themes über CSS-Variablen; identische Namen in Compose als `MaterialTheme`-Erweiterung zu spiegeln:
+
+```
+--bg, --bg-elevated, --bg-elevated-2, --line, --line-soft,
+--ink, --ink-dim, --ink-faint, --accent, --accent-contrast, --danger,
+--salon-walnut, --salon-wood, --salon-leather, --salon-leather-hi,
+--salon-brass, --salon-brass-dim, --salon-lamp
+```
+
+Salon-Materialien: Walnuss-Plinthe mit konzentrischen Ringen, Messing-Inlay, Lederzeile (`linear-gradient`), Lederkorn als Punktmuster, Lampe als radialer Verlauf. Wichtig: **alle Club-Regeln doppelt für `salon` und `salon-light`**, und der Plinth liegt in der Bühne auf `z-index: -1`, damit Songzeilen davor liegen.
+
+### 8.3 Typografie
+
+| Klasse | Rolle |
+| --- | --- |
+| `type-page-title` | Ansichtstitel (Serif, 2.25–3.5 rem, Versalien) |
+| `type-card-title` | Album-/Songtitel (Serif, 700) |
+| `type-kicker` | technische Labels (Mono, Versalien, 0.75 rem) |
+| `type-body` / `type-note` | Fließtext / Sekundärtext |
+| `wheel-heading` / `wheel-track-*` | Radbeschriftung; skaliert über `--wheel-type-scale` (Nahmodus ≈ 1/closeScale, geklemmt) |
+
+---
+
+## 9. Betrieb, Sicherheit, Grenzen
+
+- **Start:** `npm install` → `npm run dev` (oder `build` + `start`). Erster Zugriff legt DB-Ordner, Datei und Tabellen an.
+- **Diagnose:** DB-Fehler → Seite mit Klartext statt Stacktrace; `/api/health` liefert 503 + Code (`database_unavailable`, `database_read_only`, `database_corrupt`, `database_busy`, `database_full`, `database_driver_missing`, `database_schema_missing`). Keine Pfade/Passwörter in Antworten.
+- **Sicherheit (Ist):** keine Benutzeranmeldung; Server-Passwort im Klartext in SQLite; SQLite-Datei daher schützen (git-ignored). Für Android: Keystore/EncryptedSharedPreferences.
+- **Bekannte Grenzen:** kein Hintergrundabspielen im Browser, keine MediaSession, lokale Dateien nur innerhalb der Tab-Sitzung, Lyrics nur dreizeilig.
+- **Datenhoheit:** Online-Lyrics senden ausschließlich Titel/Künstler/Album/Dauer.
+
+---
+
+## 10. Teststrategie
+
+| Ebene | Datei | Prüft |
+| --- | --- | --- |
+| Unit | `scripts/wheel-layout.test.ts` | Layout, Fenster, Snap, Ring-Fit, Salon-Compact |
+| Unit | `scripts/lyrics.test.ts` | LRC/SYLT/OpenSubsonic, Matching, Priorität, Cache-TTL, Clock-Isolation |
+| Unit | `scripts/audio-cache.test.ts` | FIFO-Download, Eviction, Abbruch, Fehler |
+| Unit | `scripts/database.test.ts` | Erststart, Migration, Kaskaden, Fehlerbilder |
+| SSR/Hydration | `scripts/verify-wheel-hydration.mjs` | 2 766 Alben / 23 020 Songs in Chromium + Firefox, 0 Warnungen, Lyrics-Sync, Vorpuffern |
+| UI | `verify-readability.mjs`, `verify-library-ux.mjs`, `verify-salon-settings.mjs`, `verify-club-ring.mjs`, `verify-club-themes.mjs` | Lesbarkeit, Filter/Queue/Scroll-Memory, i18n, Salon-Ring, Theme-Parität |
+
+Fixtures: `scripts/fixtures/wheel-library.ts` (deterministische Großbibliothek), `lyric-file.ts` (echtes WAV mit ID3-USLT).
+
+---
+
+## 11. Reproduktion in 10 Schritten
+
+1. SQLite-Schema + Migrationen wie in §4 anlegen (Room später aus denselben Namen).
+2. Subsonic-Client mit Token-Auth implementieren (`ping`, `getArtists/Artist/Album`, `stream`, `getCoverArt`).
+3. Sync-Service: navidrome-Quelle löschen, dann Künstler→Alben→Songs schreiben (nur Metadaten).
+4. Wheel-Layout als reine Funktion (§6.1) + sichtbares Fenster (§6.2) + Snap (§6.3) mit Unit-Tests.
+5. Vier Ansichten / Snap-Punkte, Rad-Bühne mit Rotation, Theme-Tokens für alle fünf Themes.
+6. Player mit Queue, Repeat/Shuffle, Seek, Favorite, Play-Count.
+7. Audio-Cache mit exakt dieser FIFO-Semantik (§6.5) und Prefetch = 4.
+8. Lyrics-Pipeline (§6.6) inkl. Priorität, Matching-Regeln, TTL.
+9. Settings (Sprache, Theme, Autoscroll, Quelle) + i18n (en/de/sq, ohne harte Strings).
+10. Tests aus §10 sinngemäß übernehmen (Layout/Lyrics/Cache zuerst, dann UI).
+
+
+---------
+
+# NaviCircle für Android — Architektur & Portierungsleitfaden
+
+Ziel: eine **native Android-App** (Kotlin, Jetpack Compose), die sich funktional und gestalterisch wie die Web-App verhält, aber die Plattformvorteile nutzt: Hintergrundwiedergabe, MediaSession, echtes Offline-Caching, Keystore, Benachrichtigungen.
+
+Grundlage: [`docs/ARCHITEKTUR.md`](./ARCHITEKTUR.md) (Ist-Stand) und [`docs/API-REFERENZ.md`](./API-REFERENZ.md).
+
+---
+
+## 1. Grundsatzentscheidungen
+
+| Thema | Web (Ist) | Android (Soll) | Begründung |
+| --- | --- | --- | --- |
+| Datenhaltung | SQLite auf dem Server | **Room/SQLite auf dem Gerät** | Schema ist identisch; App wird autark |
+| Navidrome-Zugriff | über Next.js-Proxy | **direkt** aus der App | Kein Server nötig; Zugangsdaten bleiben im Gerät |
+| Wiedergabe | `HTMLAudioElement` | **Media3 ExoPlayer + MediaSessionService** | Hintergrund, Audiofokus, Bluetooth, Auto |
+| Puffer | eigener JS-FIFO-Cache | **Media3 `SimpleCache` + eigener FIFO-Prefetch-Downloader** | Plattform-Cache inkl. Eviction, plus 4-Songs-Vorlauf |
+| Lyrics | Server-Route | **Repository** (Datei/Server/LRCLIB), gleiche Regeln | identische Priorität & Cache-Semantik |
+| Einstellungen | SQLite `settings` | **DataStore (Proto/Preferences)** + Room-Spiegel für Backup | reaktive UI, einfacher Export |
+| Passwörter | Klartext in SQLite | **AES-GCM mit Android Keystore** | Sicherheitspflicht auf Mobilgeräten |
+| i18n | eigenes Dictionary | **`strings.xml` (en/de/sq) + `plurals`** | Systemsprache, Übersetzungs-Workflow |
+| Themes | CSS-Variablen | **Compose `NaviColors` + MaterialTheme** | 5 Varianten inkl. Salon hell/dunkel |
+| Rad | SVG/DOM | **Compose `Canvas` (Bögen) + positionierte Rows** | Performance bei tausenden Alben |
+| Tests | Playwright | **Compose UI Tests mit denselben Test-Tags** | Parität der Zusicherungen |
+
+---
+
+## 2. Modulgraph (Gradle)
+
+Empfohlen: Multi-Modul für klare Grenzen und schnellere Builds.
+
+```
+:app                     MainActivity, Navigation, Hilt-Einstieg, Compose-Theme
+:core:model              Datenklassen (Track, Album, Artist, Playlist, ServerConfig, LyricsDocument …)
+:core:database           Room-Entities, DAOs, Migrationen, Settings-Spiegel
+:core:network            Ktor/OkHttp, Subsonic-Client, LRCLIB-Client, Cover-Loader
+:core:datastore          DataStore-Settings, Theme/Language, Keystore-Crypto
+:core:designsystem       5 Themes, Typografie, Materialien (Salon), gemeinsame Composables
+:core:common             Ergebnis-Typen, Zeit-/Dauer-Formatter, Coroutine-Dispatcher
+:feature:wheel           WheelLayout-Algorithmen + WheelCanvas + Ring-Label
+:feature:player          PlayerScreen, Transport, PlayerRegister (Timer)
+:feature:library         Bibliothek (Tabs, Suche, Genre, CRUD, Detailansichten)
+:feature:settings        Einstellungen (Sprache, Theme, Lyrics, Server, Sync/Import)
+:feature:lyrics          LyricsRepository, Parser, Panel
+:playback                MediaSessionService, ExoPlayer, Cache, Prefetch, Notification
+:sync                    NavidromeSyncWorker, LocalImport (SAF)
+:discovery               NSD/mDNS + optionaler Subnetz-Scan
+:testing                 Fixtures (Großbibliothek, getaggtes WAV), Test-Runner
+```
+
+Abhängigkeiten: `feature:* → core:*`, `playback → core:{model,database,network,datastore}`; `feature:*` **niemals** direkt auf `:playback`-Interna, sondern auf ein `PlaybackController`-Interface (Hilt).
+
+---
+
+## 3. Abbildung Web → Android (Datei für Datei)
+
+| Web | Android-Ziel | Hinweis |
+| --- | --- | --- |
+| `src/db/schema.ts` | `:core:database` Entities + DAOs | Namen unverändert lassen (Backup-Kompatibilität) |
+| `src/db/index.ts` | `DatabaseModule` (Room, WAL, `foreign_keys=ON`) | Room aktiviert FK standardmäßig |
+| `src/lib/subsonic.ts` | `SubsonicClient` (Ktor) + `SubsonicAuth` | Token-Auth md5(password+salt) |
+| `src/lib/discover.ts` | `DiscoveryRepository` (NSD zuerst, Scan optional) | siehe §9 |
+| `src/lib/wheel-layout.ts` | `WheelLayout.kt` (pure Kotlin) | 1:1 portierbar, inkl. Rundung auf 3 Stellen |
+| `src/lib/audio-cache.ts` | `PrefetchManager` + Media3 `SimpleCache` | FIFO-Semantik exakt übernehmen |
+| `src/lib/lyrics.ts` | `LyricsParser.kt` | LRC/SYLT/OpenSubsonic-Regeln |
+| `src/lib/lyrics-online.ts` | `LrclibClient.kt` + `LyricsMatcher.kt` | Titel/Künstler/Dauer ±3 s |
+| `src/lib/lyrics-service.ts` | `LyricsRepository.kt` | Priorität, TTL, Dedupe, Semaphore(3) |
+| `src/lib/i18n.ts` | `res/values/strings.xml`, `values-de`, `values-sq` | ~110 Keys + Plurale |
+| `src/app/providers.tsx` | Hilt-Module, `AppViewModel` (Bootstrap) | Snapshots entfallen, Daten kommen aus Room-Flows |
+| `src/components/player-context.tsx` | `PlaybackController` (Singleton, `StateFlow<PlaybackState>`) | Queue/Repeat/Shuffle/Favorit/PlayCount |
+| `src/lib/playback-clock.ts` | `snapshotFlow { player.currentPosition }` | nur Timer/Ring/Lyrics konsumieren |
+| `src/components/dashboard-app.tsx` | `MainScreen` (`HorizontalPager(4)`) | Zoom/Shift aus Pager-Offset |
+| `src/components/pages/player-page.tsx` | `:feature:player` + `:feature:wheel` | Rim = Canvas, Rows = Compose |
+| `src/components/pages/library-page.tsx` | `:feature:library` | Tabs, `debounce`-Suche, Genre-Filter |
+| `src/components/pages/settings-page.tsx` | `:feature:settings` | inkl. Lyrics-Autoscroll & Quelle |
+| `src/components/lyrics-panel.tsx` | `:feature:lyrics` | 3 Zeilen, Klick = Seek, manueller Modus |
+| `src/app/api/stream/[id]` | direkte Subsonic-URI | Token pro Request erneuern |
+| `src/app/api/cover/[id]` | Coil + `SubsonicCoverFetcher` | Disk-Cache, Graustufen-Option im Salon |
+| `src/app/api/navidrome/sync` | `NavidromeSyncWorker` | WorkManager, Fortschritt, Abbruch |
+| `src/app/api/local/import` | `LocalImportRepository` (SAF) | Tags via jaudiotagger/MediaMetadataRetriever |
+| `src/app/api/tracks/:id/lyrics` | `LyricsRepository` (lokal) | kein HTTP |
+
+**Der HTTP-Layer der Web-App entfällt.** Repositories ersetzen die Route Handlers; die App spricht direkt mit Navidrome und LRCLIB. Ein optionaler „Companion-Server“ ist nicht nötig.
+
+---
+
+## 4. Datenbank (Room)
+
+Entities 1:1 aus §4 des Architekturdokuments; Beispiel:
+
+```kotlin
+@Entity(tableName = "tracks", indices = [Index("album_id"), Index("local_key")])
+data class TrackEntity(
+  @PrimaryKey val id: String,
+  val source: String,                 // "navidrome" | "local"
+  @ColumnInfo(name = "external_id") val externalId: String?,
+  @ColumnInfo(name = "cover_art_id") val coverArtId: String?,
+  @ColumnInfo(name = "local_key") val localKey: String?,
+  @ColumnInfo(name = "embedded_lyrics") val embeddedLyrics: String?, // JSON
+  @ColumnInfo(name = "lyrics_checked") val lyricsChecked: Boolean = false,
+  @ColumnInfo(name = "album_id") val albumId: String,
+  val title: String,
+  @ColumnInfo(name = "track_number") val trackNumber: Int,
+  @ColumnInfo(name = "disc_number") val discNumber: Int,
+  @ColumnInfo(name = "duration_seconds") val durationSeconds: Int,
+  val favorite: Boolean = false,
+  @ColumnInfo(name = "play_count") val playCount: Int = 0,
+  @ColumnInfo(name = "created_at") val createdAt: Long
+)
+
+@Entity(tableName = "playlist_tracks",
+  foreignKeys = [
+    ForeignKey(entity = PlaylistEntity::class, parentColumns = ["id"], childColumns = ["playlist_id"], onDelete = ForeignKey.CASCADE),
+    ForeignKey(entity = TrackEntity::class, parentColumns = ["id"], childColumns = ["track_id"], onDelete = ForeignKey.CASCADE)
+  ],
+  indices = [Index(value = ["playlist_id", "track_id"], unique = true)])
+data class PlaylistTrackEntity(/* id, playlist_id, track_id, position, added_at */)
+```
+
+Abgeleitete Abfragen (SQL bleibt identisch zur Web-Schicht):
+
+```sql
+-- Albumbildschirm
+SELECT t.*, a.title AS album_title, ar.name AS artist_name, a.cover_url, a.accent_color
+FROM tracks t JOIN albums a ON a.id = t.album_id JOIN artists ar ON ar.id = a.artist_id
+WHERE t.album_id = :albumId ORDER BY t.disc_number, t.track_number;
+
+-- Playlists mit Anzahl/Dauer
+SELECT p.*, COUNT(pt.id) AS track_count, COALESCE(SUM(t.duration_seconds),0) AS total_duration
+FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
+LEFT JOIN tracks t ON t.id = pt.track_id GROUP BY p.id ORDER BY p.created_at;
+```
+
+**Migration der Web-DB:** Die SQLite-Datei der Web-App kann direkt geöffnet werden (`user_version`/Drizzle-Migrationstabelle ignorieren, Room mit `fallbackToDestructiveMigration` nur für Prototypen). Für den Produktivpfad: `PRAGMA user_version` setzen und Room-Migrationen 1:1 aus `drizzle/*.sql` ableiten (`0000_init`, `0001_lyrics_cache`, `0002_salon_lyrics_settings`).
+
+---
+
+## 5. Netzwerk & Streaming
+
+### 5.1 Subsonic-Auth (Token, kein Klartext-Passwort)
+
+```kotlin
+data class SubsonicCredentials(val host: String, val port: Int, val https: Boolean,
+                               val username: String, val password: String)
+
+object SubsonicAuth {
+  private const val V = "1.16.1"; private const val C = "NaviCircle"
+  fun uri(creds: SubsonicCredentials, endpoint: String, params: Map<String, String> = emptyMap()): HttpUrl {
+    val salt = ByteArray(8).also { SecureRandom().nextBytes(it) }.toHex()
+    val token = md5(creds.password + salt)
+    val base = (if (creds.https) "https://" else "http://") + creds.host + ":" + creds.port
+    return "$base/rest/$endpoint".toHttpUrl().newBuilder().apply {
+      addQueryParameter("u", creds.username); addQueryParameter("t", token)
+      addQueryParameter("s", salt); addQueryParameter("v", V); addQueryParameter("c", C)
+      addQueryParameter("f", "json"); params.forEach { (k, v) -> addQueryParameter(k, v) }
+    }.build()
+  }
+}
+```
+
+**Wichtig:** Der Token ist zeitgebunden (Salt pro Request). Für ExoPlayer eine `ResolvingDataSource.Factory` verwenden, die die URI **beim Öffnen** neu signiert – niemals eine signierte URI lange zwischenspeichern.
+
+### 5.2 Cleartext im Heimnetz
+
+Android blockiert HTTP ab API 28. Navidrome im LAN läuft meist über HTTP. Lösung: `network_security_config.xml` mit `cleartextTrafficPermitted="true"` **nur** für private Bereiche, die der Nutzer explizit hinzufügt, oder generell für Debug; für Produktion besser HTTPS/Zertifikat empfehlen und in der UI warnen.
+
+### 5.3 LRCLIB
+
+`GET https://lrclib.net/api/get` (Fallback `/api/search`, max. 20 Kandidaten), Timeout 6,5 s, `User-Agent: NaviCircle/<version>` + `Lrclib-Client`-Header, Antwortgröße gedeckelt, Matching exakt wie in §6.6 der Architektur (Titel+Künstler normalisiert, Dauer ±3 s, Präferenz Album → synced).
+
+---
+
+## 6. Wiedergabe (Media3)
+
+### 6.1 Komponenten
+
+```
+MediaSessionService (PlaybackService)
+├─ ExoPlayer (AudioAttributes: music, handleAudioFocus = true, WAKE_MODE_NETWORK)
+├─ CacheDataSource.Factory(SimpleCache(File(cacheDir,"media"), LeastRecentlyUsedCacheEvictor(200MB)))
+├─ ResolvingDataSource.Factory (frische Subsonic-Token)
+└─ MediaSession + Notification (MediaStyle, Artwork, Prev/Play/Next, Seek)
+
+PlaybackController (Hilt-Singleton)
+├─ StateFlow<PlaybackState>(queue, index, isPlaying, shuffle, repeat, volume, favorite)
+├─ PrefetchManager (FIFO, 4 Songs voraus, Cachegröße 5)
+└─ Verbindung zum MediaController (MediaSession) für UI
+```
+
+### 6.2 Vorpuffern mit exakt derselben Semantik
+
+Media3 bietet `DownloadHelper`/`DownloadManager`, doch die Web-Semantik ist enger. Empfohlen: **eigener** `PrefetchManager` mit `CacheWriter`, damit Kapazität 5, Vorlauf 4, FIFO-Eviction, Abbruch bei Sprüngen und „nur eine Datei gleichzeitig" garantiert bleiben:
+
+```kotlin
+class PrefetchManager(
+  private val cache: SimpleCache,
+  private val signer: (Track) -> Uri,          // Subsonic-URI, frisch signiert
+  private val scope: CoroutineScope,
+  private val capacity: Int = 5,
+  private val ahead: Int = 4,
+) {
+  private val queued = ArrayDeque<Track>()
+  private val ready = LinkedHashMap<String, Long>()   // Insertion-Order = FIFO
+  private var protectedKeys: Set<String> = emptySet()
+  private var job: Job? = null
+
+  fun update(current: Track?, upcoming: List<Track>) {
+    protectedKeys = (listOfNotNull(current) + upcoming).map { it.id }.toSet()
+    queued.retainAll { it.id in protectedKeys }
+    upcoming.filter { it.id !in ready && it.id != current?.id }
+      .forEach { if (queued.none { q -> q.id == it.id }) queued.addLast(it) }
+    evict()
+    pump()
+  }
+  private fun evict() { /* ältester nicht geschützter Eintrag zuerst: cache.removeResource(span) */ }
+  private fun pump() {
+    if (job?.isActive == true) return
+    val next = queued.removeFirstOrNull() ?: return
+    job = scope.launch(Dispatchers.IO) { /* CacheWriter(signer(next), cache, DataSpec(signer(next))).cache() */ }
+  }
+}
+```
+
+Offline-Wünsche (Phase 2) laufen getrennt über `DownloadManager` und werden in Room markiert – sie dürfen von der FIFO-Eviction **nicht** gelöscht werden (`isPinned`-Flag im Cache-Index).
+
+### 6.3 Hintergrund & Systemintegration
+
+- `MediaSessionService` + `MediaSession` (PlaybackState, Metadata inkl. Artwork-URI).
+- Audiofokus, `AudioManager.AUDIOFOCUS_LOSS_TRANSIENT` → pausieren, `becoming-noisy` → pausieren.
+- Notification mit `MediaStyle` (API 33: `POST_NOTIFICATIONS` anfragen).
+- `WAKE_MODE_NETWORK`, damit Streaming im Standby weiterläuft.
+- Android Auto / „Now Playing“ kann in Phase 3 über `MediaLibraryService` ergänzt werden.
+- Fortschritt: UI liest `snapshotFlow { controller.currentPosition }` in einem eigenen Composable (Timer, Ring, Lyrics-Index) – **nicht** im globalen ViewModel-State, sonst ruckelt die ganze Leinwand (Web-Lektion, §6.7 der Architektur).
+
+---
+
+## 7. Compose-UI
+
+### 7.1 Leinwand statt vier Activities
+
+```kotlin
+val pager = rememberPagerState(initialPage = 1, pageCount = { 4 })   // 0 Rad, 1 Player, 2 Bibliothek, 3 Einstellungen
+HorizontalPager(state = pager, beyondViewportPageCount = 1) { page ->
+  when (page) {
+    0, 1 -> WheelStage(page = page, pagerOffset = { pager.currentPageOffsetFraction })
+    2 -> LibraryScreen()
+    3 -> SettingsScreen()
+  }
+}
+```
+
+`zoom`/`shift` werden als `derivedStateOf` aus dem Pager-Offset berechnet (Panel 0→1 = Zoom, 1→2 = Shift), exakt wie `canvas-store.ts`. `PlayerRegister` liegt als Overlay **einmal** über dem Pager.
+
+### 7.2 Rad: Canvas + positionierte Zeilen
+
+- **Bögen/Ticks/Messing:** ein `Canvas` mit `drawArc` (Startwinkel in Grad, `strokeWidth`), Clip auf ein Annulus (`Path` mit `PathOperation.Difference`) verhindert auslaufende Bögen.
+- **Zeilen:** Compose `Row`-Items in einem `Box`, per `graphicsLayer { rotationZ = angle; transformOrigin = TransformOrigin(0f, 0.5f) }` und `offset(x = itemRadius.dp)` — dieselbe Geometrie wie im Web (`ITEM_R = 392`, `WHEEL_EXTENT = 388`).
+- Nur das **sichtbare Fenster** komponieren (`visibleWheelGroups`-Port). Bei 2 766 Alben bleibt die Komposition < 40 Elemente (im Web-Test belegt).
+- Text: `Text` mit `maxLines = 2`, `overflow = Ellipsis`; Salon-Titel als **ein** Pfad-Text über `drawIntoCanvas { it.nativeCanvas.drawTextOnPath(…) }` auf einem Kreis-Pfad, rotierend um den Vinylmittelpunkt (Eigenrotation statt Text-Repetition). Halo: Pfad-Text zweimal zeichnen (Stroke in `bg`, Fill in `ink`).
+
+### 7.3 Salon-Materialien
+
+```kotlin
+@Composable fun Modifier.salonPlinth(): Modifier = composed {
+  val colors = NaviTheme.colors
+  drawBehind {
+    drawCircle(Brush.radialGradient(listOf(colors.salonWoodLight, colors.salonWood, colors.salonWalnut)))
+    drawCircle(brush = Brush.sweepGradient(listOf(Color(0xFFF4DFAE), Color(0xFFA98B58), Color(0xFF6D5636), Color(0xFFE2C389))),
+      radius = size.minDimension / 2f - 22.dp.toPx(), style = Stroke(3.dp.toPx()))
+  }
+}
+```
+
+- Brushed-Messing: `Brush.sweepGradient` + langsame `rememberInfiniteTransition`-Rotation (30 s) – bei deaktivierten Animationen (`Settings.Global.ANIMATOR_DURATION_SCALE == 0`) statisch.
+- Lederzeile: `Brush.verticalGradient(leatherHi, leather)` + 1 dp Innenlinie; Textfarbe **immer** hell (`onLeather`), nie `ink`.
+- Plinth in der Bühne hinter allen Zeilen zeichnen (Reihenfolge der `drawBehind`/Kinder), damit Beschriftungen nicht „unter dem Rad" liegen (Web-Bugfix, §8.2 der Architektur).
+
+### 7.4 Test-Tags für Parität
+
+Bitte dieselben Semantik-Tags wie die Web-Attribute vergeben, damit die vorhandenen Playwright-Zusicherungen 1:1 als Compose-UI-Tests funktionieren:
+
+| Web-Attribut | Compose `testTag` |
+| --- | --- |
+| `[data-wheel-position]` | `wheel_position` |
+| `[data-wheel-row]` | `wheel_row` |
+| `[data-wheel-hub] g.hub-label-spin` | `hub_label_spin` |
+| `[data-lyric-line="0..2"]` | `lyric_line_0..2` |
+| `[data-player-register]` | `player_register` |
+| `.player-transport` | `player_transport` |
+| `.wheel-track[aria-current=true]` | `wheel_track_current` |
+
+---
+
+## 8. Lyrics auf Android
+
+```kotlin
+class LyricsRepository @Inject constructor(
+  private val trackDao: TrackDao, private val lyricsDao: LyricsCacheDao,
+  private val subsonic: SubsonicClient, private val lrclib: LrclibClient,
+  private val prefs: SettingsDataStore, private val clock: Clock
+) {
+  suspend fun forTrack(id: String): LyricsResult { /* Priorität wie Web:
+     1 embedded_lyrics, 2 lokale Datei prüfen, 3 Navidrome, 4 LRCLIB (wenn erlaubt),
+     5 not_found/unavailable — Cache mit TTL 7 Tage / 1 Tag, Fingerprint SHA-256 */ }
+}
+```
+
+- Lokale Dateien: `MediaMetadataRetriever` liefert **nicht** USLT/SYLT. Empfehlung: `jaudiotagger` (Android-Port) oder `TagLib` via JNI für eingebettete Lyrics; `ContentResolver.openInputStream(uri)` für die Datei.
+- Bewertung des Zeilenindex: Binärsuche auf `start ≤ position` (identisch zu `lyricIndexAt`).
+- Autoscroll aus DataStore; bei `false` bleibt die Zeile stehen, Pfeile blättern; unsynchronisierte Texte immer manuell.
+- Quelle anzeigen (`embedded` / `Navidrome` / `LRCLIB`) in den Einstellungen.
+
+---
+
+## 9. Server-Erkennung im LAN
+
+1. **NSD/mDNS** (`NsdManager`, `_http._tcp` oder Navidrome-spezifisch): schnell, akkuschonend, benötigt `INTERNET` + ggf. `CHANGE_WIFI_MULTICAST_STATE` und ein `MulticastLock` während der Suche.
+2. **Manuelle Eingabe** (Host/Port/Benutzer/Passwort) als immer verfügbarer Weg.
+3. **Optionaler Subnetz-Scan** wie im Web (Ports 4533/443/80, 400 ms Timeout, ≤ 48 parallel) mit `Dispatchers.IO` + `Semaphore`, hartem Zeitlimit (~10 s), Abbruch bei Verlassen des Screens. Nur auf ausdrücklichen Nutzerwunsch starten (Akku, Play-Richtlinien), Ergebnis zusammen mit `ping`-Test anzeigen.
+4. Zugangsdaten erst nach erfolgreichem `ping` speichern.
+
+---
+
+## 10. Synchronisation & lokale Dateien
+
+- `NavidromeSyncWorker` (WorkManager, `CoroutineWorker`):
+  - `getArtists` → je Künstler `getArtist` → je Album `getAlbum`;
+  - Schreiben in einer Room-Transaktion (`withTransaction`), nur `source = navidrome` löschen;
+  - Fortschritt über `setProgress`, Fehlerklassifizierung wie im Web (Netz, Auth, 5xx) mit `Result.retry()` + Backoff;
+  - große Bibliotheken: `setForeground` mit Notification (Daten-Sync-Typ).
+- Playlists optional in derselben Transaktion spiegeln.
+- **Lokaler Import:** `ACTION_OPEN_DOCUMENT_TREE` + `DocumentFile`, Tags via jaudiotagger, Lyrics beim Import mitlesen (`lyrics_checked = 1`), Datei-URI im `local_key` (persistente URI-Berechtigung!), Audio über `content://` in ExoPlayer.
+- Rechte: `READ_MEDIA_AUDIO` (API 33+) bzw. `READ_EXTERNAL_STORAGE` (≤ 32) nur, wenn der Nutzer importiert.
+
+---
+
+## 11. Einstellungen & Sicherheit
+
+- **DataStore** speichert `language`, `theme`, `volume`, `lyricsAutoscroll`, `lyricsSource`; Room-`settings` bleibt als Backup-/Exportspiegel (Schema-kompatibel zum Web-Export).
+- **Server-Passwort**: AES/GCM mit Keystore-Schlüssel (`setUserAuthenticationRequired(false)`), Ciphertext in Room; `allowBackup=false` oder Verschlüsselung vor Backup schützen.
+- Keine Telemetrie; Online-Lyrics nur mit Titel/Künstler/Album/Dauer; Schalter „nur Datei/Server" (`file_only`) respektieren.
+- Netzwerksicherheit: private Ziele als `domain-config` mit Cleartext; öffentliche Ziele nur HTTPS.
+
+---
+
+## 12. Performance-Regeln (aus den Web-Erkenntnissen)
+
+1. `buildWheelLayout` als **reine, memoisierte** Funktion; nie in der Composition neu bauen.
+2. Sichtbares Fenster begrenzen; keine 20 000 Composables.
+3. `rotationZ` über `graphicsLayer` (GPU) statt Layout-Änderung.
+4. Hochfrequenten Fortschritt isolieren (`snapshotFlow`, eigene Composables) – niemals im globalen `ViewModel`-State.
+5. Bilder: Coil mit Disk-Cache, `crossfade(false)` im Rad, Graustufen im Salon optional.
+6. Suche: `debounce(150 ms)`, Filterung auf bereits geladenen Listen.
+7. Baseline Profile + `R8` für Startzeit; `SimpleCache` auf `cacheDir`.
+8. Große Bibliothek: Sync in Batches, `Room`-Schreibvorgänge transaktional, UI liest `Flow` mit `distinctUntilChanged`.
+
+---
+
+## 13. Paritäts-Checkliste
+
+**Muss (MVP)**
+- [ ] Room-Schema inkl. Kaskaden/Indizes, Migration = `drizzle/*.sql`
+- [ ] Subsonic-Client (Token), Server-CRUD, Ping/Test
+- [ ] Sync (Metadaten) + lokaler Import (Tags, Lyrics beim Import)
+- [ ] Rad: Layout, Fenster, Snap, Vollkreis/Nahaufnahme, Ring-Titel (Salon), 5 Themes
+- [ ] Player: Queue, Play/Pause/Next/Prev, Seek, Shuffle, Repeat, Favorit, PlayCount
+- [ ] Vorpuffern: 4 voraus, Cache 5, FIFO, Abbruch bei Sprung
+- [ ] Lyrics: Priorität, Matching, TTL, 3 Zeilen, Autoscroll-Schalter, Quelle
+- [ ] i18n en/de/sq vollständig, keine harten Strings
+- [ ] Hintergrundwiedergabe, MediaSession, Notification, Audiofokus
+- [ ] Persistente Einstellungen, Keystore-Passwörter, `/health`-äquivalente Selbstprüfung
+
+**Soll (P1)**
+- [ ] Offline-Downloads einzelner Alben/Playlists (pinned, nicht FIFO-evicted)
+- [ ] Bibliothekssuche serverseitig (Subsonic `search3`) für sehr große Sammlungen
+- [ ] Android Auto / MediaLibraryService
+- [ ] Import/Export der SQLite (Backup), Server-Umzug
+- [ ] Queue-Ansicht mit Umsortieren (Web: nur Next/End)
+
+**Kann (P2)**
+- [ ] Chromecast, Widgets, Wear
+- [ ] Fortgeschrittene Lyrics (Wort-Timing aus OpenSubsonic v2)
+- [ ] Multi-Server-Gleichzeitigkeit (Web: ein aktiver Server)
+
+---
+
+## 14. Testplan (Android)
+
+| Ebene | Werkzeug | Übernommene Fälle aus dem Web |
+| --- | --- | --- |
+| JVM-Unit | JUnit5 + Truth | `WheelLayoutTest` (Fenster ≤ 12 Gruppen, Fensterzeilen < 32, Salon-Compact), `SnapStepTest` |
+| JVM-Unit | JUnit5 | `LyricsParserTest` (LRC/Offset/SYLT/OpenSubsonic), `LyricsMatcherTest` (±3 s, Albumpräferenz), `PrefetchFifoTest` (Kapazität 5, Eviction, Abbruch) |
+| Instrumentiert | AndroidX Test + Room in-memory | `DatabaseTest` (Erststart, Kaskaden, Migration) |
+| Instrumentiert | Media3 `TestPlayerRunHelper` | Wiedergabe/Puffer/Abbruch |
+| UI | Compose UI Test | dieselben Zusicherungen wie `verify-*.mjs` über die Test-Tags aus §7.4 |
+| Fixtures | `:testing` | 2 766 Alben / 23 020 Songs, ein 900-Song-Album, getaggtes WAV |
+
+Akzeptanzkriterium MVP: Alle UI-Tests grün **und** ein Profil auf einem Mid-Range-Gerät mit 10 000 Songs, bei dem Rad-Drag ≥ 55 fps hält und der Start < 2 s dauert.
+
+---
+
+# NaviCircle für Android — Architektur & Portierungsleitfaden
+
+Ziel: eine **native Android-App** (Kotlin, Jetpack Compose), die sich funktional und gestalterisch wie die Web-App verhält, aber die Plattformvorteile nutzt: Hintergrundwiedergabe, MediaSession, echtes Offline-Caching, Keystore, Benachrichtigungen.
+
+Grundlage: [`docs/ARCHITEKTUR.md`](./ARCHITEKTUR.md) (Ist-Stand) und [`docs/API-REFERENZ.md`](./API-REFERENZ.md).
+
+---
+
+## 1. Grundsatzentscheidungen
+
+| Thema | Web (Ist) | Android (Soll) | Begründung |
+| --- | --- | --- | --- |
+| Datenhaltung | SQLite auf dem Server | **Room/SQLite auf dem Gerät** | Schema ist identisch; App wird autark |
+| Navidrome-Zugriff | über Next.js-Proxy | **direkt** aus der App | Kein Server nötig; Zugangsdaten bleiben im Gerät |
+| Wiedergabe | `HTMLAudioElement` | **Media3 ExoPlayer + MediaSessionService** | Hintergrund, Audiofokus, Bluetooth, Auto |
+| Puffer | eigener JS-FIFO-Cache | **Media3 `SimpleCache` + eigener FIFO-Prefetch-Downloader** | Plattform-Cache inkl. Eviction, plus 4-Songs-Vorlauf |
+| Lyrics | Server-Route | **Repository** (Datei/Server/LRCLIB), gleiche Regeln | identische Priorität & Cache-Semantik |
+| Einstellungen | SQLite `settings` | **DataStore (Proto/Preferences)** + Room-Spiegel für Backup | reaktive UI, einfacher Export |
+| Passwörter | Klartext in SQLite | **AES-GCM mit Android Keystore** | Sicherheitspflicht auf Mobilgeräten |
+| i18n | eigenes Dictionary | **`strings.xml` (en/de/sq) + `plurals`** | Systemsprache, Übersetzungs-Workflow |
+| Themes | CSS-Variablen | **Compose `NaviColors` + MaterialTheme** | 5 Varianten inkl. Salon hell/dunkel |
+| Rad | SVG/DOM | **Compose `Canvas` (Bögen) + positionierte Rows** | Performance bei tausenden Alben |
+| Tests | Playwright | **Compose UI Tests mit denselben Test-Tags** | Parität der Zusicherungen |
+
+---
+
+## 2. Modulgraph (Gradle)
+
+Empfohlen: Multi-Modul für klare Grenzen und schnellere Builds.
+
+```
+:app                     MainActivity, Navigation, Hilt-Einstieg, Compose-Theme
+:core:model              Datenklassen (Track, Album, Artist, Playlist, ServerConfig, LyricsDocument …)
+:core:database           Room-Entities, DAOs, Migrationen, Settings-Spiegel
+:core:network            Ktor/OkHttp, Subsonic-Client, LRCLIB-Client, Cover-Loader
+:core:datastore          DataStore-Settings, Theme/Language, Keystore-Crypto
+:core:designsystem       5 Themes, Typografie, Materialien (Salon), gemeinsame Composables
+:core:common             Ergebnis-Typen, Zeit-/Dauer-Formatter, Coroutine-Dispatcher
+:feature:wheel           WheelLayout-Algorithmen + WheelCanvas + Ring-Label
+:feature:player          PlayerScreen, Transport, PlayerRegister (Timer)
+:feature:library         Bibliothek (Tabs, Suche, Genre, CRUD, Detailansichten)
+:feature:settings        Einstellungen (Sprache, Theme, Lyrics, Server, Sync/Import)
+:feature:lyrics          LyricsRepository, Parser, Panel
+:playback                MediaSessionService, ExoPlayer, Cache, Prefetch, Notification
+:sync                    NavidromeSyncWorker, LocalImport (SAF)
+:discovery               NSD/mDNS + optionaler Subnetz-Scan
+:testing                 Fixtures (Großbibliothek, getaggtes WAV), Test-Runner
+```
+
+Abhängigkeiten: `feature:* → core:*`, `playback → core:{model,database,network,datastore}`; `feature:*` **niemals** direkt auf `:playback`-Interna, sondern auf ein `PlaybackController`-Interface (Hilt).
+
+---
+
+## 3. Abbildung Web → Android (Datei für Datei)
+
+| Web | Android-Ziel | Hinweis |
+| --- | --- | --- |
+| `src/db/schema.ts` | `:core:database` Entities + DAOs | Namen unverändert lassen (Backup-Kompatibilität) |
+| `src/db/index.ts` | `DatabaseModule` (Room, WAL, `foreign_keys=ON`) | Room aktiviert FK standardmäßig |
+| `src/lib/subsonic.ts` | `SubsonicClient` (Ktor) + `SubsonicAuth` | Token-Auth md5(password+salt) |
+| `src/lib/discover.ts` | `DiscoveryRepository` (NSD zuerst, Scan optional) | siehe §9 |
+| `src/lib/wheel-layout.ts` | `WheelLayout.kt` (pure Kotlin) | 1:1 portierbar, inkl. Rundung auf 3 Stellen |
+| `src/lib/audio-cache.ts` | `PrefetchManager` + Media3 `SimpleCache` | FIFO-Semantik exakt übernehmen |
+| `src/lib/lyrics.ts` | `LyricsParser.kt` | LRC/SYLT/OpenSubsonic-Regeln |
+| `src/lib/lyrics-online.ts` | `LrclibClient.kt` + `LyricsMatcher.kt` | Titel/Künstler/Dauer ±3 s |
+| `src/lib/lyrics-service.ts` | `LyricsRepository.kt` | Priorität, TTL, Dedupe, Semaphore(3) |
+| `src/lib/i18n.ts` | `res/values/strings.xml`, `values-de`, `values-sq` | ~110 Keys + Plurale |
+| `src/app/providers.tsx` | Hilt-Module, `AppViewModel` (Bootstrap) | Snapshots entfallen, Daten kommen aus Room-Flows |
+| `src/components/player-context.tsx` | `PlaybackController` (Singleton, `StateFlow<PlaybackState>`) | Queue/Repeat/Shuffle/Favorit/PlayCount |
+| `src/lib/playback-clock.ts` | `snapshotFlow { player.currentPosition }` | nur Timer/Ring/Lyrics konsumieren |
+| `src/components/dashboard-app.tsx` | `MainScreen` (`HorizontalPager(4)`) | Zoom/Shift aus Pager-Offset |
+| `src/components/pages/player-page.tsx` | `:feature:player` + `:feature:wheel` | Rim = Canvas, Rows = Compose |
+| `src/components/pages/library-page.tsx` | `:feature:library` | Tabs, `debounce`-Suche, Genre-Filter |
+| `src/components/pages/settings-page.tsx` | `:feature:settings` | inkl. Lyrics-Autoscroll & Quelle |
+| `src/components/lyrics-panel.tsx` | `:feature:lyrics` | 3 Zeilen, Klick = Seek, manueller Modus |
+| `src/app/api/stream/[id]` | direkte Subsonic-URI | Token pro Request erneuern |
+| `src/app/api/cover/[id]` | Coil + `SubsonicCoverFetcher` | Disk-Cache, Graustufen-Option im Salon |
+| `src/app/api/navidrome/sync` | `NavidromeSyncWorker` | WorkManager, Fortschritt, Abbruch |
+| `src/app/api/local/import` | `LocalImportRepository` (SAF) | Tags via jaudiotagger/MediaMetadataRetriever |
+| `src/app/api/tracks/:id/lyrics` | `LyricsRepository` (lokal) | kein HTTP |
+
+**Der HTTP-Layer der Web-App entfällt.** Repositories ersetzen die Route Handlers; die App spricht direkt mit Navidrome und LRCLIB. Ein optionaler „Companion-Server“ ist nicht nötig.
+
+---
+
+## 4. Datenbank (Room)
+
+Entities 1:1 aus §4 des Architekturdokuments; Beispiel:
+
+```kotlin
+@Entity(tableName = "tracks", indices = [Index("album_id"), Index("local_key")])
+data class TrackEntity(
+  @PrimaryKey val id: String,
+  val source: String,                 // "navidrome" | "local"
+  @ColumnInfo(name = "external_id") val externalId: String?,
+  @ColumnInfo(name = "cover_art_id") val coverArtId: String?,
+  @ColumnInfo(name = "local_key") val localKey: String?,
+  @ColumnInfo(name = "embedded_lyrics") val embeddedLyrics: String?, // JSON
+  @ColumnInfo(name = "lyrics_checked") val lyricsChecked: Boolean = false,
+  @ColumnInfo(name = "album_id") val albumId: String,
+  val title: String,
+  @ColumnInfo(name = "track_number") val trackNumber: Int,
+  @ColumnInfo(name = "disc_number") val discNumber: Int,
+  @ColumnInfo(name = "duration_seconds") val durationSeconds: Int,
+  val favorite: Boolean = false,
+  @ColumnInfo(name = "play_count") val playCount: Int = 0,
+  @ColumnInfo(name = "created_at") val createdAt: Long
+)
+
+@Entity(tableName = "playlist_tracks",
+  foreignKeys = [
+    ForeignKey(entity = PlaylistEntity::class, parentColumns = ["id"], childColumns = ["playlist_id"], onDelete = ForeignKey.CASCADE),
+    ForeignKey(entity = TrackEntity::class, parentColumns = ["id"], childColumns = ["track_id"], onDelete = ForeignKey.CASCADE)
+  ],
+  indices = [Index(value = ["playlist_id", "track_id"], unique = true)])
+data class PlaylistTrackEntity(/* id, playlist_id, track_id, position, added_at */)
+```
+
+Abgeleitete Abfragen (SQL bleibt identisch zur Web-Schicht):
+
+```sql
+-- Albumbildschirm
+SELECT t.*, a.title AS album_title, ar.name AS artist_name, a.cover_url, a.accent_color
+FROM tracks t JOIN albums a ON a.id = t.album_id JOIN artists ar ON ar.id = a.artist_id
+WHERE t.album_id = :albumId ORDER BY t.disc_number, t.track_number;
+
+-- Playlists mit Anzahl/Dauer
+SELECT p.*, COUNT(pt.id) AS track_count, COALESCE(SUM(t.duration_seconds),0) AS total_duration
+FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
+LEFT JOIN tracks t ON t.id = pt.track_id GROUP BY p.id ORDER BY p.created_at;
+```
+
+**Migration der Web-DB:** Die SQLite-Datei der Web-App kann direkt geöffnet werden (`user_version`/Drizzle-Migrationstabelle ignorieren, Room mit `fallbackToDestructiveMigration` nur für Prototypen). Für den Produktivpfad: `PRAGMA user_version` setzen und Room-Migrationen 1:1 aus `drizzle/*.sql` ableiten (`0000_init`, `0001_lyrics_cache`, `0002_salon_lyrics_settings`).
+
+---
+
+## 5. Netzwerk & Streaming
+
+### 5.1 Subsonic-Auth (Token, kein Klartext-Passwort)
+
+```kotlin
+data class SubsonicCredentials(val host: String, val port: Int, val https: Boolean,
+                               val username: String, val password: String)
+
+object SubsonicAuth {
+  private const val V = "1.16.1"; private const val C = "NaviCircle"
+  fun uri(creds: SubsonicCredentials, endpoint: String, params: Map<String, String> = emptyMap()): HttpUrl {
+    val salt = ByteArray(8).also { SecureRandom().nextBytes(it) }.toHex()
+    val token = md5(creds.password + salt)
+    val base = (if (creds.https) "https://" else "http://") + creds.host + ":" + creds.port
+    return "$base/rest/$endpoint".toHttpUrl().newBuilder().apply {
+      addQueryParameter("u", creds.username); addQueryParameter("t", token)
+      addQueryParameter("s", salt); addQueryParameter("v", V); addQueryParameter("c", C)
+      addQueryParameter("f", "json"); params.forEach { (k, v) -> addQueryParameter(k, v) }
+    }.build()
+  }
+}
+```
+
+**Wichtig:** Der Token ist zeitgebunden (Salt pro Request). Für ExoPlayer eine `ResolvingDataSource.Factory` verwenden, die die URI **beim Öffnen** neu signiert – niemals eine signierte URI lange zwischenspeichern.
+
+### 5.2 Cleartext im Heimnetz
+
+Android blockiert HTTP ab API 28. Navidrome im LAN läuft meist über HTTP. Lösung: `network_security_config.xml` mit `cleartextTrafficPermitted="true"` **nur** für private Bereiche, die der Nutzer explizit hinzufügt, oder generell für Debug; für Produktion besser HTTPS/Zertifikat empfehlen und in der UI warnen.
+
+### 5.3 LRCLIB
+
+`GET https://lrclib.net/api/get` (Fallback `/api/search`, max. 20 Kandidaten), Timeout 6,5 s, `User-Agent: NaviCircle/<version>` + `Lrclib-Client`-Header, Antwortgröße gedeckelt, Matching exakt wie in §6.6 der Architektur (Titel+Künstler normalisiert, Dauer ±3 s, Präferenz Album → synced).
+
+---
+
+## 6. Wiedergabe (Media3)
+
+### 6.1 Komponenten
+
+```
+MediaSessionService (PlaybackService)
+├─ ExoPlayer (AudioAttributes: music, handleAudioFocus = true, WAKE_MODE_NETWORK)
+├─ CacheDataSource.Factory(SimpleCache(File(cacheDir,"media"), LeastRecentlyUsedCacheEvictor(200MB)))
+├─ ResolvingDataSource.Factory (frische Subsonic-Token)
+└─ MediaSession + Notification (MediaStyle, Artwork, Prev/Play/Next, Seek)
+
+PlaybackController (Hilt-Singleton)
+├─ StateFlow<PlaybackState>(queue, index, isPlaying, shuffle, repeat, volume, favorite)
+├─ PrefetchManager (FIFO, 4 Songs voraus, Cachegröße 5)
+└─ Verbindung zum MediaController (MediaSession) für UI
+```
+
+### 6.2 Vorpuffern mit exakt derselben Semantik
+
+Media3 bietet `DownloadHelper`/`DownloadManager`, doch die Web-Semantik ist enger. Empfohlen: **eigener** `PrefetchManager` mit `CacheWriter`, damit Kapazität 5, Vorlauf 4, FIFO-Eviction, Abbruch bei Sprüngen und „nur eine Datei gleichzeitig" garantiert bleiben:
+
+```kotlin
+class PrefetchManager(
+  private val cache: SimpleCache,
+  private val signer: (Track) -> Uri,          // Subsonic-URI, frisch signiert
+  private val scope: CoroutineScope,
+  private val capacity: Int = 5,
+  private val ahead: Int = 4,
+) {
+  private val queued = ArrayDeque<Track>()
+  private val ready = LinkedHashMap<String, Long>()   // Insertion-Order = FIFO
+  private var protectedKeys: Set<String> = emptySet()
+  private var job: Job? = null
+
+  fun update(current: Track?, upcoming: List<Track>) {
+    protectedKeys = (listOfNotNull(current) + upcoming).map { it.id }.toSet()
+    queued.retainAll { it.id in protectedKeys }
+    upcoming.filter { it.id !in ready && it.id != current?.id }
+      .forEach { if (queued.none { q -> q.id == it.id }) queued.addLast(it) }
+    evict()
+    pump()
+  }
+  private fun evict() { /* ältester nicht geschützter Eintrag zuerst: cache.removeResource(span) */ }
+  private fun pump() {
+    if (job?.isActive == true) return
+    val next = queued.removeFirstOrNull() ?: return
+    job = scope.launch(Dispatchers.IO) { /* CacheWriter(signer(next), cache, DataSpec(signer(next))).cache() */ }
+  }
+}
+```
+
+Offline-Wünsche (Phase 2) laufen getrennt über `DownloadManager` und werden in Room markiert – sie dürfen von der FIFO-Eviction **nicht** gelöscht werden (`isPinned`-Flag im Cache-Index).
+
+### 6.3 Hintergrund & Systemintegration
+
+- `MediaSessionService` + `MediaSession` (PlaybackState, Metadata inkl. Artwork-URI).
+- Audiofokus, `AudioManager.AUDIOFOCUS_LOSS_TRANSIENT` → pausieren, `becoming-noisy` → pausieren.
+- Notification mit `MediaStyle` (API 33: `POST_NOTIFICATIONS` anfragen).
+- `WAKE_MODE_NETWORK`, damit Streaming im Standby weiterläuft.
+- Android Auto / „Now Playing“ kann in Phase 3 über `MediaLibraryService` ergänzt werden.
+- Fortschritt: UI liest `snapshotFlow { controller.currentPosition }` in einem eigenen Composable (Timer, Ring, Lyrics-Index) – **nicht** im globalen ViewModel-State, sonst ruckelt die ganze Leinwand (Web-Lektion, §6.7 der Architektur).
+
+---
+
+## 7. Compose-UI
+
+### 7.1 Leinwand statt vier Activities
+
+```kotlin
+val pager = rememberPagerState(initialPage = 1, pageCount = { 4 })   // 0 Rad, 1 Player, 2 Bibliothek, 3 Einstellungen
+HorizontalPager(state = pager, beyondViewportPageCount = 1) { page ->
+  when (page) {
+    0, 1 -> WheelStage(page = page, pagerOffset = { pager.currentPageOffsetFraction })
+    2 -> LibraryScreen()
+    3 -> SettingsScreen()
+  }
+}
+```
+
+`zoom`/`shift` werden als `derivedStateOf` aus dem Pager-Offset berechnet (Panel 0→1 = Zoom, 1→2 = Shift), exakt wie `canvas-store.ts`. `PlayerRegister` liegt als Overlay **einmal** über dem Pager.
+
+### 7.2 Rad: Canvas + positionierte Zeilen
+
+- **Bögen/Ticks/Messing:** ein `Canvas` mit `drawArc` (Startwinkel in Grad, `strokeWidth`), Clip auf ein Annulus (`Path` mit `PathOperation.Difference`) verhindert auslaufende Bögen.
+- **Zeilen:** Compose `Row`-Items in einem `Box`, per `graphicsLayer { rotationZ = angle; transformOrigin = TransformOrigin(0f, 0.5f) }` und `offset(x = itemRadius.dp)` — dieselbe Geometrie wie im Web (`ITEM_R = 392`, `WHEEL_EXTENT = 388`).
+- Nur das **sichtbare Fenster** komponieren (`visibleWheelGroups`-Port). Bei 2 766 Alben bleibt die Komposition < 40 Elemente (im Web-Test belegt).
+- Text: `Text` mit `maxLines = 2`, `overflow = Ellipsis`; Salon-Titel als **ein** Pfad-Text über `drawIntoCanvas { it.nativeCanvas.drawTextOnPath(…) }` auf einem Kreis-Pfad, rotierend um den Vinylmittelpunkt (Eigenrotation statt Text-Repetition). Halo: Pfad-Text zweimal zeichnen (Stroke in `bg`, Fill in `ink`).
+
+### 7.3 Salon-Materialien
+
+```kotlin
+@Composable fun Modifier.salonPlinth(): Modifier = composed {
+  val colors = NaviTheme.colors
+  drawBehind {
+    drawCircle(Brush.radialGradient(listOf(colors.salonWoodLight, colors.salonWood, colors.salonWalnut)))
+    drawCircle(brush = Brush.sweepGradient(listOf(Color(0xFFF4DFAE), Color(0xFFA98B58), Color(0xFF6D5636), Color(0xFFE2C389))),
+      radius = size.minDimension / 2f - 22.dp.toPx(), style = Stroke(3.dp.toPx()))
+  }
+}
+```
+
+- Brushed-Messing: `Brush.sweepGradient` + langsame `rememberInfiniteTransition`-Rotation (30 s) – bei deaktivierten Animationen (`Settings.Global.ANIMATOR_DURATION_SCALE == 0`) statisch.
+- Lederzeile: `Brush.verticalGradient(leatherHi, leather)` + 1 dp Innenlinie; Textfarbe **immer** hell (`onLeather`), nie `ink`.
+- Plinth in der Bühne hinter allen Zeilen zeichnen (Reihenfolge der `drawBehind`/Kinder), damit Beschriftungen nicht „unter dem Rad" liegen (Web-Bugfix, §8.2 der Architektur).
+
+### 7.4 Test-Tags für Parität
+
+Bitte dieselben Semantik-Tags wie die Web-Attribute vergeben, damit die vorhandenen Playwright-Zusicherungen 1:1 als Compose-UI-Tests funktionieren:
+
+| Web-Attribut | Compose `testTag` |
+| --- | --- |
+| `[data-wheel-position]` | `wheel_position` |
+| `[data-wheel-row]` | `wheel_row` |
+| `[data-wheel-hub] g.hub-label-spin` | `hub_label_spin` |
+| `[data-lyric-line="0..2"]` | `lyric_line_0..2` |
+| `[data-player-register]` | `player_register` |
+| `.player-transport` | `player_transport` |
+| `.wheel-track[aria-current=true]` | `wheel_track_current` |
+
+---
+
+## 8. Lyrics auf Android
+
+```kotlin
+class LyricsRepository @Inject constructor(
+  private val trackDao: TrackDao, private val lyricsDao: LyricsCacheDao,
+  private val subsonic: SubsonicClient, private val lrclib: LrclibClient,
+  private val prefs: SettingsDataStore, private val clock: Clock
+) {
+  suspend fun forTrack(id: String): LyricsResult { /* Priorität wie Web:
+     1 embedded_lyrics, 2 lokale Datei prüfen, 3 Navidrome, 4 LRCLIB (wenn erlaubt),
+     5 not_found/unavailable — Cache mit TTL 7 Tage / 1 Tag, Fingerprint SHA-256 */ }
+}
+```
+
+- Lokale Dateien: `MediaMetadataRetriever` liefert **nicht** USLT/SYLT. Empfehlung: `jaudiotagger` (Android-Port) oder `TagLib` via JNI für eingebettete Lyrics; `ContentResolver.openInputStream(uri)` für die Datei.
+- Bewertung des Zeilenindex: Binärsuche auf `start ≤ position` (identisch zu `lyricIndexAt`).
+- Autoscroll aus DataStore; bei `false` bleibt die Zeile stehen, Pfeile blättern; unsynchronisierte Texte immer manuell.
+- Quelle anzeigen (`embedded` / `Navidrome` / `LRCLIB`) in den Einstellungen.
+
+---
+
+## 9. Server-Erkennung im LAN
+
+1. **NSD/mDNS** (`NsdManager`, `_http._tcp` oder Navidrome-spezifisch): schnell, akkuschonend, benötigt `INTERNET` + ggf. `CHANGE_WIFI_MULTICAST_STATE` und ein `MulticastLock` während der Suche.
+2. **Manuelle Eingabe** (Host/Port/Benutzer/Passwort) als immer verfügbarer Weg.
+3. **Optionaler Subnetz-Scan** wie im Web (Ports 4533/443/80, 400 ms Timeout, ≤ 48 parallel) mit `Dispatchers.IO` + `Semaphore`, hartem Zeitlimit (~10 s), Abbruch bei Verlassen des Screens. Nur auf ausdrücklichen Nutzerwunsch starten (Akku, Play-Richtlinien), Ergebnis zusammen mit `ping`-Test anzeigen.
+4. Zugangsdaten erst nach erfolgreichem `ping` speichern.
+
+---
+
+## 10. Synchronisation & lokale Dateien
+
+- `NavidromeSyncWorker` (WorkManager, `CoroutineWorker`):
+  - `getArtists` → je Künstler `getArtist` → je Album `getAlbum`;
+  - Schreiben in einer Room-Transaktion (`withTransaction`), nur `source = navidrome` löschen;
+  - Fortschritt über `setProgress`, Fehlerklassifizierung wie im Web (Netz, Auth, 5xx) mit `Result.retry()` + Backoff;
+  - große Bibliotheken: `setForeground` mit Notification (Daten-Sync-Typ).
+- Playlists optional in derselben Transaktion spiegeln.
+- **Lokaler Import:** `ACTION_OPEN_DOCUMENT_TREE` + `DocumentFile`, Tags via jaudiotagger, Lyrics beim Import mitlesen (`lyrics_checked = 1`), Datei-URI im `local_key` (persistente URI-Berechtigung!), Audio über `content://` in ExoPlayer.
+- Rechte: `READ_MEDIA_AUDIO` (API 33+) bzw. `READ_EXTERNAL_STORAGE` (≤ 32) nur, wenn der Nutzer importiert.
+
+---
+
+## 11. Einstellungen & Sicherheit
+
+- **DataStore** speichert `language`, `theme`, `volume`, `lyricsAutoscroll`, `lyricsSource`; Room-`settings` bleibt als Backup-/Exportspiegel (Schema-kompatibel zum Web-Export).
+- **Server-Passwort**: AES/GCM mit Keystore-Schlüssel (`setUserAuthenticationRequired(false)`), Ciphertext in Room; `allowBackup=false` oder Verschlüsselung vor Backup schützen.
+- Keine Telemetrie; Online-Lyrics nur mit Titel/Künstler/Album/Dauer; Schalter „nur Datei/Server" (`file_only`) respektieren.
+- Netzwerksicherheit: private Ziele als `domain-config` mit Cleartext; öffentliche Ziele nur HTTPS.
+
+---
+
+## 12. Performance-Regeln (aus den Web-Erkenntnissen)
+
+1. `buildWheelLayout` als **reine, memoisierte** Funktion; nie in der Composition neu bauen.
+2. Sichtbares Fenster begrenzen; keine 20 000 Composables.
+3. `rotationZ` über `graphicsLayer` (GPU) statt Layout-Änderung.
+4. Hochfrequenten Fortschritt isolieren (`snapshotFlow`, eigene Composables) – niemals im globalen `ViewModel`-State.
+5. Bilder: Coil mit Disk-Cache, `crossfade(false)` im Rad, Graustufen im Salon optional.
+6. Suche: `debounce(150 ms)`, Filterung auf bereits geladenen Listen.
+7. Baseline Profile + `R8` für Startzeit; `SimpleCache` auf `cacheDir`.
+8. Große Bibliothek: Sync in Batches, `Room`-Schreibvorgänge transaktional, UI liest `Flow` mit `distinctUntilChanged`.
+
+---
+
+## 13. Paritäts-Checkliste
+
+**Muss (MVP)**
+- [ ] Room-Schema inkl. Kaskaden/Indizes, Migration = `drizzle/*.sql`
+- [ ] Subsonic-Client (Token), Server-CRUD, Ping/Test
+- [ ] Sync (Metadaten) + lokaler Import (Tags, Lyrics beim Import)
+- [ ] Rad: Layout, Fenster, Snap, Vollkreis/Nahaufnahme, Ring-Titel (Salon), 5 Themes
+- [ ] Player: Queue, Play/Pause/Next/Prev, Seek, Shuffle, Repeat, Favorit, PlayCount
+- [ ] Vorpuffern: 4 voraus, Cache 5, FIFO, Abbruch bei Sprung
+- [ ] Lyrics: Priorität, Matching, TTL, 3 Zeilen, Autoscroll-Schalter, Quelle
+- [ ] i18n en/de/sq vollständig, keine harten Strings
+- [ ] Hintergrundwiedergabe, MediaSession, Notification, Audiofokus
+- [ ] Persistente Einstellungen, Keystore-Passwörter, `/health`-äquivalente Selbstprüfung
+
+**Soll (P1)**
+- [ ] Offline-Downloads einzelner Alben/Playlists (pinned, nicht FIFO-evicted)
+- [ ] Bibliothekssuche serverseitig (Subsonic `search3`) für sehr große Sammlungen
+- [ ] Android Auto / MediaLibraryService
+- [ ] Import/Export der SQLite (Backup), Server-Umzug
+- [ ] Queue-Ansicht mit Umsortieren (Web: nur Next/End)
+
+**Kann (P2)**
+- [ ] Chromecast, Widgets, Wear
+- [ ] Fortgeschrittene Lyrics (Wort-Timing aus OpenSubsonic v2)
+- [ ] Multi-Server-Gleichzeitigkeit (Web: ein aktiver Server)
+
+---
+
+## 14. Testplan (Android)
+
+| Ebene | Werkzeug | Übernommene Fälle aus dem Web |
+| --- | --- | --- |
+| JVM-Unit | JUnit5 + Truth | `WheelLayoutTest` (Fenster ≤ 12 Gruppen, Fensterzeilen < 32, Salon-Compact), `SnapStepTest` |
+| JVM-Unit | JUnit5 | `LyricsParserTest` (LRC/Offset/SYLT/OpenSubsonic), `LyricsMatcherTest` (±3 s, Albumpräferenz), `PrefetchFifoTest` (Kapazität 5, Eviction, Abbruch) |
+| Instrumentiert | AndroidX Test + Room in-memory | `DatabaseTest` (Erststart, Kaskaden, Migration) |
+| Instrumentiert | Media3 `TestPlayerRunHelper` | Wiedergabe/Puffer/Abbruch |
+| UI | Compose UI Test | dieselben Zusicherungen wie `verify-*.mjs` über die Test-Tags aus §7.4 |
+| Fixtures | `:testing` | 2 766 Alben / 23 020 Songs, ein 900-Song-Album, getaggtes WAV |
+
+Akzeptanzkriterium MVP: Alle UI-Tests grün **und** ein Profil auf einem Mid-Range-Gerät mit 10 000 Songs, bei dem Rad-Drag ≥ 55 fps hält und der Start < 2 s dauert.
+
+---
+
+## 15. Phasenplan
+
+| Phase | Inhalt | Ergebnis |
+| --- | --- | --- |
+| 0 | Projekt-Setup, Module, Room, 5 Themes (statisch) | leere App mit Designsystem |
+| 1 | Subsonic + Sync + Bibliothek (Lesen) | Sammlung sichtbar |
+| 2 | Rad + Player + Puffer | vollständige Wiedergabe |
+| 3 | Lyrics (Datei/Server/Online) + i18n + Settings | Feature-Parität Web |
+| 4 | Hintergrund, MediaSession, Keystore, Offline | Produktivreife |
+| 5 | Auto/Wear/Downloads, Feinschliff | Ausbau |
+
+
+
+
+
+##  Phasenplan
+
+| Phase | Inhalt | Ergebnis |
+| --- | --- | --- |
+| 0 | Projekt-Setup, Module, Room, 5 Themes (statisch) | leere App mit Designsystem |
+| 1 | Subsonic + Sync + Bibliothek (Lesen) | Sammlung sichtbar |
+| 2 | Rad + Player + Puffer | vollständige Wiedergabe |
+| 3 | Lyrics (Datei/Server/Online) + i18n + Settings | Feature-Parität Web |
+| 4 | Hintergrund, MediaSession, Keystore, Offline | Produktivreife |
+| 5 | Auto/Wear/Downloads, Feinschliff | Ausbau |
+
+
+
