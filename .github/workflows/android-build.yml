@@ -23,16 +23,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
         with:
+          gradle-version: '9.3.1'
           cache-read-only: false
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew || true
 
       - name: Create Empty .env File
         run: touch .env
@@ -42,45 +46,18 @@ jobs:
           if [ -f "debug.keystore.base64" ]; then
             base64 -d debug.keystore.base64 > debug.keystore
           fi
-
-      - name: Cleanup Legacy Package Tree
-        run: |
-          rm -rf app/src/main/java/com/example app/src/test/java/com/example app/src/androidTest/java/com/example
-
-      - name: Ground truth
-        run: |
-          git rev-parse HEAD
-          git status --short
-          git log --oneline -3 -- app/build.gradle.kts || true
-          grep -n "namespace" app/build.gradle.kts
-          if [ -f "app/src/main/java/com/labix/navirom/player/NaviromPlaybackService.kt" ]; then
-            sed -n '1,30p' app/src/main/java/com/labix/navirom/player/NaviromPlaybackService.kt
+          if [ ! -f "debug.keystore" ]; then
+            keytool -genkeypair -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
           fi
-          git grep -n "com.example.navirom" -- '*.kt' '*.kts' '*.xml' 2>/dev/null | head -20 || true
-
-      - name: R quick autopsy
-        run: |
-          gradle :app:generateDebugRFile --no-daemon || true
-          echo "=== JAR-Inhalt ==="
-          for j in $(find app/build -name "R.jar" 2>/dev/null); do echo "== $j"; unzip -l "$j" | head -20; done
-          echo "=== Ressourcen im Repo ==="
-          find app/src/main/res -type f | head -30
-          echo "=== Geisterbaum komplett ==="
-          git grep -l "com.example.navirom" || true
-          echo "=== Alle Package-Deklarationen ==="
-          git grep -h "^package " -- "*.kt" 2>/dev/null | sort | uniq -c | sort -rn || true
 
       - name: Build Debug APK
         run: |
-          gradle clean assembleDebug --no-daemon --info --stacktrace 2>&1 | tee build.log
-          echo "=== Compile R Class Jar in build log ==="
-          grep -n "compile_r_class_jar" build.log 2>/dev/null | head -20 || true
-
-      - name: Inspect generated R
-        if: failure()
-        run: |
-          find app/build \( -name "R.java" -o -name "R.jar" -o -iname "*r_class*" \) 2>/dev/null | head -20 || true
-          for f in $(find app/build -name "R.java" 2>/dev/null | head -3); do echo "== $f"; head -5 "$f"; done
+          set -e -o pipefail
+          if [ -x "./gradlew" ]; then
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          else
+            gradle assembleDebug --no-daemon --stacktrace
+          fi
 
       - name: Upload build reports
         if: always()
@@ -100,10 +77,10 @@ jobs:
         run: |
           mkdir -p build-outputs
           echo "=== Searching for generated APKs ==="
-          find app/build/outputs/ -name "*.apk" || true
-          APK_PATH=$(find app/build/outputs -name "*.apk" | head -n 1)
+          find app/build/outputs -type f -name "*.apk" || true
+          APK_PATH=$(find app/build/outputs -type f -name "*.apk" | head -n 1)
           if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
-            echo "Error: No APK found in app/build/outputs/apk!"
+            echo "Error: No APK found in app/build/outputs!"
             exit 1
           fi
           echo "Found APK at: $APK_PATH"

@@ -1559,7 +1559,7 @@ fun FullPlayerModal(
                                     .fillMaxWidth()
                                     .clickable {
                                         showArtistsDialog = false
-                                        onArtistClick?.invoke(track.artistId)
+                                        onArtistClick?.invoke(if (track.artistId.isNotBlank()) track.artistId else artistName)
                                     }
                             ) {
                                 Row(
@@ -2337,7 +2337,7 @@ fun FullPlayerModal(
                                                 if (artistList.size > 1) {
                                                     showArtistsDialog = true
                                                 } else {
-                                                    onArtistClick?.invoke(track.artistId)
+                                                    onArtistClick?.invoke(if (track.artistId.isNotBlank()) track.artistId else track.artist)
                                                 }
                                             }
                                         )
@@ -2581,12 +2581,12 @@ fun FullPlayerModal(
                                     }
                                 }
                             }
-                        }
+
+                    Spacer(modifier = Modifier.weight(1f))
 
                     // Bottom Grouped & Scrollable Action Bar
                     Row(
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .navigationBarsPadding()
                             .padding(horizontal = 16.dp, vertical = 14.dp)
@@ -2630,7 +2630,7 @@ fun FullPlayerModal(
                                         if (artistList.size > 1) {
                                             showArtistsDialog = true
                                         } else {
-                                            onArtistClick?.invoke(track.artistId)
+                                            onArtistClick?.invoke(if (track.artistId.isNotBlank()) track.artistId else track.artist)
                                         }
                                     },
                                     modifier = Modifier.size(38.dp)
@@ -2647,7 +2647,7 @@ fun FullPlayerModal(
                                 IconButton(
                                     onClick = {
                                         haptics.click()
-                                        onAlbumClick?.invoke(track.albumId)
+                                        onAlbumClick?.invoke(if (track.albumId.isNotBlank()) track.albumId else track.album)
                                     },
                                     modifier = Modifier.size(38.dp)
                                 ) {
@@ -2845,6 +2845,7 @@ fun FullPlayerModal(
                             }
                         }
                     }
+                }
             } else {
                 FullPlayerLyricsView(
                     playbackState = playbackState,
@@ -3220,7 +3221,7 @@ private fun FullPlayerLyricsView(
                                         text = { Text("Go to Artist") },
                                         onClick = {
                                             showMenu = false
-                                            onArtistClick?.invoke(track.artistId)
+                                            onArtistClick?.invoke(if (track.artistId.isNotBlank()) track.artistId else track.artist)
                                         },
                                         leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) }
                                     )
@@ -3228,7 +3229,7 @@ private fun FullPlayerLyricsView(
                                         text = { Text("Go to Album") },
                                         onClick = {
                                             showMenu = false
-                                            onAlbumClick?.invoke(track.albumId)
+                                            onAlbumClick?.invoke(if (track.albumId.isNotBlank()) track.albumId else track.album)
                                         },
                                         leadingIcon = { Icon(Icons.Filled.Album, contentDescription = null) }
                                     )
