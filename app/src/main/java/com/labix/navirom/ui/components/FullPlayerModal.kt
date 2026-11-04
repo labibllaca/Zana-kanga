@@ -130,6 +130,8 @@ fun FullPlayerModal(
     appLanguage: AppLanguage = AppLanguage.ENGLISH,
     isVinylEffectEnabled: Boolean = false,
     sleepTimerOptions: SleepTimerOptions = SleepTimerOptions(),
+    isNightSleepTimerEnabled: Boolean = false,
+    onNightSleepTimerEnabledChange: (Boolean) -> Unit = {},
     onDismiss: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -503,6 +505,39 @@ fun FullPlayerModal(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = NaviromStrings.get("sleep_timer_night_auto", appLanguage),
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = NaviromStrings.get("sleep_timer_night_auto_desc", appLanguage),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = isNightSleepTimerEnabled,
+                                    onCheckedChange = {
+                                        haptics.toggle()
+                                        onNightSleepTimerEnabledChange(it)
+                                    }
+                                )
+                            }
+                        }
 
                         // Quick Presets Row (scrollable group showing icons only)
                         Row(

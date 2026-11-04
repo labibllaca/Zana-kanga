@@ -146,6 +146,11 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
     )
     val sleepTimerOptions: StateFlow<SleepTimerOptions> = _sleepTimerOptions.asStateFlow()
 
+    private val _isNightSleepTimerEnabled = MutableStateFlow(
+        prefs.getBoolean("night_sleep_timer_enabled", false)
+    )
+    val isNightSleepTimerEnabled: StateFlow<Boolean> = _isNightSleepTimerEnabled.asStateFlow()
+
     // Current navigation state
     private val _currentTab = MutableStateFlow(NaviromTab.LIBRARY)
     val currentTab: StateFlow<NaviromTab> = _currentTab.asStateFlow()
@@ -300,11 +305,7 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
     private val _allDiscoveredLocalFolders = MutableStateFlow<List<LocalMusicFolder>>(emptyList())
     val allDiscoveredLocalFolders: StateFlow<List<LocalMusicFolder>> = _allDiscoveredLocalFolders.asStateFlow()
 
-    // Settings: Folders enabled by the user in Settings (legacy compatibility)
-    private val _settingsEnabledLocalFolderIds = MutableStateFlow<Set<String>>(emptySet())
-    val settingsEnabledLocalFolderIds: StateFlow<Set<String>> = _settingsEnabledLocalFolderIds.asStateFlow()
-
-    // Local folders: directly uses all discovered folders, decoupled from settings
+    // Local folders: all folders discovered on the device
     val localFolders: StateFlow<List<LocalMusicFolder>> = _allDiscoveredLocalFolders.asStateFlow()
 
     // Folder view navigation state
@@ -388,40 +389,6 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
                 _isScanningLocalAudio.value = false
             }
         }
-    }
-
-    // Settings local folder management
-    fun toggleSettingsLocalFolder(folderId: String) {
-        val current = _settingsEnabledLocalFolderIds.value.toMutableSet()
-        if (current.contains(folderId)) {
-            current.remove(folderId)
-        } else {
-            current.add(folderId)
-        }
-        _settingsEnabledLocalFolderIds.value = current
-        prefs.edit().putStringSet("settings_enabled_local_folder_ids", current).apply()
-    }
-
-    fun setSettingsLocalFolderEnabled(folderId: String, enabled: Boolean) {
-        val current = _settingsEnabledLocalFolderIds.value.toMutableSet()
-        if (enabled) {
-            current.add(folderId)
-        } else {
-            current.remove(folderId)
-        }
-        _settingsEnabledLocalFolderIds.value = current
-        prefs.edit().putStringSet("settings_enabled_local_folder_ids", current).apply()
-    }
-
-    fun selectAllSettingsLocalFolders() {
-        val allIds = _allDiscoveredLocalFolders.value.map { it.id }.toSet()
-        _settingsEnabledLocalFolderIds.value = allIds
-        prefs.edit().putStringSet("settings_enabled_local_folder_ids", allIds).apply()
-    }
-
-    fun deselectAllSettingsLocalFolders() {
-        _settingsEnabledLocalFolderIds.value = emptySet()
-        prefs.edit().putStringSet("settings_enabled_local_folder_ids", emptySet()).apply()
     }
 
     // Playback active/inactive toggling (Sidebar & Library)
@@ -652,6 +619,7 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
     val player2DeviceId: StateFlow<Int?> = playerController.player2DeviceId
 
     init {
+        playerController.setNightSleepTimerEnabled(_isNightSleepTimerEnabled.value)
         val savedSpeakerMode = try {
             DualSpeakerMode.valueOf(prefs.getString("dual_speaker_mode", DualSpeakerMode.DUAL_STEREO.name) ?: DualSpeakerMode.DUAL_STEREO.name)
         } catch (_: Exception) {
@@ -2502,6 +2470,12 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
     fun setSleepTimer(minutes: Int?, options: SleepTimerOptions = _sleepTimerOptions.value) {
         updateSleepTimerOptions(options)
         playerController.setSleepTimer(minutes, options)
+    }
+
+    fun setNightSleepTimerEnabled(enabled: Boolean) {
+        _isNightSleepTimerEnabled.value = enabled
+        prefs.edit().putBoolean("night_sleep_timer_enabled", enabled).apply()
+        playerController.setNightSleepTimerEnabled(enabled)
     }
 
     fun updateSleepTimerOptions(options: SleepTimerOptions) {

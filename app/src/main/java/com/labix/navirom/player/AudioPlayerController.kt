@@ -40,6 +40,7 @@ import java.io.File
 
 import com.labix.navirom.diagnostics.AppDiagnostics
 import com.labix.navirom.diagnostics.DiagnosticCodes
+import java.util.Calendar
 
 class AudioPlayerController(
     private val context: Context,
@@ -201,6 +202,9 @@ class AudioPlayerController(
 
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
+    private val _nightTimerPlaybackState = MutableStateFlow(false)
+    private var nightSleepTimerEnabled = false
+    private var isNightSleepTimer = false
 
     private var secondaryMediaPlayer: MediaPlayer? = null
     private val _secondaryPlaybackState = MutableStateFlow(SecondaryPlaybackState())
@@ -230,6 +234,25 @@ class AudioPlayerController(
 
     init {
         initAudioDeviceListener()
+        scope.launch {
+            var wasPlaying = _playbackState.value.isPlaying
+            _playbackState.collect { state ->
+                _nightTimerPlaybackState.value = state.isPlaying
+                val now = Calendar.getInstance()
+                if (NightSleepTimerPolicy.shouldStart(
+                        enabled = nightSleepTimerEnabled,
+                        wasPlaying = wasPlaying,
+                        isPlaying = state.isPlaying,
+                        nightTimerActive = isNightSleepTimer && sleepTimerJob?.isActive == true,
+                        hour = now.get(Calendar.HOUR_OF_DAY),
+                        minute = now.get(Calendar.MINUTE)
+                    )
+                ) {
+                    startNightSleepTimer()
+                }
+                wasPlaying = state.isPlaying
+            }
+        }
     }
 
     private fun initAudioDeviceListener() {
@@ -1775,6 +1798,7 @@ class AudioPlayerController(
 
     fun setSleepTimer(minutes: Int?, options: SleepTimerOptions = currentSleepTimerOptions) {
         sleepTimerJob?.cancel()
+        isNightSleepTimer = false
         currentSleepTimerOptions = options
         val totalSecs = if (minutes != null && minutes > 0) minutes * 60 else null
         _playbackState.update { 
@@ -1805,6 +1829,50 @@ class AudioPlayerController(
 
             // Execute requested connection shutoffs (Bluetooth, Wi-Fi, Mobile Data)
             deviceConnectionManager.executeSleepTimerActions(currentSleepTimerOptions)
+        }
+    }
+
+    fun setNightSleepTimerEnabled(enabled: Boolean) {
+        nightSleepTimerEnabled = enabled
+    }
+
+    private fun startNightSleepTimer() {
+        sleepTimerJob?.cancel()
+        isNightSleepTimer = true
+        currentSleepTimerOptions = SleepTimerOptions()
+        _playbackState.update {
+            it.copy(
+                sleepTimerMinutesLeft = 30,
+                sleepTimerSecondsLeft = 30 * 60,
+                sleepTimerOptions = currentSleepTimerOptions
+            )
+        }
+
+        sleepTimerJob = scope.launch {
+            try {
+                PlaybackAwareCountdown().run(
+                    initialSeconds = 30 * 60,
+                    isPlaying = _nightTimerPlaybackState,
+                    onTick = { remainingSeconds ->
+                        _playbackState.update {
+                            it.copy(
+                                sleepTimerMinutesLeft = (remainingSeconds + 59) / 60,
+                                sleepTimerSecondsLeft = remainingSeconds
+                            )
+                        }
+                    },
+                    onFinished = {
+                        pause()
+                        _playbackState.update {
+                            it.copy(sleepTimerMinutesLeft = null, sleepTimerSecondsLeft = null)
+                        }
+                    }
+                )
+            } finally {
+                if (sleepTimerJob === coroutineContext[Job]) {
+                    isNightSleepTimer = false
+                }
+            }
         }
     }
 

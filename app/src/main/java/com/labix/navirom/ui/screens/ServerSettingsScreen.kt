@@ -97,11 +97,8 @@ fun ServerSettingsScreen(
     onSelectAllMusicFolders: () -> Unit = {},
     onDeselectAllMusicFolders: () -> Unit = {},
     allDiscoveredLocalFolders: List<LocalMusicFolder> = emptyList(),
-    settingsEnabledLocalFolderIds: Set<String> = emptySet(),
-    onToggleSettingsLocalFolder: (String) -> Unit = {},
-    onSetSettingsLocalFolderEnabled: (String, Boolean) -> Unit = { _, _ -> },
-    onSelectAllSettingsLocalFolders: () -> Unit = {},
-    onDeselectAllSettingsLocalFolders: () -> Unit = {},
+    disabledLocalFolderIds: Set<String> = emptySet(),
+    onToggleLocalFolder: (String) -> Unit = {},
     isScanningLocalAudio: Boolean = false,
     onScanLocalAudio: () -> Unit = {},
     focusUsernameTrigger: Long = 0L,
@@ -819,6 +816,180 @@ fun ServerSettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(20.dp))
+
+        // Local on-device music folders (never mixed with server libraries / playlists)
+        val localMusicFolders = remember(allDiscoveredLocalFolders) {
+            allDiscoveredLocalFolders.filter { it.trackCount > 0 && it.tracks.isNotEmpty() }
+        }
+        if (localMusicFolders.isNotEmpty()) {
+            var isLocalFoldersExpanded by remember { mutableStateOf(true) }
+            val enabledLocalFolderCount = localMusicFolders.count { !disabledLocalFolderIds.contains(it.id) }
+
+            Card(
+                modifier = Modifier.fillMaxWidth().testTag("settings_local_folders_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                haptics.click()
+                                isLocalFoldersExpanded = !isLocalFoldersExpanded
+                            },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Column {
+                                Text(
+                                    text = str("local_folders_settings_title"),
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = String.format(
+                                        str("local_folders_settings_enabled_count"),
+                                        enabledLocalFolderCount,
+                                        localMusicFolders.size
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (isScanningLocalAudio) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            IconButton(
+                                onClick = {
+                                    haptics.click()
+                                    onScanLocalAudio()
+                                },
+                                modifier = Modifier.testTag("settings_local_folders_rescan")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Refresh,
+                                    contentDescription = str("rescan_device_folders"),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = {
+                                haptics.click()
+                                isLocalFoldersExpanded = !isLocalFoldersExpanded
+                            },
+                            modifier = Modifier.testTag("settings_local_folders_toggle")
+                        ) {
+                            Icon(
+                                imageVector = if (isLocalFoldersExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                                contentDescription = if (isLocalFoldersExpanded) "Collapse" else "Expand",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = isLocalFoldersExpanded,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            localMusicFolders.forEach { folder ->
+                                val isFolderEnabled = !disabledLocalFolderIds.contains(folder.id)
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isFolderEnabled) {
+                                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    },
+                                    onClick = {
+                                        haptics.toggle()
+                                        onToggleLocalFolder(folder.id)
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(58.dp)
+                                        .testTag("settings_local_folder_${folder.id.hashCode()}")
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isFolderEnabled) Icons.Filled.Folder else Icons.Outlined.FolderOff,
+                                            contentDescription = null,
+                                            tint = if (isFolderEnabled) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = folder.name,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                color = if (isFolderEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "${folder.trackCount} ${str("tracks_count")} • " +
+                                                        if (folder.totalDurationSeconds >= 3600) {
+                                                            "${folder.totalDurationSeconds / 3600}h ${(folder.totalDurationSeconds % 3600) / 60}m"
+                                                        } else {
+                                                            "${folder.totalDurationSeconds / 60} min"
+                                                        },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Checkbox(
+                                            checked = isFolderEnabled,
+                                            onCheckedChange = {
+                                                haptics.toggle()
+                                                onToggleLocalFolder(folder.id)
+                                            },
+                                            colors = CheckboxDefaults.colors(
+                                                checkedColor = MaterialTheme.colorScheme.tertiary
+                                            ),
+                                            modifier = Modifier.testTag("settings_toggle_local_folder_${folder.id.hashCode()}")
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+        }
 
         // Multi-Select Library Filter (if server has music folders) - Foldable & Initially Closed
         if (serverState.musicFolders.isNotEmpty()) {

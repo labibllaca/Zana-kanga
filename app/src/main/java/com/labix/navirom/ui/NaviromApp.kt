@@ -144,7 +144,6 @@ fun NaviromApp(
     val localTracks by viewModel.localTracks.collectAsStateWithLifecycle()
     val localFolders by viewModel.localFolders.collectAsStateWithLifecycle()
     val allDiscoveredLocalFolders by viewModel.allDiscoveredLocalFolders.collectAsStateWithLifecycle()
-    val settingsEnabledLocalFolderIds by viewModel.settingsEnabledLocalFolderIds.collectAsStateWithLifecycle()
     val disabledLocalFolderIds by viewModel.disabledLocalFolderIds.collectAsStateWithLifecycle()
     val isScanningLocalAudio by viewModel.isScanningLocalAudio.collectAsStateWithLifecycle()
     val currentMusicFolderPath by viewModel.currentMusicFolderPath.collectAsStateWithLifecycle()
@@ -158,6 +157,7 @@ fun NaviromApp(
     val isFullPlayerVisible by viewModel.isFullPlayerVisible.collectAsStateWithLifecycle()
     val isQueueSheetVisible by viewModel.isQueueSheetVisible.collectAsStateWithLifecycle()
     val sleepTimerOptions by viewModel.sleepTimerOptions.collectAsStateWithLifecycle()
+    val isNightSleepTimerEnabled by viewModel.isNightSleepTimerEnabled.collectAsStateWithLifecycle()
     val isDualAudioEnabled by viewModel.isDualAudioEnabled.collectAsStateWithLifecycle()
     val secondaryPlaybackState by viewModel.secondaryPlaybackState.collectAsStateWithLifecycle()
     val isDeckSyncEnabled by viewModel.isDeckSyncEnabled.collectAsStateWithLifecycle()
@@ -299,7 +299,8 @@ fun NaviromApp(
                                         lyricsData = currentLyrics,
                                         appLanguage = appLanguage,
                                         isVinylEffectEnabled = isVinylEffectEnabled,
-                                        sleepTimerOptions = sleepTimerOptions,
+                                         sleepTimerOptions = sleepTimerOptions,
+                                         isNightSleepTimerEnabled = isNightSleepTimerEnabled,
                                         isDualAudioEnabled = isDualAudioEnabled,
                                         secondaryPlaybackState = secondaryPlaybackState,
                                         isDeckSyncEnabled = isDeckSyncEnabled,
@@ -338,7 +339,8 @@ fun NaviromApp(
                                         onDownloadTrack = { playbackState.currentTrack?.let { viewModel.downloadTrack(it) } },
                                         onOpenQueue = { viewModel.setQueueSheetVisible(true) },
                                         onSetSpeed = { viewModel.setPlaybackSpeed(it) },
-                                        onSetSleepTimer = { minutes, options -> viewModel.setSleepTimer(minutes, options) },
+                                         onSetSleepTimer = { minutes, options -> viewModel.setSleepTimer(minutes, options) },
+                                         onNightSleepTimerEnabledChange = { viewModel.setNightSleepTimerEnabled(it) },
                                         onUpdateSleepTimerOptions = { viewModel.updateSleepTimerOptions(it) },
                                         onRefetchLyrics = { viewModel.refetchCurrentLyrics() },
                                         onFetchTeksteShqipLyrics = { url ->
@@ -634,7 +636,6 @@ fun TabContent(
     val localFolders by viewModel.localFolders.collectAsStateWithLifecycle()
     val disabledLocalFolderIds by viewModel.disabledLocalFolderIds.collectAsStateWithLifecycle()
     val allDiscoveredLocalFolders by viewModel.allDiscoveredLocalFolders.collectAsStateWithLifecycle()
-    val settingsEnabledLocalFolderIds by viewModel.settingsEnabledLocalFolderIds.collectAsStateWithLifecycle()
     val isScanningLocalAudio by viewModel.isScanningLocalAudio.collectAsStateWithLifecycle()
     val currentMusicFolderPath by viewModel.currentMusicFolderPath.collectAsStateWithLifecycle()
 
@@ -821,11 +822,8 @@ fun TabContent(
                         onSelectAllMusicFolders = { viewModel.selectAllMusicFolders() },
                         onDeselectAllMusicFolders = { viewModel.deselectAllMusicFolders() },
                         allDiscoveredLocalFolders = allDiscoveredLocalFolders,
-                        settingsEnabledLocalFolderIds = settingsEnabledLocalFolderIds,
-                        onToggleSettingsLocalFolder = { viewModel.toggleSettingsLocalFolder(it) },
-                        onSetSettingsLocalFolderEnabled = { id, enabled -> viewModel.setSettingsLocalFolderEnabled(id, enabled) },
-                        onSelectAllSettingsLocalFolders = { viewModel.selectAllSettingsLocalFolders() },
-                        onDeselectAllSettingsLocalFolders = { viewModel.deselectAllSettingsLocalFolders() },
+                        disabledLocalFolderIds = disabledLocalFolderIds,
+                        onToggleLocalFolder = { viewModel.toggleLocalFolder(it) },
                         isScanningLocalAudio = isScanningLocalAudio,
                         onScanLocalAudio = { viewModel.scanLocalAudio() },
                         focusUsernameTrigger = focusUsernameTrigger,
