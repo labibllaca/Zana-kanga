@@ -31,6 +31,8 @@ import com.labix.navirom.data.stats.DayStat
 import com.labix.navirom.data.stats.ListeningStatsSummary
 import com.labix.navirom.ui.AppLanguage
 import com.labix.navirom.ui.NaviromStrings
+import com.labix.navirom.ui.layout.responsiveStatsMaxWidth
+import com.labix.navirom.ui.layout.windowWidthClass
 import com.labix.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,13 +91,16 @@ fun ListeningStatsScreen(
         },
         modifier = modifier.testTag("listening_stats_screen")
     ) { paddingValues ->
-        Column(
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+          val widthClass = windowWidthClass(maxWidth)
+          Column(
             modifier = Modifier
+                .widthIn(max = responsiveStatsMaxWidth(widthClass))
                 .fillMaxSize()
-                .padding(paddingValues)
+                .align(Alignment.TopCenter)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
-        ) {
+          ) {
             if (stats.totalListeningSeconds == 0L && stats.totalTracksPlayed == 0) {
                 // Empty state
                 Card(
@@ -601,6 +606,7 @@ fun ListeningStatsScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
             }
+          }
         }
     }
 

@@ -60,6 +60,9 @@ import com.labix.navirom.ui.components.AppUpdateDialog
 import com.labix.navirom.update.AppUpdateInfo
 import com.labix.navirom.update.UpdateState
 import com.labix.navirom.ui.util.rememberNaviromHaptics
+import com.labix.navirom.ui.layout.WindowWidthClass
+import com.labix.navirom.ui.layout.windowWidthClass
+import com.labix.navirom.ui.layout.responsiveSettingsMaxWidth
 import com.labix.BuildConfig
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -103,7 +106,7 @@ fun ServerSettingsScreen(
     onScanLocalAudio: () -> Unit = {},
     focusUsernameTrigger: Long = 0L,
     updateState: UpdateState = UpdateState.Idle,
-    autoCheckUpdates: Boolean = true,
+    autoCheckUpdates: Boolean = false,
     githubRepo: String = "labibllaca/Zana-player",
     lastUpdateCheckedTime: Long = 0L,
     onCheckForUpdates: () -> Unit = {},
@@ -111,6 +114,7 @@ fun ServerSettingsScreen(
     onSetAutoCheckUpdates: (Boolean) -> Unit = {},
     onSetGithubRepo: (String) -> Unit = {},
     onDismissUpdate: () -> Unit = {},
+    widthClass: WindowWidthClass = WindowWidthClass.COMPACT,
     modifier: Modifier = Modifier
 ) {
     val haptics = rememberNaviromHaptics()
@@ -143,13 +147,16 @@ fun ServerSettingsScreen(
 
     fun str(key: String): String = NaviromStrings.get(key, appLanguage)
 
-    Column(
-        modifier = modifier
+    BoxWithConstraints(modifier = modifier.fillMaxSize().testTag("server_settings_screen")) {
+      val effectiveWidthClass = if (widthClass == WindowWidthClass.COMPACT) windowWidthClass(maxWidth) else widthClass
+      Column(
+        modifier = Modifier
+            .widthIn(max = responsiveSettingsMaxWidth(effectiveWidthClass))
             .fillMaxSize()
+            .align(Alignment.TopCenter)
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
-            .testTag("server_settings_screen")
-    ) {
+      ) {
         Text(
             text = str("settings_title"),
             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
@@ -2017,5 +2024,6 @@ fun ServerSettingsScreen(
                 onDismiss = { showSecureSettingsAssistant = false }
             )
         }
+      }
     }
 }

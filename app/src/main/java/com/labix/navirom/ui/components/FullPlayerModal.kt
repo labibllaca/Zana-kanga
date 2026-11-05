@@ -110,6 +110,7 @@ import com.labix.navirom.data.model.SleepTimerOptions
 import com.labix.navirom.ui.AppLanguage
 import com.labix.navirom.ui.NaviromStrings
 import com.labix.navirom.ui.util.rememberNaviromHaptics
+import com.labix.navirom.ui.layout.usesWidePlayerLayout
 import com.labix.ui.theme.*
 
 enum class PlayerViewMode {
@@ -178,7 +179,39 @@ fun FullPlayerModal(
     onTrackSelect: (NaviromTrack, List<NaviromTrack>) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    val track = playbackState.currentTrack ?: return
+    val track = playbackState.currentTrack
+    if (track == null) {
+        BoxWithConstraints(
+            modifier = modifier
+                .fillMaxSize()
+                .background(if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color.Black else Color.White)
+                .testTag("full_player_modal")
+        ) {
+            Column(
+                modifier = Modifier.align(Alignment.Center).padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.MusicNote,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(56.dp)
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("Nothing playing", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Choose a song from your library to start listening",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(20.dp))
+                TextButton(onClick = onDismiss) { Text("Back to library") }
+            }
+        }
+        return
+    }
     val haptics = rememberNaviromHaptics()
 
     var isDraggingSlider by remember { mutableStateOf(false) }
@@ -206,6 +239,9 @@ fun FullPlayerModal(
     }
     var disableData by remember(activeOptions.disableMobileData, sleepTimerOptions.disableMobileData) {
         mutableStateOf(activeOptions.disableMobileData || sleepTimerOptions.disableMobileData)
+    }
+    var disableGps by remember(activeOptions.disableGps, sleepTimerOptions.disableGps) {
+        mutableStateOf(activeOptions.disableGps || sleepTimerOptions.disableGps)
     }
 
     val context = LocalContext.current
@@ -356,12 +392,14 @@ fun FullPlayerModal(
                 var totalDragX = 0f
                 var totalDragY = 0f
                 var gestureHandled = false
+                var startedInBottomControls = false
 
                 detectDragGestures(
-                    onDragStart = {
+                    onDragStart = { offset ->
                         totalDragX = 0f
                         totalDragY = 0f
                         gestureHandled = false
+                        startedInBottomControls = offset.y >= size.height - 112.dp.toPx()
                     },
                     onDragEnd = {
                         totalDragX = 0f
@@ -374,7 +412,7 @@ fun FullPlayerModal(
                         gestureHandled = false
                     },
                     onDrag = { change, dragAmount ->
-                        if (!gestureHandled) {
+                        if (!gestureHandled && !startedInBottomControls) {
                             totalDragX += dragAmount.x
                             totalDragY += dragAmount.y
                             val threshold = 55f
@@ -410,7 +448,8 @@ fun FullPlayerModal(
             val currentOptions = SleepTimerOptions(
                 disableBluetooth = disableBt,
                 disableWifi = disableWifi,
-                disableMobileData = disableData
+                disableMobileData = disableData,
+                disableGps = disableGps
             )
 
             CoverQuickActionsSheet(
@@ -439,7 +478,8 @@ fun FullPlayerModal(
             val currentOptions = SleepTimerOptions(
                 disableBluetooth = disableBt,
                 disableWifi = disableWifi,
-                disableMobileData = disableData
+                disableMobileData = disableData,
+                disableGps = disableGps
             )
 
             AlertDialog(
@@ -558,7 +598,8 @@ fun FullPlayerModal(
                                         val opt = currentOptions.copy(
                                             disableBluetooth = disableBt,
                                             disableWifi = disableWifi,
-                                            disableMobileData = disableData
+                                            disableMobileData = disableData,
+                                            disableGps = disableGps
                                         )
                                         onUpdateSleepTimerOptions?.invoke(opt)
                                         onSetSleepTimer(mins, opt)
@@ -613,7 +654,8 @@ fun FullPlayerModal(
                                         val opt = currentOptions.copy(
                                             disableBluetooth = disableBt,
                                             disableWifi = disableWifi,
-                                            disableMobileData = disableData
+                                            disableMobileData = disableData,
+                                            disableGps = disableGps
                                         )
                                         onUpdateSleepTimerOptions?.invoke(opt)
                                         onSetSleepTimer(mins, opt)
@@ -814,6 +856,62 @@ fun FullPlayerModal(
                                         disableData = it
                                         val opt = currentOptions.copy(disableMobileData = it)
                                         onUpdateSleepTimerOptions?.invoke(opt)
+                                    }
+                                )
+                            }
+                        }
+
+                        // GPS Toggle Card
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        haptics.toggle()
+                                        val newGps = !disableGps
+                                        disableGps = newGps
+                                        onUpdateSleepTimerOptions?.invoke(currentOptions.copy(disableGps = newGps))
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (disableGps) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Filled.LocationOn,
+                                            contentDescription = null,
+                                            tint = if (disableGps) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = NaviromStrings.get("sleep_timer_disable_gps", appLanguage),
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = NaviromStrings.get("sleep_timer_disable_gps_desc", appLanguage),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = disableGps,
+                                    onCheckedChange = {
+                                        haptics.toggle()
+                                        disableGps = it
+                                        onUpdateSleepTimerOptions?.invoke(currentOptions.copy(disableGps = it))
                                     }
                                 )
                             }
@@ -1659,7 +1757,10 @@ fun FullPlayerModal(
             )
         }
 
-        val maxArtworkSize = (maxHeight * 0.38f).coerceIn(140.dp, 360.dp)
+        val widePlayerLayout = usesWidePlayerLayout(maxWidth, maxHeight)
+        val isShortWideWindow = widePlayerLayout && maxHeight <= 600.dp
+        val maxArtworkSize = (maxHeight * if (widePlayerLayout) 0.42f else 0.38f)
+            .coerceIn(if (widePlayerLayout) 120.dp else 140.dp, if (widePlayerLayout) 420.dp else 360.dp)
 
         // 3 major colors of current playing track rendered as 70% blurred background mesh
         if (primaryCoverColor != null && secondaryCoverColor != null && tertiaryCoverColor != null) {
@@ -1711,8 +1812,8 @@ fun FullPlayerModal(
 
         Box(
             modifier = Modifier
+                .widthIn(max = if (widePlayerLayout) 920.dp else 680.dp)
                 .fillMaxSize()
-                .widthIn(max = 680.dp)
                 .align(Alignment.Center)
         ) {
             if (viewMode == PlayerViewMode.ARTWORK) {
@@ -1720,7 +1821,13 @@ fun FullPlayerModal(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 24.dp, vertical = 8.dp)
-                        .padding(bottom = 96.dp)
+                        .then(
+                            if (isShortWideWindow) {
+                                Modifier.verticalScroll(rememberScrollState())
+                            } else {
+                                Modifier
+                            }
+                        )
                         .statusBarsPadding(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -2523,6 +2630,7 @@ fun FullPlayerModal(
                                     onStopTrack = { onStopSecondaryTrack?.invoke() }
                                 )
                             } else if (lyricPreviewPair.first.isNotBlank()) {
+                                Spacer(modifier = Modifier.weight(1f))
                                 Spacer(modifier = Modifier.height(14.dp))
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),
@@ -3285,10 +3393,18 @@ private fun FullPlayerLyricsView(
                     .then(noLyricsDragModifier)
             ) {
                 if (lyricsData.isLoading) {
-                    CircularProgressIndicator(
+                    Column(
                         modifier = Modifier.align(Alignment.Center),
-                        color = Color.White
-                    )
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(color = textOnCard)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = NaviromStrings.get("lyrics_loading", appLanguage),
+                            color = textOnCard,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 } else if (lyricsData.error != null || (lyricsData.plainLyrics.isEmpty() && lyricsData.syncedLines.isEmpty())) {
                     Column(
                         modifier = Modifier
@@ -3304,10 +3420,17 @@ private fun FullPlayerLyricsView(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Lyrics not available",
-                            color = Color.LightGray,
+                            text = NaviromStrings.get("lyrics_not_found", appLanguage),
+                            color = textOnCard,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = NaviromStrings.get("lyrics_not_found_desc", appLanguage),
+                            color = textMutedOnCard,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(
@@ -3319,9 +3442,9 @@ private fun FullPlayerLyricsView(
                                 onClick = onRefetchLyrics,
                                 shape = CircleShape,
                                 contentPadding = PaddingValues(0.dp),
-                                modifier = Modifier.size(42.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.Gray.copy(alpha = 0.5f))
+                                modifier = Modifier.requiredSize(42.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = textOnCard),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, textMutedOnCard.copy(alpha = 0.5f))
                             ) {
                                 Icon(Icons.Filled.Refresh, contentDescription = "Retry", modifier = Modifier.size(20.dp))
                             }
@@ -3339,9 +3462,9 @@ private fun FullPlayerLyricsView(
                                 },
                                 shape = CircleShape,
                                 contentPadding = PaddingValues(0.dp),
-                                modifier = Modifier.size(42.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFFD54F)),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFD54F).copy(alpha = 0.6f))
+                                modifier = Modifier.requiredSize(42.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isDark) Color(0xFFFFD54F) else Color(0xFF8A6500)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, (if (isDark) Color(0xFFFFD54F) else Color(0xFF8A6500)).copy(alpha = 0.6f))
                             ) {
                                 Icon(Icons.Filled.Language, contentDescription = "TeksteShqip", modifier = Modifier.size(20.dp))
                             }
@@ -3443,16 +3566,16 @@ private fun FullPlayerLyricsView(
 
                                     val textColor by animateColorAsState(
                                         targetValue = when {
-                                            isActive -> Color.White
-                                            isPast -> Color.White.copy(alpha = 0.55f)
-                                            else -> Color.White.copy(alpha = 0.35f)
+                                            isActive -> textOnCard
+                                            isPast -> textMutedOnCard
+                                            else -> textMutedOnCard.copy(alpha = 0.65f)
                                         },
                                         animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
                                         label = "modal_lyric_color"
                                     )
 
                                     val bgColor by animateColorAsState(
-                                        targetValue = if (isActive) Color.White.copy(alpha = 0.16f) else Color.Transparent,
+                                        targetValue = if (isActive) textOnCard.copy(alpha = 0.08f) else Color.Transparent,
                                         animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
                                         label = "modal_lyric_bg"
                                     )
@@ -3516,7 +3639,7 @@ private fun FullPlayerLyricsView(
                         Box(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 48.dp).verticalScroll(plainScrollState)) {
                             Text(
                                 text = lyricsData.plainLyrics,
-                                color = Color.White,
+                                color = textOnCard,
                                 fontSize = 18.sp,
                                 lineHeight = 28.sp
                             )
@@ -3535,14 +3658,14 @@ private fun FullPlayerLyricsView(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = Color.White,
+                    color = textOnCard,
                     modifier = Modifier.size(48.dp).clickable { onTogglePlayPause() }
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = if (playbackState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                             contentDescription = "Play/Pause",
-                            tint = Color.Black
+                            tint = if (isDark) Color.Black else Color.White
                         )
                     }
                 }
@@ -3559,9 +3682,9 @@ private fun FullPlayerLyricsView(
                     },
                     valueRange = 0f..(totalDurationMs.toFloat().takeIf { it > 0f } ?: 100f),
                     colors = SliderDefaults.colors(
-                        thumbColor = Color.White,
-                        activeTrackColor = Color.White,
-                        inactiveTrackColor = Color.Gray
+                        thumbColor = textOnCard,
+                        activeTrackColor = textOnCard,
+                        inactiveTrackColor = textMutedOnCard
                     ),
                     modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
                 )

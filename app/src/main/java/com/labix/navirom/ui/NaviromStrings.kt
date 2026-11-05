@@ -429,6 +429,8 @@ object NaviromStrings {
         "sleep_timer_disable_wifi_desc" to "Disconnects from Wi-Fi networks",
         "sleep_timer_disable_mobile_data" to "Turn off Mobile Data",
         "sleep_timer_disable_mobile_data_desc" to "Disconnects cellular data connection",
+        "sleep_timer_disable_gps" to "Turn off GPS",
+        "sleep_timer_disable_gps_desc" to "Turns off device location services",
         "sleep_timer_active_badge" to "Timer Active",
         "permission_bluetooth_needed" to "Bluetooth permission is required to turn off Bluetooth devices",
 
@@ -900,6 +902,8 @@ object NaviromStrings {
         "sleep_timer_disable_wifi_desc" to "Shkëput lidhjen me rrjetin Wi-Fi",
         "sleep_timer_disable_mobile_data" to "Fik të dhënat celulare",
         "sleep_timer_disable_mobile_data_desc" to "Shkëput internetin e telefonit",
+        "sleep_timer_disable_gps" to "Fik GPS-in",
+        "sleep_timer_disable_gps_desc" to "Fik shërbimet e vendndodhjes së pajisjes",
         "sleep_timer_active_badge" to "Kohëmatësi aktiv",
         "permission_bluetooth_needed" to "Kërkohet leja e Bluetooth për të shkëputur pajisjet Bluetooth",
 
@@ -1372,6 +1376,8 @@ object NaviromStrings {
         "sleep_timer_disable_wifi_desc" to "Trennt die Verbindung zum WLAN-Netzwerk",
         "sleep_timer_disable_mobile_data" to "Mobiles Internet ausschalten",
         "sleep_timer_disable_mobile_data_desc" to "Trennt die mobile Datenverbindung",
+        "sleep_timer_disable_gps" to "GPS ausschalten",
+        "sleep_timer_disable_gps_desc" to "Schaltet die Standortdienste des Geräts aus",
         "sleep_timer_active_badge" to "Timer aktiv",
         "permission_bluetooth_needed" to "Bluetooth-Berechtigung ist erforderlich, um Bluetooth-Geräte auszuschalten",
 

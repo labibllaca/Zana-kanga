@@ -46,6 +46,9 @@ import com.labix.navirom.ui.screens.*
 import com.labix.navirom.ui.util.RememberShakeDetector
 import com.labix.navirom.ui.SongSortOrder
 import com.labix.ui.theme.AccentEmerald
+import com.labix.navirom.ui.layout.WindowWidthClass
+import com.labix.navirom.ui.layout.windowWidthClass
+import com.labix.navirom.ui.layout.ResponsiveContentFrame
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -282,11 +285,30 @@ fun NaviromApp(
                 containerColor = MaterialTheme.colorScheme.background
             ) { paddingValues ->
                 val topPadding = if (pagerState.currentPage == 0) 0.dp else paddingValues.calculateTopPadding()
-                Box(modifier = Modifier.fillMaxSize().padding(top = topPadding).background(MaterialTheme.colorScheme.background)) {
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier.fillMaxSize()
-                    ) { page ->
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = topPadding)
+                        .background(MaterialTheme.colorScheme.background)
+                ) {
+                    val widthClass = windowWidthClass(maxWidth)
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        if (widthClass == WindowWidthClass.EXPANDED && pagerState.currentPage != 0) {
+                            ResponsivePrimaryNavigation(
+                                selectedTab = currentTab,
+                                onTabSelected = viewModel::setTab,
+                                appLanguage = appLanguage,
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .navigationBarsPadding()
+                            )
+                        }
+
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                            HorizontalPager(
+                                state = pagerState,
+                                modifier = Modifier.fillMaxSize()
+                            ) { page ->
                         when (page) {
                             0 -> {
                                     FullPlayerModal(
@@ -362,6 +384,7 @@ fun NaviromApp(
                                 TabContent(
                                     viewModel = viewModel,
                                     currentTab = if (currentTab == NaviromTab.SETTINGS) NaviromTab.LIBRARY else currentTab,
+                                    widthClass = widthClass,
                                     onOpenSidebar = { scope.launch { drawerState.open() } },
                                 )
                             }
@@ -369,15 +392,15 @@ fun NaviromApp(
                                 TabContent(
                                     viewModel = viewModel,
                                     currentTab = NaviromTab.SETTINGS,
+                                    widthClass = widthClass,
                                     onOpenSidebar = { scope.launch { drawerState.open() } },
                                 )
                             }
                         }
-                    }
+                            }
 
-
-                    // Persistent MiniPlayerBar shown when not on player view (page > 0)
-                    if (playbackState.currentTrack != null && pagerState.currentPage > 0) {
+                            // Persistent MiniPlayerBar shown when not on player view (page > 0)
+                            if (playbackState.currentTrack != null && pagerState.currentPage > 0) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -397,6 +420,8 @@ fun NaviromApp(
                                 onPrevious = { viewModel.previous() }
                             )
                         }
+                            }
+                        }
                     }
                 }
             }
@@ -409,7 +434,7 @@ fun NaviromApp(
                 queue = queue,
                 currentIndex = queueIndex,
                 unplayableTrackIds = playbackState.unplayableTrackIds,
-                onSelectIndex = { viewModel.playAll(queue, it) },
+                onSelectIndex = { viewModel.playQueueIndex(it) },
                 onRemoveIndex = { viewModel.removeFromQueue(it) },
                 onClearQueue = { viewModel.clearQueue() },
                 onDismiss = { viewModel.setQueueSheetVisible(false) }
@@ -573,6 +598,7 @@ fun TabContent(
     viewModel: NaviromViewModel,
     currentTab: NaviromTab,
     onOpenSidebar: () -> Unit = {},
+    widthClass: WindowWidthClass = WindowWidthClass.COMPACT,
 ) {
     val appLanguage by viewModel.appLanguage.collectAsStateWithLifecycle()
     val appThemeMode by viewModel.appThemeMode.collectAsStateWithLifecycle()
@@ -652,6 +678,7 @@ fun TabContent(
         },
         label = "MainTabTransition"
     ) { activeTab ->
+        ResponsiveContentFrame(widthClass) {
         when (activeTab) {
             NaviromTab.LIBRARY -> {
                     LibraryScreen(
@@ -835,9 +862,11 @@ fun TabContent(
                         onDownloadAndInstallUpdate = { viewModel.downloadAndInstallUpdate(it) },
                         onSetAutoCheckUpdates = { viewModel.setAutoCheckUpdates(it) },
                         onSetGithubRepo = { viewModel.setUpdateGithubRepo(it) },
-                        onDismissUpdate = { viewModel.dismissAppUpdate() }
+                        onDismissUpdate = { viewModel.dismissAppUpdate() },
+                        widthClass = widthClass
                     )
             }
+        }
         }
     }
 }

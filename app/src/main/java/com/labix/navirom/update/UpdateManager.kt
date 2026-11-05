@@ -74,7 +74,7 @@ class UpdateManager(private val context: Context) {
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
-    private val _autoCheckEnabled = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CHECK, true))
+    private val _autoCheckEnabled = MutableStateFlow(prefs.getBoolean(KEY_AUTO_CHECK, false))
     val autoCheckEnabled: StateFlow<Boolean> = _autoCheckEnabled.asStateFlow()
 
     private val _githubRepo = MutableStateFlow(sanitizeGithubRepo(prefs.getString(KEY_GITHUB_REPO, DEFAULT_REPO) ?: DEFAULT_REPO))

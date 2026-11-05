@@ -1234,6 +1234,14 @@ class AudioPlayerController(
         playTrackList(queueContext, index)
     }
 
+    fun playQueueIndex(index: Int): NaviromTrack? {
+        val currentQueue = _queue.value
+        val track = queueTrackAt(currentQueue, index) ?: return null
+        _currentIndex.value = index
+        playCurrentTrack()
+        return track
+    }
+
     private fun playCurrentTrack(isCrossfading: Boolean = false) {
         hasCheckedQueueForCurrentTrack = false
         val currentQueue = _queue.value
@@ -1824,11 +1832,16 @@ class AudioPlayerController(
                     )
                 }
             }
-            pause()
-            _playbackState.update { it.copy(sleepTimerMinutesLeft = null, sleepTimerSecondsLeft = null) }
-
-            // Execute requested connection shutoffs (Bluetooth, Wi-Fi, Mobile Data)
-            deviceConnectionManager.executeSleepTimerActions(currentSleepTimerOptions)
+            SleepTimerCompletion.run(
+                options = currentSleepTimerOptions,
+                pausePlayback = ::pause,
+                clearTimer = {
+                    _playbackState.update {
+                        it.copy(sleepTimerMinutesLeft = null, sleepTimerSecondsLeft = null)
+                    }
+                },
+                executeActions = deviceConnectionManager::executeSleepTimerActions
+            )
         }
     }
 
@@ -1839,7 +1852,6 @@ class AudioPlayerController(
     private fun startNightSleepTimer() {
         sleepTimerJob?.cancel()
         isNightSleepTimer = true
-        currentSleepTimerOptions = SleepTimerOptions()
         _playbackState.update {
             it.copy(
                 sleepTimerMinutesLeft = 30,
@@ -1861,12 +1873,17 @@ class AudioPlayerController(
                             )
                         }
                     },
-                    onFinished = {
-                        pause()
+                    onFinished = {}
+                )
+                SleepTimerCompletion.run(
+                    options = currentSleepTimerOptions,
+                    pausePlayback = ::pause,
+                    clearTimer = {
                         _playbackState.update {
                             it.copy(sleepTimerMinutesLeft = null, sleepTimerSecondsLeft = null)
                         }
-                    }
+                    },
+                    executeActions = deviceConnectionManager::executeSleepTimerActions
                 )
             } finally {
                 if (sleepTimerJob === coroutineContext[Job]) {

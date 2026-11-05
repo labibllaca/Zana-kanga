@@ -137,13 +137,7 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
     )
     val appThemeMode: StateFlow<AppThemeMode> = _appThemeMode.asStateFlow()
 
-    private val _sleepTimerOptions = MutableStateFlow(
-        SleepTimerOptions(
-            disableBluetooth = prefs.getBoolean("sleep_timer_disable_bt", false),
-            disableWifi = prefs.getBoolean("sleep_timer_disable_wifi", false),
-            disableMobileData = prefs.getBoolean("sleep_timer_disable_mobile_data", false)
-        )
-    )
+    private val _sleepTimerOptions = MutableStateFlow(SleepTimerOptionsPreferences.load(prefs))
     val sleepTimerOptions: StateFlow<SleepTimerOptions> = _sleepTimerOptions.asStateFlow()
 
     private val _isNightSleepTimerEnabled = MutableStateFlow(
@@ -2421,6 +2415,10 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
         tracks.getOrNull(startIndex)?.let { recordTrackToHistory(it) }
     }
 
+    fun playQueueIndex(index: Int) {
+        playerController.playQueueIndex(index)?.let { recordTrackToHistory(it) }
+    }
+
     fun shuffleAll(tracks: List<NaviromTrack>) {
         val shuffled = tracks.shuffled()
         playerController.setShuffleMode(enabled = true, isSmart = false)
@@ -2487,11 +2485,7 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
     fun updateSleepTimerOptions(options: SleepTimerOptions) {
         _sleepTimerOptions.value = options
         playerController.updateSleepTimerOptions(options)
-        prefs.edit()
-            .putBoolean("sleep_timer_disable_bt", options.disableBluetooth)
-            .putBoolean("sleep_timer_disable_wifi", options.disableWifi)
-            .putBoolean("sleep_timer_disable_mobile_data", options.disableMobileData)
-            .apply()
+        SleepTimerOptionsPreferences.save(prefs, options)
     }
 
     fun playNext(track: NaviromTrack) {
