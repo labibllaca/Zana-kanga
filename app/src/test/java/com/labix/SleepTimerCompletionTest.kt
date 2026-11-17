@@ -31,4 +31,19 @@ class SleepTimerCompletionTest {
         assertEquals(listOf("pause", "clear", "actions"), events)
         assertEquals(selectedOptions, executedOptions)
     }
+
+    @Test
+    fun writesTheWakeAlarmSnapshotBeforePausing() = runTest {
+        val events = mutableListOf<String>()
+
+        SleepTimerCompletion.run(
+            options = SleepTimerOptions(),
+            pausePlayback = { events += "pause" },
+            clearTimer = { events += "clear" },
+            executeActions = { events += "actions" },
+            onExpirySnapshot = { events += "snapshot" }
+        )
+
+        assertEquals(listOf("snapshot", "pause", "clear", "actions"), events)
+    }
 }

@@ -469,6 +469,34 @@ class AudioPlayerController(
 
     private var tickerJob: Job? = null
     private var sleepTimerJob: Job? = null
+    private var wakeAlarmActive = false
+
+    private val wakeAlarmPreferences: WakeAlarmPreferences by lazy {
+        WakeAlarmPreferences(
+            context.applicationContext.getSharedPreferences(
+                WakeAlarmPreferences.PREFERENCES_NAME,
+                Context.MODE_PRIVATE
+            )
+        )
+    }
+
+    /** While the wake alarm runs, sleep-timer expiries must not pause or re-snapshot it. */
+    fun setWakeAlarmActive(active: Boolean) {
+        wakeAlarmActive = active
+    }
+
+    private fun saveWakeAlarmSnapshot() {
+        if (wakeAlarmActive) return
+        val state = _playbackState.value
+        val track = state.currentTrack ?: return
+        wakeAlarmPreferences.saveSnapshot(
+            WakeAlarmSnapshot(
+                track = track,
+                queue = _queue.value,
+                positionMs = state.currentPositionMs
+            )
+        )
+    }
     private var currentSleepTimerOptions = SleepTimerOptions()
     private val deviceConnectionManager = DeviceConnectionManager(context)
     private var isPreparingNextForCrossfade = false
@@ -1805,6 +1833,7 @@ class AudioPlayerController(
     }
 
     fun setSleepTimer(minutes: Int?, options: SleepTimerOptions = currentSleepTimerOptions) {
+        if (wakeAlarmActive) return
         sleepTimerJob?.cancel()
         isNightSleepTimer = false
         currentSleepTimerOptions = options
@@ -1840,7 +1869,8 @@ class AudioPlayerController(
                         it.copy(sleepTimerMinutesLeft = null, sleepTimerSecondsLeft = null)
                     }
                 },
-                executeActions = deviceConnectionManager::executeSleepTimerActions
+                executeActions = deviceConnectionManager::executeSleepTimerActions,
+                onExpirySnapshot = ::saveWakeAlarmSnapshot
             )
         }
     }
@@ -1850,6 +1880,7 @@ class AudioPlayerController(
     }
 
     private fun startNightSleepTimer() {
+        if (wakeAlarmActive) return
         sleepTimerJob?.cancel()
         isNightSleepTimer = true
         _playbackState.update {
@@ -1883,7 +1914,8 @@ class AudioPlayerController(
                             it.copy(sleepTimerMinutesLeft = null, sleepTimerSecondsLeft = null)
                         }
                     },
-                    executeActions = deviceConnectionManager::executeSleepTimerActions
+                    executeActions = deviceConnectionManager::executeSleepTimerActions,
+                    onExpirySnapshot = ::saveWakeAlarmSnapshot
                 )
             } finally {
                 if (sleepTimerJob === coroutineContext[Job]) {

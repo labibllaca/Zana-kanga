@@ -7,8 +7,10 @@ internal object SleepTimerCompletion {
         options: SleepTimerOptions,
         pausePlayback: () -> Unit,
         clearTimer: () -> Unit,
-        executeActions: suspend (SleepTimerOptions) -> Unit
+        executeActions: suspend (SleepTimerOptions) -> Unit,
+        onExpirySnapshot: () -> Unit = {}
     ) {
+        onExpirySnapshot()
         pausePlayback()
         clearTimer()
         executeActions(options)
