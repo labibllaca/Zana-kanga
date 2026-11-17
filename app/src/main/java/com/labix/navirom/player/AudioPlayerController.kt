@@ -72,12 +72,12 @@ class AudioPlayerController(
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 try {
-                    mediaPlayer?.setVolume(0.2f, 0.2f)
+                    mediaPlayer?.setVolume(alarmScaled(0.2f), alarmScaled(0.2f))
                 } catch (_: Exception) {}
             }
             AudioManager.AUDIOFOCUS_GAIN -> {
                 try {
-                    mediaPlayer?.setVolume(1.0f, 1.0f)
+                    mediaPlayer?.setVolume(alarmScaled(1.0f), alarmScaled(1.0f))
                 } catch (_: Exception) {}
                 if (playOnFocusGain) {
                     playOnFocusGain = false
@@ -363,23 +363,23 @@ class AudioPlayerController(
             when (mode) {
                 DualSpeakerMode.DUAL_STEREO -> {
                     // Both Bluetooth speakers output full uncompressed stereo (Lossless Mirror)
-                    try { mediaPlayer?.setVolume(p1Bal, p1Bal) } catch (_: Exception) {}
+                    try { mediaPlayer?.setVolume(alarmScaled(p1Bal), alarmScaled(p1Bal)) } catch (_: Exception) {}
                     try { secondaryMediaPlayer?.setVolume(p2MasterVol * p2Bal, p2MasterVol * p2Bal) } catch (_: Exception) {}
                 }
                 DualSpeakerMode.STEREO_PAIR_LR -> {
                     // Speaker 1 plays Left channel, Speaker 2 plays Right channel (Wireless Stereo Pair)
-                    try { mediaPlayer?.setVolume(p1Bal, 0f) } catch (_: Exception) {}
+                    try { mediaPlayer?.setVolume(alarmScaled(p1Bal), 0f) } catch (_: Exception) {}
                     try { secondaryMediaPlayer?.setVolume(0f, p2MasterVol * p2Bal) } catch (_: Exception) {}
                 }
                 DualSpeakerMode.STEREO_PAIR_RL -> {
                     // Speaker 1 plays Right channel, Speaker 2 plays Left channel
-                    try { mediaPlayer?.setVolume(0f, p1Bal) } catch (_: Exception) {}
+                    try { mediaPlayer?.setVolume(0f, alarmScaled(p1Bal)) } catch (_: Exception) {}
                     try { secondaryMediaPlayer?.setVolume(p2MasterVol * p2Bal, 0f) } catch (_: Exception) {}
                 }
             }
         } else {
             // Independent Decks: Primary full stereo, Secondary full stereo with user volume
-            try { mediaPlayer?.setVolume(1.0f, 1.0f) } catch (_: Exception) {}
+            try { mediaPlayer?.setVolume(alarmScaled(1.0f), alarmScaled(1.0f)) } catch (_: Exception) {}
             try { secondaryMediaPlayer?.setVolume(p2MasterVol, p2MasterVol) } catch (_: Exception) {}
         }
     }
@@ -470,6 +470,13 @@ class AudioPlayerController(
     private var tickerJob: Job? = null
     private var sleepTimerJob: Job? = null
     private var wakeAlarmActive = false
+    private var wakeAlarmRampJob: Job? = null
+    private var wakeAlarmVolumeScale = 1f
+    private var wakeAlarmPreviousSystemVolume: Int? = null
+    private var pendingWakeAlarmSeekMs: Long? = null
+
+    /** Every primary-player volume write passes through here so the alarm ramp survives crossfades. */
+    private fun alarmScaled(base: Float): Float = (base * wakeAlarmVolumeScale).coerceIn(0f, 1f)
 
     private val wakeAlarmPreferences: WakeAlarmPreferences by lazy {
         WakeAlarmPreferences(
@@ -496,6 +503,93 @@ class AudioPlayerController(
                 positionMs = state.currentPositionMs
             )
         )
+    }
+
+    val isWakeAlarmActive: Boolean
+        get() = wakeAlarmActive
+
+    /**
+     * Starts the wake alarm: resumes the snapshot at its stopped position (or only
+     * ramps when music is already playing) and raises the volume every 15 seconds.
+     */
+    fun startWakeAlarm(snapshot: WakeAlarmSnapshot?) {
+        wakeAlarmActive = true
+        wakeAlarmVolumeScale = WakeAlarmRamp.START_LEVEL
+        raiseSystemMediaVolume()
+        _playbackState.update { it.copy(isWakeAlarmActive = true) }
+
+        val state = _playbackState.value
+        when {
+            state.isPlaying && state.currentTrack != null -> {
+                try {
+                    mediaPlayer?.setVolume(wakeAlarmVolumeScale, wakeAlarmVolumeScale)
+                } catch (_: Exception) {}
+            }
+            snapshot != null && state.currentTrack?.id == snapshot.track.id -> {
+                seekTo(snapshot.positionMs)
+                resume()
+            }
+            snapshot != null -> {
+                pendingWakeAlarmSeekMs = snapshot.positionMs
+                playTrack(snapshot.track, snapshot.queue.ifEmpty { listOf(snapshot.track) })
+            }
+            state.currentTrack != null -> resume()
+            else -> {
+                // Nothing to resume: do not leave the listener with a silent alarm.
+                stopWakeAlarm()
+                return
+            }
+        }
+        startWakeAlarmRamp()
+    }
+
+    fun stopWakeAlarm() {
+        wakeAlarmActive = false
+        wakeAlarmRampJob?.cancel()
+        wakeAlarmRampJob = null
+        wakeAlarmVolumeScale = 1f
+        wakeAlarmPreviousSystemVolume?.let { previous ->
+            try {
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, previous, 0)
+            } catch (_: Exception) {}
+        }
+        wakeAlarmPreviousSystemVolume = null
+        wakeAlarmPreferences.disarm()
+        try {
+            mediaPlayer?.setVolume(1f, 1f)
+        } catch (_: Exception) {}
+        _playbackState.update { it.copy(isWakeAlarmActive = false) }
+        pause()
+    }
+
+    private fun startWakeAlarmRamp() {
+        wakeAlarmRampJob?.cancel()
+        wakeAlarmRampJob = scope.launch {
+            var tick = 0
+            while (isActive && wakeAlarmActive) {
+                delay(WakeAlarmRamp.TICK_MS)
+                if (!wakeAlarmActive) break
+                if (!_playbackState.value.isPlaying) continue
+                tick += 1
+                wakeAlarmVolumeScale = WakeAlarmRamp.levelForTick(tick)
+                try {
+                    mediaPlayer?.setVolume(wakeAlarmVolumeScale, wakeAlarmVolumeScale)
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun raiseSystemMediaVolume() {
+        if (wakeAlarmPreviousSystemVolume != null) return
+        try {
+            val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            wakeAlarmPreviousSystemVolume = current
+            val target = maxOf(current, Math.round(max * 0.6f))
+            if (target > current) {
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+            }
+        } catch (_: Exception) {}
     }
     private var currentSleepTimerOptions = SleepTimerOptions()
     private val deviceConnectionManager = DeviceConnectionManager(context)
@@ -1156,6 +1250,18 @@ class AudioPlayerController(
             )
         }
         applySpeed(_playbackState.value.playbackSpeed)
+
+        pendingWakeAlarmSeekMs?.let { target ->
+            pendingWakeAlarmSeekMs = null
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    mp.seekTo(target, MediaPlayer.SEEK_CLOSEST)
+                } else {
+                    mp.seekTo(target.toInt())
+                }
+                _playbackState.update { it.copy(currentPositionMs = target) }
+            } catch (_: Exception) {}
+        }
         
         val oldPlayer = fadingOutPlayer
         if (isCrossfadeEnabled && oldPlayer != null) {
@@ -1166,13 +1272,13 @@ class AudioPlayerController(
                 crossfadeJob?.cancel()
                 safelyReleasePlayer(oldPlayer)
                 fadingOutPlayer = null
-                mp.setVolume(1.0f, 1.0f)
+                mp.setVolume(alarmScaled(1.0f), alarmScaled(1.0f))
             }
         } else {
             crossfadeJob?.cancel()
             safelyReleasePlayer(fadingOutPlayer)
             fadingOutPlayer = null
-            mp.setVolume(1.0f, 1.0f)
+            mp.setVolume(alarmScaled(1.0f), alarmScaled(1.0f))
         }
 
         if (_isDeckSyncEnabled.value && isWaitingForSyncedDeckStart) {
@@ -1233,14 +1339,14 @@ class AudioPlayerController(
                     if (oldPlayer.isPlaying) oldPlayer.setVolume(outVol, outVol)
                 } catch (_: Exception) {}
                 try {
-                    if (newPlayer.isPlaying) newPlayer.setVolume(inVol, inVol)
+                    if (newPlayer.isPlaying) newPlayer.setVolume(alarmScaled(inVol), alarmScaled(inVol))
                 } catch (_: Exception) {}
                 
                 delay(interval)
             }
             // Ensure next/incoming track is guaranteed 100% full original volume
             try {
-                if (newPlayer.isPlaying) newPlayer.setVolume(1.0f, 1.0f)
+                if (newPlayer.isPlaying) newPlayer.setVolume(alarmScaled(1.0f), alarmScaled(1.0f))
             } catch (_: Exception) {}
             safelyReleasePlayer(oldPlayer)
             if (fadingOutPlayer == oldPlayer) fadingOutPlayer = null

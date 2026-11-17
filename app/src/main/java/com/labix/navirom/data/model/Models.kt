@@ -100,6 +100,7 @@ data class PlaybackState(
     val sleepTimerMinutesLeft: Int? = null,
     val sleepTimerSecondsLeft: Int? = null,
     val sleepTimerOptions: SleepTimerOptions = SleepTimerOptions(),
+    val isWakeAlarmActive: Boolean = false,
     val errorMessage: String? = null,
     val unplayableTrackIds: Set<String> = emptySet()
 ) {
