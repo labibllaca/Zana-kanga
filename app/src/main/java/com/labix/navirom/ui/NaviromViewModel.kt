@@ -2512,6 +2512,13 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
 
     fun canScheduleExactWakeAlarms(): Boolean = WakeAlarmScheduler(getApplication()).canScheduleExact()
 
+    /** Re-reads what the scheduler actually persisted (the alarm disarms itself after firing). */
+    fun refreshWakeAlarmState() {
+        _wakeAlarmEnabled.value = wakeAlarmPreferences.enabled
+        _wakeAlarmHour.value = wakeAlarmPreferences.hour
+        _wakeAlarmMinute.value = wakeAlarmPreferences.minute
+    }
+
     fun stopWakeAlarm() {
         playerController.stopWakeAlarm()
         _wakeAlarmEnabled.value = false

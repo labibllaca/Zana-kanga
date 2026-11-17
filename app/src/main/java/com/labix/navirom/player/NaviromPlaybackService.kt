@@ -699,6 +699,31 @@ class NaviromPlaybackService : MediaBrowserService() {
                 }
             }
             ACTION_WAKE_ALARM -> {
+                // Enter the foreground before playback so Android 15+ grants audio focus
+                // and the 5-second startForeground deadline is met.
+                try {
+                    val startNotification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        Notification.Builder(this, CHANNEL_ID)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        Notification.Builder(this)
+                    }
+                        .setSmallIcon(R.drawable.ic_notif_music)
+                        .setContentTitle("Navirom")
+                        .setContentText("Wake alarm")
+                        .setOngoing(true)
+                        .build()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        startForeground(
+                            NOTIFICATION_ID,
+                            startNotification,
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                        )
+                    } else {
+                        startForeground(NOTIFICATION_ID, startNotification)
+                    }
+                    isForegroundService = true
+                } catch (_: Throwable) {}
                 val preferences = WakeAlarmPreferences(
                     getSharedPreferences(WakeAlarmPreferences.PREFERENCES_NAME, Context.MODE_PRIVATE)
                 )
@@ -717,7 +742,7 @@ class NaviromPlaybackService : MediaBrowserService() {
                 }
             }
             ACTION_STOP -> {
-                player.pause()
+                if (player.isWakeAlarmActive) player.stopWakeAlarm() else player.pause()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                 } else {
@@ -729,7 +754,7 @@ class NaviromPlaybackService : MediaBrowserService() {
                 return START_NOT_STICKY
             }
             ACTION_CLOSE -> {
-                player.pause()
+                if (player.isWakeAlarmActive) player.stopWakeAlarm() else player.pause()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                 } else {
@@ -1101,6 +1126,11 @@ class NaviromPlaybackService : MediaBrowserService() {
     }
 
     override fun onDestroy() {
+        try {
+            if (getOrInitPlayerController().isWakeAlarmActive) {
+                getOrInitPlayerController().stopWakeAlarm()
+            }
+        } catch (_: Throwable) {}
         isForegroundService = false
         super.onDestroy()
         serviceScope.cancel()

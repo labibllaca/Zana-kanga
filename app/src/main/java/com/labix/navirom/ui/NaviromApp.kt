@@ -167,7 +167,19 @@ fun NaviromApp(
     val wakeAlarmEnabled by viewModel.wakeAlarmEnabled.collectAsStateWithLifecycle()
     val wakeAlarmHour by viewModel.wakeAlarmHour.collectAsStateWithLifecycle()
     val wakeAlarmMinute by viewModel.wakeAlarmMinute.collectAsStateWithLifecycle()
-    val canScheduleExactAlarms = remember { viewModel.canScheduleExactWakeAlarms() }
+    var canScheduleExactAlarms by remember { mutableStateOf(viewModel.canScheduleExactWakeAlarms()) }
+
+    val wakeAlarmLifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(wakeAlarmLifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshWakeAlarmState()
+                canScheduleExactAlarms = viewModel.canScheduleExactWakeAlarms()
+            }
+        }
+        wakeAlarmLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { wakeAlarmLifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val isDualAudioEnabled by viewModel.isDualAudioEnabled.collectAsStateWithLifecycle()
     val secondaryPlaybackState by viewModel.secondaryPlaybackState.collectAsStateWithLifecycle()
     val isDeckSyncEnabled by viewModel.isDeckSyncEnabled.collectAsStateWithLifecycle()

@@ -17,6 +17,11 @@ class WakeAlarmPreferences(private val preferences: SharedPreferences) {
         get() = preferences.getInt(KEY_MINUTE, DEFAULT_MINUTE)
         set(value) = preferences.edit().putInt(KEY_MINUTE, value).apply()
 
+    /** Epoch millis the alarm was armed for; 0 when unknown. */
+    var triggerAtMs: Long
+        get() = preferences.getLong(KEY_TRIGGER_AT, 0L)
+        set(value) = preferences.edit().putLong(KEY_TRIGGER_AT, value).apply()
+
     fun saveSnapshot(snapshot: WakeAlarmSnapshot) {
         preferences.edit()
             .putString(KEY_SNAPSHOT, WakeAlarmSnapshotCodec.encode(snapshot))
@@ -39,6 +44,7 @@ class WakeAlarmPreferences(private val preferences: SharedPreferences) {
         private const val KEY_ENABLED = "wake_alarm_enabled"
         private const val KEY_HOUR = "wake_alarm_hour"
         private const val KEY_MINUTE = "wake_alarm_minute"
+        private const val KEY_TRIGGER_AT = "wake_alarm_trigger_at"
         private const val KEY_SNAPSHOT = "wake_alarm_snapshot"
         private const val DEFAULT_HOUR = 7
         private const val DEFAULT_MINUTE = 0

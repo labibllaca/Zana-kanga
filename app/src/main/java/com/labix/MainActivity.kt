@@ -198,6 +198,13 @@ class MainActivity : ComponentActivity() {
     private fun handleShortcutIntent(intent: Intent?) {
         if (intent == null) return
         when (intent.action) {
+            com.labix.navirom.player.WakeAlarmReceiver.ACTION_START_WAKE_ALARM -> {
+                val serviceIntent = Intent(this, NaviromPlaybackService::class.java)
+                    .setAction(NaviromPlaybackService.ACTION_WAKE_ALARM)
+                try {
+                    androidx.core.content.ContextCompat.startForegroundService(this, serviceIntent)
+                } catch (_: Throwable) {}
+            }
             AppShortcutManager.ACTION_CONTINUE_LAST_PLAYED -> {
                 viewModel.continueLastPlayed()
             }

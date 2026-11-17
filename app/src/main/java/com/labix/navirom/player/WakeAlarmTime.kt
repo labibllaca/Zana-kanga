@@ -31,6 +31,13 @@ object WakeAlarmTime {
         zone: TimeZone = TimeZone.getDefault()
     ): Boolean = calendarAt(nowMs, hour, minute, zone).timeInMillis <= nowMs
 
+    /**
+     * True only once the armed instant (persisted when the alarm was scheduled) is
+     * reached. A missing stamp is never due, so a reboot cannot fire an unarmed alarm.
+     */
+    fun isTriggerDue(nowMs: Long, triggerAtMs: Long): Boolean =
+        triggerAtMs > 0L && nowMs >= triggerAtMs
+
     private fun calendarAt(nowMs: Long, hour: Int, minute: Int, zone: TimeZone): Calendar =
         Calendar.getInstance(zone).apply {
             timeInMillis = nowMs

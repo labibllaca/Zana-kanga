@@ -475,6 +475,7 @@ class AudioPlayerController(
     private var wakeAlarmPreviousSystemVolume: Int? = null
     private var pendingWakeAlarmSeekMs: Long? = null
 
+
     /** Every primary-player volume write passes through here so the alarm ramp survives crossfades. */
     private fun alarmScaled(base: Float): Float = (base * wakeAlarmVolumeScale).coerceIn(0f, 1f)
 
@@ -518,33 +519,90 @@ class AudioPlayerController(
         raiseSystemMediaVolume()
         _playbackState.update { it.copy(isWakeAlarmActive = true) }
 
+        // A sleep timer that is already counting down would pause the alarm mid-ramp.
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        _playbackState.update {
+            it.copy(sleepTimerMinutesLeft = null, sleepTimerSecondsLeft = null)
+        }
+
         val state = _playbackState.value
         when {
-            state.isPlaying && state.currentTrack != null -> {
-                try {
-                    mediaPlayer?.setVolume(wakeAlarmVolumeScale, wakeAlarmVolumeScale)
-                } catch (_: Exception) {}
-            }
+            state.isPlaying && state.currentTrack != null -> applyAlarmVolume()
             snapshot != null && state.currentTrack?.id == snapshot.track.id -> {
+                applyAlarmVolume()
                 seekTo(snapshot.positionMs)
                 resume()
             }
             snapshot != null -> {
                 pendingWakeAlarmSeekMs = snapshot.positionMs
-                playTrack(snapshot.track, snapshot.queue.ifEmpty { listOf(snapshot.track) })
+                playAlarmQueue(snapshot.track, snapshot.queue.ifEmpty { listOf(snapshot.track) })
             }
-            state.currentTrack != null -> resume()
+            state.currentTrack != null -> {
+                applyAlarmVolume()
+                resume()
+            }
             else -> {
-                // Nothing to resume: do not leave the listener with a silent alarm.
-                stopWakeAlarm()
-                return
+                // Nothing loaded yet: restore the last persisted session instead of a silent alarm.
+                continueLastPlayed()
+                scope.launch {
+                    delay(5_000)
+                    if (wakeAlarmActive && !_playbackState.value.isPlaying) {
+                        failWakeAlarm()
+                    }
+                }
             }
         }
         startWakeAlarmRamp()
     }
 
+    private fun applyAlarmVolume() {
+        try {
+            mediaPlayer?.setVolume(wakeAlarmVolumeScale, wakeAlarmVolumeScale)
+        } catch (_: Exception) {}
+    }
+
+    /** Alarm playback ignores shuffle so it always wakes the listener with the saved song. */
+    private fun playAlarmQueue(track: NaviromTrack, queue: List<NaviromTrack>) {
+        originalQueueList = queue
+        _queue.value = queue
+        persistQueueToRoom(queue)
+        _currentIndex.value = queue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+        playCurrentTrack()
+    }
+
+    private fun failWakeAlarm() {
+        if (!wakeAlarmActive) return
+        try {
+            val notificationManager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = android.app.NotificationChannel(
+                    WAKE_ALARM_FAILED_CHANNEL_ID,
+                    "Wake alarm",
+                    android.app.NotificationManager.IMPORTANCE_HIGH
+                )
+                notificationManager.createNotificationChannel(channel)
+            }
+            val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                android.app.Notification.Builder(context, WAKE_ALARM_FAILED_CHANNEL_ID)
+            } else {
+                @Suppress("DEPRECATION")
+                android.app.Notification.Builder(context)
+            }
+                .setSmallIcon(context.applicationInfo.icon)
+                .setContentTitle("Wake alarm")
+                .setContentText("The saved song could not be played")
+                .setAutoCancel(true)
+                .build()
+            notificationManager.notify(WAKE_ALARM_FAILED_NOTIFICATION_ID, notification)
+        } catch (_: Throwable) {}
+        stopWakeAlarm()
+    }
+
     fun stopWakeAlarm() {
         wakeAlarmActive = false
+        pendingWakeAlarmSeekMs = null
         wakeAlarmRampJob?.cancel()
         wakeAlarmRampJob = null
         wakeAlarmVolumeScale = 1f
@@ -662,13 +720,17 @@ class AudioPlayerController(
                 _currentIndex.value = nextIdx
                 playCurrentTrack()
             } else {
-                pause()
-                _playbackState.update {
-                    it.copy(
-                        isPlaying = false,
-                        isBuffering = false,
-                        errorMessage = "No playable tracks in queue"
-                    )
+                if (wakeAlarmActive) {
+                    failWakeAlarm()
+                } else {
+                    pause()
+                    _playbackState.update {
+                        it.copy(
+                            isPlaying = false,
+                            isBuffering = false,
+                            errorMessage = "No playable tracks in queue"
+                        )
+                    }
                 }
             }
         }
@@ -764,6 +826,9 @@ class AudioPlayerController(
     }
 
     companion object {
+        private const val WAKE_ALARM_FAILED_CHANNEL_ID = "wake_alarm_failed"
+        private const val WAKE_ALARM_FAILED_NOTIFICATION_ID = 7402
+
         @Volatile
         private var INSTANCE: AudioPlayerController? = null
 
@@ -1765,7 +1830,7 @@ class AudioPlayerController(
                 crossfadeJob?.cancel()
                 safelyReleasePlayer(fadingOutPlayer)
                 fadingOutPlayer = null
-                try { mp.setVolume(1.0f, 1.0f) } catch (_: Exception) {}
+                try { mp.setVolume(alarmScaled(1.0f), alarmScaled(1.0f)) } catch (_: Exception) {}
             }
         }
         if (_isDeckSyncEnabled.value) {

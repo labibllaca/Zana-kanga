@@ -21,7 +21,7 @@ class WakeAlarmBootReceiver : BroadcastReceiver() {
                 )
                 if (!preferences.enabled) return
 
-                if (WakeAlarmTime.isDue(System.currentTimeMillis(), preferences.hour, preferences.minute)) {
+                if (WakeAlarmTime.isTriggerDue(System.currentTimeMillis(), preferences.triggerAtMs)) {
                     WakeAlarmReceiver.startAlarmPlayback(context)
                 } else {
                     WakeAlarmScheduler(context).rearmIfPending()

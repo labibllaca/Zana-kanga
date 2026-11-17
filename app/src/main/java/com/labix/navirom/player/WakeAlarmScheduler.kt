@@ -56,6 +56,7 @@ class WakeAlarmScheduler(context: Context) {
 
     private fun arm(hour: Int, minute: Int) {
         val triggerAt = WakeAlarmTime.nextTriggerAt(System.currentTimeMillis(), hour, minute)
+        preferences.triggerAtMs = triggerAt
         val operation = fireIntent
         if (canScheduleExact()) {
             alarmManager.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, showIntent()), operation)
