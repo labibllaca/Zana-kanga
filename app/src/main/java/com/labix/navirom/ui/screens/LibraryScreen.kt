@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -58,7 +59,42 @@ import com.labix.navirom.ui.util.rememberNaviromHaptics
 import com.labix.ui.theme.*
 
 import com.labix.navirom.ui.components.ArtistDetailView
+import com.labix.navirom.ui.components.CloudServerOnly
 import com.labix.ui.theme.PoppinsFamily
+
+/** Which titles the library shows: everything, local files only, or server files only. */
+enum class LibrarySourceFilter {
+    ALL,
+    LOCAL,
+    SERVER;
+
+    fun next(): LibrarySourceFilter = when (this) {
+        ALL -> LOCAL
+        LOCAL -> SERVER
+        SERVER -> ALL
+    }
+
+    /** [isLocal] is true when the title also exists in the scanned local files. */
+    fun matches(isLocal: Boolean): Boolean = when (this) {
+        ALL -> true
+        LOCAL -> isLocal
+        SERVER -> !isLocal
+    }
+
+    val labelKey: String
+        get() = when (this) {
+            ALL -> "all_titles_online_local"
+            LOCAL -> "local_only_titles"
+            SERVER -> "server_only_titles"
+        }
+
+    val icon: ImageVector
+        get() = when (this) {
+            ALL -> Icons.Filled.Cloud
+            LOCAL -> Icons.Filled.CloudOff
+            SERVER -> CloudServerOnly
+        }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -159,7 +195,7 @@ fun LibraryScreen(
 
     var showFolderSwitcherDialog by remember { mutableStateOf(false) }
     var librarySearchQuery by remember { mutableStateOf("") }
-    var localOnly by remember { mutableStateOf(false) }
+    var sourceFilter by remember { mutableStateOf(LibrarySourceFilter.ALL) }
 
     // If an album is selected, show the Album Detail view (placed before artist detail view to allow navigating from artist -> album)
     if (selectedAlbumId != null) {
@@ -331,14 +367,30 @@ fun LibraryScreen(
     val localArtistNames = remember(localTracks) {
         localTracks.map { it.artist.trim().lowercase() }.filter { it.isNotBlank() }.toSet()
     }
+    val localTrackIds = remember(localTracks) { localTracks.map { it.id }.toSet() }
+
+    // Applies the header source filter to any track list (local copies merged for LOCAL, stripped for SERVER).
+    fun scopeSongs(tracks: List<NaviromTrack>): List<NaviromTrack> = when (sourceFilter) {
+        LibrarySourceFilter.ALL -> tracks
+        LibrarySourceFilter.LOCAL ->
+            (localTracks + tracks.filter { it.id in localTrackIds }).distinctBy { it.id }
+        LibrarySourceFilter.SERVER -> tracks.filter { it.id !in localTrackIds }
+    }
+
+    fun albumMatchesSource(album: NaviromAlbum): Boolean =
+        sourceFilter.matches(localAlbumNames.contains(album.name.trim().lowercase()))
+
+    fun artistMatchesSource(name: String): Boolean =
+        sourceFilter.matches(localArtistNames.contains(name.trim().lowercase()))
+
     val filteredAlbums = albums.filter { album ->
-        (!localOnly || localAlbumNames.contains(album.name.trim().lowercase())) &&
+        albumMatchesSource(album) &&
             (searchQuery.isBlank() ||
                 album.name.contains(searchQuery, ignoreCase = true) ||
                 album.artist.contains(searchQuery, ignoreCase = true))
     }
     val filteredArtists = artists.filter { artist ->
-        (!localOnly || localArtistNames.contains(artist.name.trim().lowercase())) &&
+        artistMatchesSource(artist.name) &&
             (searchQuery.isBlank() || artist.name.contains(searchQuery, ignoreCase = true))
     }
 
@@ -356,10 +408,10 @@ fun LibraryScreen(
             GreetingHeader(
                 profileName = profileName,
                 appLanguage = appLanguage,
-                localOnly = localOnly,
-                onToggleLocalOnly = {
+                sourceFilter = sourceFilter,
+                onCycleSourceFilter = {
                     haptics.click()
-                    localOnly = !localOnly
+                    sourceFilter = sourceFilter.next()
                 }
             )
 
@@ -412,19 +464,22 @@ fun LibraryScreen(
                     testTag = "tab_overview"
                 )
                 EditorialSubTabItem(
-                    title = if (librarySongs.isNotEmpty()) "${str("subtab_songs")} (${librarySongs.size})" else str("subtab_songs"),
+                    title = if (librarySongs.isNotEmpty() || quickMixTracks.isNotEmpty()) {
+                        val count = scopeSongs(if (librarySongs.isNotEmpty()) librarySongs else quickMixTracks).size
+                        "${str("subtab_songs")} ($count)"
+                    } else str("subtab_songs"),
                     isSelected = subTab == LibrarySubTab.SONGS,
                     onClick = { onSubTabSelected(LibrarySubTab.SONGS) },
                     testTag = "tab_songs"
                 )
                 EditorialSubTabItem(
-                    title = "${str("subtab_albums")} (${albums.size})",
+                    title = "${str("subtab_albums")} (${filteredAlbums.size})",
                     isSelected = subTab == LibrarySubTab.ALBUMS,
                     onClick = { onSubTabSelected(LibrarySubTab.ALBUMS) },
                     testTag = "tab_albums"
                 )
                 EditorialSubTabItem(
-                    title = "${str("subtab_artists")} (${artists.size})",
+                    title = "${str("subtab_artists")} (${filteredArtists.size})",
                     isSelected = subTab == LibrarySubTab.ARTISTS,
                     onClick = { onSubTabSelected(LibrarySubTab.ARTISTS) },
                     testTag = "tab_artists"
@@ -450,7 +505,7 @@ fun LibraryScreen(
                     testTag = "tab_quick_mix"
                 )
                 EditorialSubTabItem(
-                    title = if (recentlyPlayedTracks.isNotEmpty()) "${str("subtab_recent")} (${recentlyPlayedTracks.size})" else str("subtab_recent"),
+                    title = if (recentlyPlayedTracks.isNotEmpty()) "${str("subtab_recent")} (${scopeSongs(recentlyPlayedTracks).size})" else str("subtab_recent"),
                     isSelected = subTab == LibrarySubTab.RECENT,
                     onClick = { onSubTabSelected(LibrarySubTab.RECENT) },
                     testTag = "tab_recent"
@@ -485,9 +540,10 @@ fun LibraryScreen(
                     // 2. Recent Added (Albums & Tracks)
                     // 3. Most Played (Albums)
                     // 4. Random from Library (Albums)
-                    val effectiveNewAlbums = if (newestAlbums.isNotEmpty()) newestAlbums else albums.take(12)
-                    val effectiveMostPlayed = if (mostPlayedAlbums.isNotEmpty()) mostPlayedAlbums else albums.take(12)
-                    val effectiveRandom = if (randomAlbums.isNotEmpty()) randomAlbums else albums.shuffled().take(12)
+                    val effectiveNewAlbums = (if (newestAlbums.isNotEmpty()) newestAlbums else albums).filter(::albumMatchesSource).take(12)
+                    val effectiveMostPlayed = (if (mostPlayedAlbums.isNotEmpty()) mostPlayedAlbums else albums).filter(::albumMatchesSource).take(12)
+                    val effectiveRandom = (if (randomAlbums.isNotEmpty()) randomAlbums else albums.shuffled()).filter(::albumMatchesSource).take(12)
+                    val overviewRecentTracks = scopeSongs(recentlyPlayedTracks)
 
                     LazyColumn(
                         contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp),
@@ -538,7 +594,7 @@ fun LibraryScreen(
                                         }
                                     }
 
-                                    if (recentlyPlayedTracks.isNotEmpty()) {
+                                    if (overviewRecentTracks.isNotEmpty()) {
                                         TextButton(
                                             onClick = { onSubTabSelected(LibrarySubTab.RECENT) },
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
@@ -550,15 +606,15 @@ fun LibraryScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                if (recentlyPlayedTracks.isNotEmpty()) {
+                                if (overviewRecentTracks.isNotEmpty()) {
                                     LazyRow(
                                         contentPadding = PaddingValues(horizontal = 16.dp),
                                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        items(recentlyPlayedTracks.take(15), key = { "overview_recent_${it.id}" }) { track ->
+                                        items(overviewRecentTracks.take(15), key = { "overview_recent_${it.id}" }) { track ->
                                             val isThisPlaying = currentTrack?.id == track.id
                                             Surface(
-                                                onClick = { onTrackClick(track, recentlyPlayedTracks) },
+                                                onClick = { onTrackClick(track, overviewRecentTracks) },
                                                 shape = RoundedCornerShape(16.dp),
                                                 color = if (isThisPlaying) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                                                 modifier = Modifier.width(135.dp)
@@ -992,10 +1048,7 @@ fun LibraryScreen(
                         }
                         if (isSongSortReversed) sorted.reversed() else sorted
                     }
-                    val scopedSongs = if (localOnly) {
-                        val localIds = localTracks.map { it.id }.toSet()
-                        (localTracks + baseSongs.filter { it.id in localIds }).distinctBy { it.id }
-                    } else baseSongs
+                    val scopedSongs = scopeSongs(baseSongs)
                     val effectiveSongs = if (searchQuery.isBlank()) scopedSongs else scopedSongs.filter {
                         it.title.contains(searchQuery, ignoreCase = true) ||
                             it.artist.contains(searchQuery, ignoreCase = true) ||
@@ -1650,6 +1703,7 @@ fun LibraryScreen(
                     }
                 }
                 LibrarySubTab.RECENT -> {
+                    val scopedRecent = scopeSongs(recentlyPlayedTracks)
                     LazyColumn(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1694,7 +1748,7 @@ fun LibraryScreen(
                                         }
                                     }
 
-                                    if (recentlyPlayedTracks.isNotEmpty()) {
+                                    if (scopedRecent.isNotEmpty()) {
                                         Spacer(modifier = Modifier.height(16.dp))
                                         Row(
                                             modifier = Modifier
@@ -1704,7 +1758,7 @@ fun LibraryScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Button(
-                                                onClick = { onPlayAll(recentlyPlayedTracks) },
+                                                onClick = { onPlayAll(scopedRecent) },
                                                 shape = CircleShape,
                                                 contentPadding = PaddingValues(0.dp),
                                                 modifier = Modifier.size(44.dp)
@@ -1712,7 +1766,7 @@ fun LibraryScreen(
                                                 Icon(Icons.Filled.PlayArrow, contentDescription = str("play_all"), modifier = Modifier.size(20.dp))
                                             }
                                             FilledTonalButton(
-                                                onClick = { onShuffleAll(recentlyPlayedTracks) },
+                                                onClick = { onShuffleAll(scopedRecent) },
                                                 shape = CircleShape,
                                                 contentPadding = PaddingValues(0.dp),
                                                 modifier = Modifier.size(44.dp)
@@ -1725,7 +1779,7 @@ fun LibraryScreen(
                             }
                         }
 
-                        if (recentlyPlayedTracks.isEmpty()) {
+                        if (scopedRecent.isEmpty()) {
                             item {
                                 Box(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
@@ -1755,7 +1809,7 @@ fun LibraryScreen(
                                 }
                             }
                         } else {
-                            items(recentlyPlayedTracks, key = { it.id }) { track ->
+                            items(scopedRecent, key = { it.id }) { track ->
                                 TrackListItem(
                                     track = track,
                                     isPlaying = isPlaying,
@@ -1763,8 +1817,8 @@ fun LibraryScreen(
                                     downloadStatus = downloadStatuses[track.id] ?: DownloadStatus.NOT_DOWNLOADED,
                                     downloadProgress = downloadProgresses[track.id],
                                     isFavorite = favoriteIds.contains(track.id),
-                                    trackList = recentlyPlayedTracks,
-                                    onTrackClick = { onTrackClick(track, recentlyPlayedTracks) },
+                                    trackList = scopedRecent,
+                                    onTrackClick = { onTrackClick(track, scopedRecent) },
                                     onToggleFavorite = { onToggleFavorite(track.id) },
                                     onDownloadClick = { onDownloadTrack(track) },
                                     onPlayNext = { onPlayNext(track) },
@@ -1775,8 +1829,8 @@ fun LibraryScreen(
                     }
                 }
             LibrarySubTab.NEWEST -> {
-                val effectiveNewAlbums = if (newestAlbums.isNotEmpty()) newestAlbums else albums.take(12)
-                val effectiveNewTracks = if (newestTracks.isNotEmpty()) newestTracks else quickMixTracks.take(20)
+                val effectiveNewAlbums = (if (newestAlbums.isNotEmpty()) newestAlbums else albums).filter(::albumMatchesSource).take(12)
+                val effectiveNewTracks = scopeSongs(if (newestTracks.isNotEmpty()) newestTracks else quickMixTracks.take(20))
 
                 LazyColumn(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
@@ -1944,13 +1998,6 @@ fun LibraryScreen(
             }
 
             LibrarySubTab.ALBUMS -> {
-                val filteredAlbums = remember(albums, librarySearchQuery) {
-                    if (librarySearchQuery.isBlank()) albums
-                    else albums.filter {
-                        it.name.contains(librarySearchQuery, ignoreCase = true) ||
-                        it.artist.contains(librarySearchQuery, ignoreCase = true)
-                    }
-                }
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 160.dp),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
@@ -1968,12 +2015,6 @@ fun LibraryScreen(
             }
 
             LibrarySubTab.ARTISTS -> {
-                val filteredArtists = remember(artists, librarySearchQuery) {
-                    if (librarySearchQuery.isBlank()) artists
-                    else artists.filter {
-                        it.name.contains(librarySearchQuery, ignoreCase = true)
-                    }
-                }
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 140.dp),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
@@ -1994,6 +2035,7 @@ fun LibraryScreen(
 
             LibrarySubTab.GENRES,
             LibrarySubTab.QUICK_MIX -> {
+                val scopedQuickMix = scopeSongs(quickMixTracks)
                 val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
                 LazyColumn(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
@@ -2018,8 +2060,8 @@ fun LibraryScreen(
                                             if (favoriteTracks.isNotEmpty()) {
                                                 onPlayAll(favoriteTracks)
                                             } else {
-                                                val favTracks = quickMixTracks.filter { favoriteIds.contains(it.id) }
-                                                if (favTracks.isNotEmpty()) onPlayAll(favTracks) else onPlayAll(quickMixTracks)
+                                                val favTracks = scopedQuickMix.filter { favoriteIds.contains(it.id) }
+                                                if (favTracks.isNotEmpty()) onPlayAll(favTracks) else onPlayAll(scopedQuickMix)
                                             }
                                         }
                                     )
@@ -2035,7 +2077,7 @@ fun LibraryScreen(
                                             if (onSmartShuffle != null) {
                                                 onSmartShuffle(null)
                                             } else {
-                                                onShuffleAll(quickMixTracks)
+                                                onShuffleAll(scopedQuickMix)
                                             }
                                         }
                                     )
@@ -2053,13 +2095,13 @@ fun LibraryScreen(
                                         icon = Icons.Filled.Shuffle,
                                         iconBgColor = if (isDark) SleekPillFlashbackBgDark else SleekPillFlashbackBg,
                                         iconColor = SleekPillFlashbackIcon,
-                                        onClick = { onShuffleAll(quickMixTracks) }
+                                        onClick = { onShuffleAll(scopedQuickMix) }
                                     )
                                 }
                                 Box(modifier = Modifier.weight(1f)) {
                                     SleekFeatureCard(
                                         title = str("subtab_albums"),
-                                        subtitle = "${albums.size} collections",
+                                        subtitle = "${filteredAlbums.size} collections",
                                         icon = Icons.Filled.Album,
                                         iconBgColor = if (isDark) SleekPillDiscoverBgDark else SleekPillDiscoverBg,
                                         iconColor = SleekPillDiscoverIcon,
@@ -2087,7 +2129,7 @@ fun LibraryScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             FilledTonalButton(
-                                onClick = { onPlayAll(quickMixTracks) },
+                                onClick = { onPlayAll(scopedQuickMix) },
                                 shape = RoundedCornerShape(20.dp),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                             ) {
@@ -2099,7 +2141,7 @@ fun LibraryScreen(
                     }
 
                     // Track items
-                    items(quickMixTracks, key = { it.id }) { track ->
+                    items(scopedQuickMix, key = { it.id }) { track ->
                         TrackListItem(
                             track = track,
                             isPlaying = isPlaying,
@@ -2107,8 +2149,8 @@ fun LibraryScreen(
                             downloadStatus = downloadStatuses[track.id] ?: DownloadStatus.NOT_DOWNLOADED,
                             downloadProgress = downloadProgresses[track.id],
                             isFavorite = favoriteIds.contains(track.id),
-                            trackList = quickMixTracks,
-                            onTrackClick = { onTrackClick(track, quickMixTracks) },
+                            trackList = scopedQuickMix,
+                            onTrackClick = { onTrackClick(track, scopedQuickMix) },
                             onToggleFavorite = { onToggleFavorite(track.id) },
                             onDownloadClick = { onDownloadTrack(track) },
                             onPlayNext = { onPlayNext(track) },
@@ -2486,8 +2528,8 @@ fun AlbumDetailView(
 private fun GreetingHeader(
     profileName: String,
     appLanguage: AppLanguage,
-    localOnly: Boolean,
-    onToggleLocalOnly: () -> Unit,
+    sourceFilter: LibrarySourceFilter,
+    onCycleSourceFilter: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     fun str(key: String): String = NaviromStrings.get(key, appLanguage)
@@ -2536,28 +2578,25 @@ private fun GreetingHeader(
                 )
             }
 
-            // Online / offline source toggle (local titles only vs. server + local)
+            // Source filter: all sources -> local files only -> server files only
+            val isFilterActive = sourceFilter != LibrarySourceFilter.ALL
             Surface(
                 shape = androidx.compose.foundation.shape.CircleShape,
-                color = if (localOnly) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                color = if (isFilterActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                 border = androidx.compose.foundation.BorderStroke(
                     1.dp,
-                    if (localOnly) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                    if (isFilterActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
                 ),
-                onClick = onToggleLocalOnly,
+                onClick = onCycleSourceFilter,
                 modifier = Modifier
                     .size(40.dp)
-                    .testTag("greeting_local_only_toggle")
+                    .testTag("greeting_source_filter_toggle")
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = if (localOnly) Icons.Filled.CloudOff else Icons.Filled.Cloud,
-                        contentDescription = if (localOnly) {
-                            str("local_only_titles")
-                        } else {
-                            str("all_titles_online_local")
-                        },
-                        tint = if (localOnly) {
+                        imageVector = sourceFilter.icon,
+                        contentDescription = str(sourceFilter.labelKey),
+                        tint = if (isFilterActive) {
                             MaterialTheme.colorScheme.onPrimary
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant

@@ -117,8 +117,6 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // Handle quick-action launcher shortcuts
-        handleShortcutIntent(intent)
         AppShortcutManager.updateDynamicShortcuts(this)
 
         setContent {
@@ -173,6 +171,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        // Dispatch after the activity's UI and lifecycle are initialized. Shortcut
+        // actions can start playback or navigation, which otherwise races startup.
+        dispatchShortcutIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -184,7 +186,13 @@ class MainActivity : ComponentActivity() {
             finishAffinity()
             return
         }
-        handleShortcutIntent(intent)
+        dispatchShortcutIntent(intent)
+    }
+
+    private fun dispatchShortcutIntent(intent: Intent?) {
+        window.decorView.post {
+            if (!isFinishing && !isDestroyed) handleShortcutIntent(intent)
+        }
     }
 
     private fun handleShortcutIntent(intent: Intent?) {
@@ -212,6 +220,5 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
 
 

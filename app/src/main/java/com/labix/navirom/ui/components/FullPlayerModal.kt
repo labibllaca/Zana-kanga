@@ -503,16 +503,16 @@ fun FullPlayerModal(
                             textAlign = TextAlign.Center
                         )
                         if (isTimerActive && (playbackState.sleepTimerSecondsLeft ?: 0) > 0) {
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer,
                                 modifier = Modifier.padding(top = 2.dp)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Box(
                                         modifier = Modifier
@@ -523,11 +523,26 @@ fun FullPlayerModal(
                                     val totalSecs = playbackState.sleepTimerSecondsLeft ?: 0
                                     val mins = totalSecs / 60
                                     val secs = totalSecs % 60
-                                    Text(
-                                        text = "${NaviromStrings.get("sleep_timer_active_badge", appLanguage)}: %02d:%02d".format(mins, secs),
-                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
+                                    // Label and digits on separate lines so the countdown never gets squeezed
+                                    Column {
+                                        Text(
+                                            text = NaviromStrings.get("sleep_timer_active_badge", appLanguage),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "%02d:%02d".format(mins, secs),
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontFeatureSettings = "tnum"
+                                            ),
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
                         }

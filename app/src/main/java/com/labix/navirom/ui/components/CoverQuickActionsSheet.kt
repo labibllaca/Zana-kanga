@@ -217,7 +217,10 @@ fun CoverQuickActionsSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(
                                 imageVector = if (isTimerActive) Icons.Filled.HourglassTop else Icons.Filled.Timer,
                                 contentDescription = null,
@@ -228,11 +231,15 @@ fun CoverQuickActionsSheet(
                             Text(
                                 text = NaviromStrings.get("countdown_timer_title", appLanguage),
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                         }
 
                         if (isTimerActive) {
+                            Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 color = MaterialTheme.colorScheme.primary,
                                 shape = RoundedCornerShape(12.dp)
@@ -242,6 +249,8 @@ fun CoverQuickActionsSheet(
                                     color = MaterialTheme.colorScheme.onPrimary,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }

@@ -19,6 +19,7 @@ import android.util.Log
 import android.widget.Toast
 import com.labix.navirom.data.model.SleepTimerOptions
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -77,387 +78,366 @@ class DeviceConnectionManager(private val context: Context) {
         }
     }
 
-    suspend fun disableBluetooth() = withContext(Dispatchers.IO) {
-        var disabled = false
+    private fun bluetoothAdapter(): BluetoothAdapter? = try {
+        val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        @Suppress("DEPRECATION")
+        manager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
+    } catch (_: Throwable) {
+        null
+    }
 
-        // 1. Try root / shell commands
-        val commands = listOf(
-            "svc bluetooth disable",
-            "cmd bluetooth_manager disable",
-            "settings put global bluetooth_on 0"
-        )
-        for (cmd in commands) {
-            if (runCommand(cmd)) {
-                disabled = true
-                Log.d(TAG, "Bluetooth disabled via shell command: $cmd")
-                break
-            }
+    /** Radio state, not connection state: disconnected headphones do not count as "off". */
+    private fun isBluetoothRadioOff(): Boolean = try {
+        val adapter = bluetoothAdapter()
+        adapter == null || !adapter.isEnabled
+    } catch (_: Throwable) {
+        false
+    }
+
+    private fun isWifiRadioOff(): Boolean = try {
+        val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        @Suppress("DEPRECATION")
+        val apiEnabled = wifiManager?.isWifiEnabled == true
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val onWifiTransport =
+            cm?.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        !apiEnabled && !onWifiTransport
+    } catch (_: Throwable) {
+        false
+    }
+
+    private fun isMobileDataOff(): Boolean = try {
+        val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && telephonyManager != null) {
+            !telephonyManager.isDataEnabled
+        } else {
+            Settings.Global.getInt(context.contentResolver, "mobile_data", 1) == 0
         }
+    } catch (_: Throwable) {
+        false
+    }
 
-        // 2. Try Settings.Global if WRITE_SECURE_SETTINGS or system privilege is available
-        try {
-            Settings.Global.putInt(context.contentResolver, "bluetooth_on", 0)
-            disabled = true
-        } catch (_: Throwable) {}
+    private fun isLocationOff(): Boolean = try {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+        locationManager?.isLocationEnabled == false
+    } catch (_: Throwable) {
+        false
+    }
 
-        // 3. Try BluetoothAdapter direct and reflection
+    private fun disconnectActiveBluetoothAudio() {
         try {
-            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-            @Suppress("DEPRECATION")
-            val adapter = bluetoothManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
-            if (adapter != null) {
-                // Try standard disable()
+            val adapter = bluetoothAdapter() ?: return
+            fun disconnectProfile(profile: Int) {
                 try {
+                    adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
+                        override fun onServiceConnected(profileType: Int, proxy: BluetoothProfile) {
+                            try {
+                                proxy.connectedDevices.forEach { device ->
+                                    @Suppress("DEPRECATION")
+                                    proxy.javaClass.methods.find { it.name == "disconnect" }?.invoke(proxy, device)
+                                    Log.d(TAG, "Disconnected Bluetooth audio device: ${device.name ?: device.address}")
+                                }
+                            } catch (e: Throwable) {
+                                Log.w(TAG, "Error disconnecting audio devices on profile $profileType", e)
+                            } finally {
+                                try {
+                                    adapter.closeProfileProxy(profileType, proxy)
+                                } catch (_: Throwable) {}
+                            }
+                        }
+
+                        override fun onServiceDisconnected(profileType: Int) {}
+                    }, profile)
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Error accessing Bluetooth profile proxy $profile", e)
+                }
+            }
+            disconnectProfile(BluetoothProfile.A2DP)
+            disconnectProfile(BluetoothProfile.HEADSET)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Error accessing Bluetooth profile proxies", e)
+        }
+    }
+
+    /**
+     * Turns the Bluetooth radio off and verifies the radio state afterwards.
+     * Returns true only when the adapter reports disabled, not merely disconnected.
+     */
+    suspend fun disableBluetooth(): Boolean = withContext(Dispatchers.IO) {
+        repeat(3) { attempt ->
+            if (isBluetoothRadioOff()) return@withContext true
+
+            try {
+                @Suppress("DEPRECATION")
+                bluetoothAdapter()?.takeIf { it.isEnabled }?.disable()
+            } catch (t: Throwable) {
+                Log.w(TAG, "Bluetooth adapter.disable failed: ${t.message}")
+            }
+
+            for (cmd in listOf("svc bluetooth disable", "cmd bluetooth_manager disable")) {
+                runCommand(cmd)
+                if (isBluetoothRadioOff()) return@withContext true
+            }
+
+            try {
+                val adapter = bluetoothAdapter()
+                if (adapter != null) {
+                    val serviceField = adapter.javaClass.getDeclaredField("mService")
+                    serviceField.isAccessible = true
+                    val service = serviceField.get(adapter)
+                    val disableMethod = service?.javaClass?.declaredMethods?.find { it.name == "disable" }
+                    if (disableMethod != null && service != null) {
+                        disableMethod.isAccessible = true
+                        when (disableMethod.parameterTypes.size) {
+                            2 -> disableMethod.invoke(service, context.packageName, false)
+                            1 -> disableMethod.invoke(service, false)
+                        }
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.d(TAG, "IBluetooth reflection failed: ${t.message}")
+            }
+
+            try {
+                Settings.Global.putInt(context.contentResolver, "bluetooth_on", 0)
+            } catch (_: Throwable) {}
+
+            disconnectActiveBluetoothAudio()
+
+            try {
+                val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                if (audioManager != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        audioManager.clearCommunicationDevice()
+                    }
                     @Suppress("DEPRECATION")
-                    if (adapter.isEnabled) {
-                        @Suppress("DEPRECATION")
-                        val success = adapter.disable()
-                        if (success) disabled = true
-                        Log.d(TAG, "Bluetooth adapter.disable() called (result: $success)")
-                    }
-                } catch (e: SecurityException) {
-                    Log.w(TAG, "Bluetooth disable SecurityException: ${e.message}")
-                } catch (t: Throwable) {
-                    Log.w(TAG, "Bluetooth adapter.disable failed: ${t.message}")
-                }
-
-                // Try reflection on IBluetooth / mService
-                try {
-                    val mServiceField = adapter.javaClass.getDeclaredField("mService")
-                    mServiceField.isAccessible = true
-                    val mService = mServiceField.get(adapter)
-                    if (mService != null) {
-                        val methods = mService.javaClass.declaredMethods
-                        val disableMethod = methods.find { it.name == "disable" }
-                        if (disableMethod != null) {
-                            disableMethod.isAccessible = true
-                            if (disableMethod.parameterTypes.size == 2) {
-                                disableMethod.invoke(mService, context.packageName, true)
-                            } else if (disableMethod.parameterTypes.size == 1) {
-                                disableMethod.invoke(mService, true)
-                            }
-                            Log.d(TAG, "IBluetooth.disable() invoked via reflection")
-                            disabled = true
-                        }
-                    }
-                } catch (t: Throwable) {
-                    Log.d(TAG, "IBluetooth reflection failed: ${t.message}")
-                }
-
-                // 4. Disconnect active Bluetooth audio profiles (A2DP & Headset)
-                // This ensures wireless headphones/speakers immediately disconnect
-                try {
-                    adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
-                        override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-                            try {
-                                val disconnectMethod = proxy.javaClass.methods.find { it.name == "disconnect" }
-                                if (disconnectMethod != null) {
-                                    disconnectMethod.isAccessible = true
-                                    for (device in proxy.connectedDevices) {
-                                        disconnectMethod.invoke(proxy, device)
-                                        Log.d(TAG, "Disconnected Bluetooth audio device: ${device.name ?: device.address}")
-                                    }
-                                }
-                            } catch (e: Throwable) {
-                                Log.w(TAG, "Error disconnecting audio devices on profile $profile", e)
-                            } finally {
-                                try {
-                                    adapter.closeProfileProxy(profile, proxy)
-                                } catch (_: Throwable) {}
-                            }
-                        }
-                        override fun onServiceDisconnected(profile: Int) {}
-                    }, BluetoothProfile.A2DP)
-
-                    adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
-                        override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-                            try {
-                                val disconnectMethod = proxy.javaClass.methods.find { it.name == "disconnect" }
-                                if (disconnectMethod != null) {
-                                    disconnectMethod.isAccessible = true
-                                    for (device in proxy.connectedDevices) {
-                                        disconnectMethod.invoke(proxy, device)
-                                        Log.d(TAG, "Disconnected Bluetooth headset device: ${device.name ?: device.address}")
-                                    }
-                                }
-                            } catch (e: Throwable) {
-                                Log.w(TAG, "Error disconnecting headset on profile $profile", e)
-                            } finally {
-                                try {
-                                    adapter.closeProfileProxy(profile, proxy)
-                                } catch (_: Throwable) {}
-                            }
-                        }
-                        override fun onServiceDisconnected(profile: Int) {}
-                    }, BluetoothProfile.HEADSET)
-                } catch (e: Throwable) {
-                    Log.w(TAG, "Error accessing Bluetooth profile proxies: ${e.message}")
-                }
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "Failed during Bluetooth disable attempt", e)
-        }
-
-        // 5. Disconnect Bluetooth routing via AudioManager
-        try {
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            if (audioManager != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    audioManager.clearCommunicationDevice()
-                }
-                @Suppress("DEPRECATION")
-                audioManager.isBluetoothScoOn = false
-                @Suppress("DEPRECATION")
-                audioManager.isBluetoothA2dpOn = false
-                @Suppress("DEPRECATION")
-                audioManager.stopBluetoothSco()
-            }
-        } catch (t: Throwable) {
-            Log.w(TAG, "AudioManager Bluetooth reset failed: ${t.message}")
-        }
-
-        // 6. If Bluetooth is still enabled on unrooted modern Android (API 33+),
-        // launch system Bluetooth settings so the user can toggle it off immediately
-        if (!disabled) {
-            try {
-                val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-                @Suppress("DEPRECATION")
-                val adapter = bluetoothManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
-                if (adapter != null && adapter.isEnabled) {
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            val intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                            }
-                            context.startActivity(intent)
-                            Toast.makeText(context, "Sleep timer: Please toggle Bluetooth off", Toast.LENGTH_SHORT).show()
-                        } catch (e: Throwable) {
-                            Log.w(TAG, "Could not start Bluetooth settings activity", e)
-                        }
-                    }
+                    audioManager.isBluetoothScoOn = false
+                    @Suppress("DEPRECATION")
+                    audioManager.isBluetoothA2dpOn = false
+                    @Suppress("DEPRECATION")
+                    audioManager.stopBluetoothSco()
                 }
             } catch (t: Throwable) {
-                Log.w(TAG, "Could not open Bluetooth settings", t)
+                Log.w(TAG, "AudioManager Bluetooth reset failed: ${t.message}")
             }
-        }
-    }
 
-    suspend fun disableWifi() = withContext(Dispatchers.IO) {
-        var disabled = false
-
-        // 1. Try root / shell commands
-        val commands = listOf(
-            "svc wifi disable",
-            "cmd -w wifi set-wifi-enabled disabled",
-            "cmd wifi set-wifi-enabled disabled",
-            "settings put global wifi_on 0"
-        )
-        for (cmd in commands) {
-            if (runCommand(cmd)) {
-                disabled = true
-                Log.d(TAG, "WiFi disabled via shell command: $cmd")
-                break
-            }
+            delay(if (attempt == 0) 500 else 1200)
         }
 
-        // 2. Try Settings.Global if WRITE_SECURE_SETTINGS is available
-        try {
-            Settings.Global.putInt(context.contentResolver, Settings.Global.WIFI_ON, 0)
-            disabled = true
-        } catch (_: Throwable) {}
-
-        // 3. Try reflection on IWifiManager
-        try {
-            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            if (wifiManager != null) {
-                val mServiceField = wifiManager.javaClass.getDeclaredField("mService")
-                mServiceField.isAccessible = true
-                val mService = mServiceField.get(wifiManager)
-                if (mService != null) {
-                    val methods = mService.javaClass.declaredMethods
-                    val setWifiEnabledMethod = methods.find { it.name == "setWifiEnabled" }
-                    if (setWifiEnabledMethod != null) {
-                        setWifiEnabledMethod.isAccessible = true
-                        if (setWifiEnabledMethod.parameterTypes.size == 2) {
-                            setWifiEnabledMethod.invoke(mService, context.packageName, false)
-                        } else if (setWifiEnabledMethod.parameterTypes.size == 1) {
-                            setWifiEnabledMethod.invoke(mService, false)
-                        }
-                        Log.d(TAG, "IWifiManager.setWifiEnabled(false) invoked via reflection")
-                        disabled = true
-                    }
-                }
-            }
-        } catch (t: Throwable) {
-            Log.d(TAG, "IWifiManager reflection failed: ${t.message}")
-        }
-
-        // 4. Try legacy API
-        try {
-            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            if (wifiManager != null) {
-                @Suppress("DEPRECATION")
-                wifiManager.isWifiEnabled = false
-                @Suppress("DEPRECATION")
-                val res = wifiManager.setWifiEnabled(false)
-                @Suppress("DEPRECATION")
-                wifiManager.disconnect()
-                if (res) disabled = true
-            }
-        } catch (t: Throwable) {
-            Log.w(TAG, "Legacy WifiManager disable failed", t)
-        }
-
-        // 5. If Wi-Fi is still enabled on modern Android (API 29+) without root:
-        // Launch system Internet / Wi-Fi panel so user can toggle it off in 1 tap
-        if (!disabled) {
-            try {
-                val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-                val isWifiOn = wifiManager?.isWifiEnabled == true
-                val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-                val hasWifiActive = cm?.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-
-                if (isWifiOn || hasWifiActive) {
-                    Handler(Looper.getMainLooper()).post {
-                        try {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                val panelIntent = Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                }
-                                context.startActivity(panelIntent)
-                            } else {
-                                val settingsIntent = Intent(Settings.ACTION_WIFI_SETTINGS).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                }
-                                context.startActivity(settingsIntent)
-                            }
-                            Toast.makeText(context, "Sleep timer: Please toggle Wi-Fi off", Toast.LENGTH_SHORT).show()
-                        } catch (_: Throwable) {
-                            try {
-                                val settingsIntent = Intent(Settings.ACTION_WIFI_SETTINGS).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                }
-                                context.startActivity(settingsIntent)
-                            } catch (e: Throwable) {
-                                Log.w(TAG, "Failed opening Wi-Fi settings", e)
-                            }
-                        }
-                    }
-                }
-            } catch (t: Throwable) {
-                Log.w(TAG, "Could not open Wi-Fi settings/panel", t)
-            }
-        }
-    }
-
-    suspend fun disableMobileData() = withContext(Dispatchers.IO) {
-        var disabled = false
-
-        // 1. Try shell commands
-        val commands = listOf(
-            "svc data disable",
-            "cmd telephony data disable",
-            "settings put global mobile_data 0"
-        )
-        for (cmd in commands) {
-            if (runCommand(cmd)) {
-                disabled = true
-                Log.d(TAG, "Mobile data disabled via shell: $cmd")
-                return@withContext
-            }
-        }
-
-        // 2. Try reflection on TelephonyManager / ConnectivityManager
-        try {
-            val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-            if (telephonyManager != null) {
-                try {
-                    val setMobileDataEnabledMethod = telephonyManager.javaClass.getDeclaredMethod("setDataEnabled", Boolean::class.javaPrimitiveType)
-                    setMobileDataEnabledMethod.isAccessible = true
-                    setMobileDataEnabledMethod.invoke(telephonyManager, false)
-                    Log.d(TAG, "Mobile data disable invoked via TelephonyManager reflection")
-                    disabled = true
-                    return@withContext
-                } catch (e: Throwable) {
-                    Log.d(TAG, "TelephonyManager reflection not available: ${e.message}")
-                }
-            }
-
-            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            if (connectivityManager != null) {
-                try {
-                    val setMobileDataEnabledMethod = connectivityManager.javaClass.getDeclaredMethod("setMobileDataEnabled", Boolean::class.javaPrimitiveType)
-                    setMobileDataEnabledMethod.isAccessible = true
-                    setMobileDataEnabledMethod.invoke(connectivityManager, false)
-                    Log.d(TAG, "Mobile data disable invoked via ConnectivityManager reflection")
-                    disabled = true
-                } catch (e: Throwable) {
-                    Log.d(TAG, "ConnectivityManager reflection not available: ${e.message}")
-                }
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "Could not disable mobile data directly: ${e.message}")
-        }
-
-        // 3. Fallback: Launch Cellular / Data Settings if unrooted
-        if (!disabled) {
+        if (isBluetoothRadioOff()) {
+            true
+        } else {
             Handler(Looper.getMainLooper()).post {
                 try {
-                    val intent = Intent(Settings.ACTION_DATA_ROAMING_SETTINGS).apply {
+                    context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    }
-                    context.startActivity(intent)
-                    Toast.makeText(context, "Sleep timer: Please toggle Mobile Data off", Toast.LENGTH_SHORT).show()
-                } catch (_: Throwable) {
-                    try {
-                        val intent = Intent(Settings.ACTION_WIRELESS_SETTINGS).apply {
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                        }
-                        context.startActivity(intent)
-                    } catch (e: Throwable) {
-                        Log.w(TAG, "Failed opening Mobile Data settings", e)
-                    }
+                    })
+                    Toast.makeText(context, "Sleep timer: turn Bluetooth off (system blocked the app)", Toast.LENGTH_LONG).show()
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Could not start Bluetooth settings activity", e)
                 }
             }
+            false
         }
     }
 
-    suspend fun disableGps() = withContext(Dispatchers.IO) {
-        val commands = listOf(
-            "settings put secure location_mode 0",
-            "cmd location set-location-enabled false"
-        )
-        for (cmd in commands) {
-            if (runCommand(cmd)) {
-                Log.d(TAG, "GPS disabled via shell: $cmd")
-                return@withContext
+    /** Turns the Wi-Fi radio off and verifies the radio state afterwards. */
+    suspend fun disableWifi(): Boolean = withContext(Dispatchers.IO) {
+        repeat(3) { attempt ->
+            if (isWifiRadioOff()) return@withContext true
+
+            for (cmd in listOf(
+                "cmd wifi set-wifi-enabled disabled",
+                "cmd -w wifi set-wifi-enabled disabled",
+                "svc wifi disable",
+                "settings put global wifi_on 0"
+            )) {
+                runCommand(cmd)
+                if (isWifiRadioOff()) return@withContext true
             }
-        }
-        Handler(Looper.getMainLooper()).post {
+
             try {
-                val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                @Suppress("DEPRECATION")
+                if (wifiManager != null && wifiManager.isWifiEnabled) {
+                    wifiManager.setWifiEnabled(false)
                 }
-                context.startActivity(intent)
-                Toast.makeText(context, "Sleep timer: Please toggle Location / GPS off", Toast.LENGTH_SHORT).show()
-            } catch (e: Throwable) {
-                Log.w(TAG, "Failed opening Location settings", e)
+            } catch (t: Throwable) {
+                Log.w(TAG, "WifiManager disable failed", t)
             }
+
+            try {
+                val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                val serviceField = wifiManager?.javaClass?.getDeclaredField("mService")
+                serviceField?.isAccessible = true
+                val service = serviceField?.get(wifiManager)
+                val setWifiEnabledMethod = service?.javaClass?.declaredMethods?.find { it.name == "setWifiEnabled" }
+                if (setWifiEnabledMethod != null && service != null) {
+                    setWifiEnabledMethod.isAccessible = true
+                    when (setWifiEnabledMethod.parameterTypes.size) {
+                        2 -> setWifiEnabledMethod.invoke(service, context.packageName, false)
+                        1 -> setWifiEnabledMethod.invoke(service, false)
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.d(TAG, "IWifiManager reflection failed: ${t.message}")
+            }
+
+            try {
+                Settings.Global.putInt(context.contentResolver, Settings.Global.WIFI_ON, 0)
+            } catch (_: Throwable) {}
+
+            delay(if (attempt == 0) 500 else 1200)
+        }
+
+        if (isWifiRadioOff()) {
+            true
+        } else {
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)
+                    } else {
+                        Intent(Settings.ACTION_WIFI_SETTINGS)
+                    }
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    context.startActivity(intent)
+                    Toast.makeText(context, "Sleep timer: turn Wi-Fi off (system blocked the app)", Toast.LENGTH_LONG).show()
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Failed opening Wi-Fi settings", e)
+                }
+            }
+            false
+        }
+    }
+
+    /** Turns mobile data off and verifies the radio state afterwards. */
+    suspend fun disableMobileData(): Boolean = withContext(Dispatchers.IO) {
+        repeat(3) { attempt ->
+            if (isMobileDataOff()) return@withContext true
+
+            for (cmd in listOf(
+                "svc data disable",
+                "cmd telephony data disable",
+                "settings put global mobile_data 0"
+            )) {
+                runCommand(cmd)
+                if (isMobileDataOff()) return@withContext true
+            }
+
+            try {
+                val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+                val setDataEnabled = telephonyManager?.javaClass?.getDeclaredMethod(
+                    "setDataEnabled",
+                    Boolean::class.javaPrimitiveType
+                )
+                setDataEnabled?.isAccessible = true
+                setDataEnabled?.invoke(telephonyManager, false)
+            } catch (t: Throwable) {
+                Log.d(TAG, "TelephonyManager data reflection not available: ${t.message}")
+            }
+
+            try {
+                val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                val setMobileDataEnabled =
+                    connectivityManager?.javaClass?.getDeclaredMethod("setMobileDataEnabled", Boolean::class.javaPrimitiveType)
+                setMobileDataEnabled?.isAccessible = true
+                setMobileDataEnabled?.invoke(connectivityManager, false)
+            } catch (t: Throwable) {
+                Log.d(TAG, "ConnectivityManager data reflection not available: ${t.message}")
+            }
+
+            try {
+                Settings.Global.putInt(context.contentResolver, "mobile_data", 0)
+            } catch (_: Throwable) {}
+
+            delay(if (attempt == 0) 500 else 1200)
+        }
+
+        if (isMobileDataOff()) {
+            true
+        } else {
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    context.startActivity(Intent(Settings.ACTION_DATA_ROAMING_SETTINGS).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    })
+                    Toast.makeText(context, "Sleep timer: turn mobile data off (system blocked the app)", Toast.LENGTH_LONG).show()
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Failed opening Mobile Data settings", e)
+                }
+            }
+            false
+        }
+    }
+
+    /** Turns location/GPS off and verifies that location is actually disabled. */
+    suspend fun disableGps(): Boolean = withContext(Dispatchers.IO) {
+        repeat(3) { attempt ->
+            if (isLocationOff()) return@withContext true
+
+            try {
+                @Suppress("DEPRECATION")
+                Settings.Secure.putInt(
+                    context.contentResolver,
+                    Settings.Secure.LOCATION_MODE,
+                    Settings.Secure.LOCATION_MODE_OFF
+                )
+            } catch (t: Throwable) {
+                Log.d(TAG, "Secure location_mode write failed: ${t.message}")
+            }
+
+            try {
+                val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+                val method = locationManager?.javaClass?.getMethod(
+                    "setLocationEnabledForUser",
+                    Boolean::class.javaPrimitiveType,
+                    android.os.UserHandle::class.java
+                )
+                method?.isAccessible = true
+                method?.invoke(locationManager, false, android.os.Process.myUserHandle())
+            } catch (t: Throwable) {
+                Log.d(TAG, "LocationManager disable reflection failed: ${t.message}")
+            }
+
+            runCommand("cmd location set-location-enabled false")
+
+            delay(if (attempt == 0) 500 else 1200)
+        }
+
+        if (isLocationOff()) {
+            true
+        } else {
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    })
+                    Toast.makeText(context, "Sleep timer: turn Location off (system blocked the app)", Toast.LENGTH_LONG).show()
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Failed opening Location settings", e)
+                }
+            }
+            false
         }
     }
 
     suspend fun executeSleepTimerActions(options: SleepTimerOptions) = withContext(Dispatchers.IO) {
-        if (options.disableBluetooth) {
-            disableBluetooth()
-        }
-        if (options.disableWifi) {
-            disableWifi()
-        }
-        if (options.disableMobileData) {
-            disableMobileData()
-        }
-        if (options.disableGps) {
-            disableGps()
+        val stillOn = mutableListOf<String>()
+
+        if (options.disableBluetooth && !disableBluetooth()) stillOn += "Bluetooth"
+        if (options.disableWifi && !disableWifi()) stillOn += "Wi-Fi"
+        if (options.disableMobileData && !disableMobileData()) stillOn += "Mobile data"
+        if (options.disableGps && !disableGps()) stillOn += "Location"
+
+        if (stillOn.isNotEmpty()) {
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(
+                    context,
+                    "Sleep timer: ${stillOn.joinToString(", ")} could not be switched off by the system",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 }

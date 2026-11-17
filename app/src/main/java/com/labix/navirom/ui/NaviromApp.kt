@@ -24,10 +24,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.labix.R
 import com.labix.navirom.data.model.DownloadStatus
@@ -474,45 +477,80 @@ fun NaviromApp(
             onDownloadAndInstall = { viewModel.downloadAndInstallUpdate(it) }
         )
 
-        // Exit Confirmation Dialog
+        // Exit Confirmation — anchored to the top of the screen instead of a centred dialog
         if (showExitDialog) {
-            AlertDialog(
+            val statusBarTopPadding = with(LocalDensity.current) {
+                val res = context.resources
+                val statusBarId = res.getIdentifier("status_bar_height", "dimen", "android")
+                if (statusBarId > 0) res.getDimensionPixelSize(statusBarId).toDp() + 12.dp else 36.dp
+            }
+            Dialog(
                 onDismissRequest = { showExitDialog = false },
-                title = {
-                    Text(
-                        text = str("exit_dialog_title"),
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                text = {
-                    Text(
-                        text = str("exit_dialog_desc"),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showExitDialog = false
-                            (context as? Activity)?.finish()
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError
-                        )
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = statusBarTopPadding,
+                            bottom = 16.dp
+                        ),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 6.dp,
+                        shadowElevation = 8.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 560.dp)
+                            .testTag("exit_confirm_dialog")
                     ) {
-                        Text(str("exit_dialog_confirm"))
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            Text(
+                                text = str("exit_dialog_title"),
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = str("exit_dialog_desc"),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(onClick = { showExitDialog = false }) {
+                                    Text(str("exit_dialog_cancel"))
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        showExitDialog = false
+                                        (context as? Activity)?.finish()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.error,
+                                        contentColor = MaterialTheme.colorScheme.onError
+                                    )
+                                ) {
+                                    Text(str("exit_dialog_confirm"))
+                                }
+                            }
+                        }
                     }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = { showExitDialog = false }
-                    ) {
-                        Text(str("exit_dialog_cancel"))
-                    }
-                },
-                shape = RoundedCornerShape(20.dp)
-            )
+                }
+            }
         }
     }
 }
