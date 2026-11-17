@@ -623,98 +623,21 @@ fun FullPlayerModal(
                             }
                         }
 
-                        // Wake alarm: resume the paused song at a chosen time with a rising volume
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("wake_alarm_card")
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = NaviromStrings.get("wake_alarm", appLanguage),
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = NaviromStrings.get("wake_alarm_desc", appLanguage),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Switch(
-                                        checked = wakeAlarmEnabled,
-                                        onCheckedChange = {
-                                            haptics.toggle()
-                                            onSetWakeAlarm(it, wakeAlarmHour, wakeAlarmMinute)
-                                        },
-                                        modifier = Modifier.testTag("wake_alarm_switch")
-                                    )
-                                }
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable {
-                                            haptics.click()
-                                            showWakeTimePicker = true
-                                        }
-                                        .padding(vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = NaviromStrings.get("wake_alarm_time", appLanguage),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Text(
-                                        text = "%02d:%02d".format(wakeAlarmHour, wakeAlarmMinute),
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-
-                                if (wakeAlarmEnabled) {
-                                    Text(
-                                        text = NaviromStrings.get("wake_alarm_armed_until", appLanguage)
-                                            .format(wakeAlarmHour, wakeAlarmMinute),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-
-                                if (!canScheduleExactAlarms) {
-                                    Text(
-                                        text = NaviromStrings.get("wake_alarm_exact_permission", appLanguage),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.clickable {
-                                            try {
-                                                context.startActivity(
-                                                    android.content.Intent(
-                                                        android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                                                        android.net.Uri.parse("package:${context.packageName}")
-                                                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                )
-                                            } catch (_: Exception) {}
-                                        }
-                                    )
-                                }
-                            }
-                        }
+                        WakeAlarmSection(
+                            appLanguage = appLanguage,
+                            wakeAlarmEnabled = wakeAlarmEnabled,
+                            wakeAlarmHour = wakeAlarmHour,
+                            wakeAlarmMinute = wakeAlarmMinute,
+                            canScheduleExactAlarms = canScheduleExactAlarms,
+                            onSetWakeAlarm = onSetWakeAlarm,
+                            onRequestExactAlarmSettings = { context.startActivity(
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                    android.net.Uri.parse("package:${context.packageName}")
+                                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            ) },
+                            onOpenTimePicker = { showWakeTimePicker = true }
+                        )
 
                         // Quick Presets Row (scrollable group showing icons only)
                         Row(
@@ -2039,44 +1962,13 @@ fun FullPlayerModal(
                             }
 
                             if (playbackState.isWakeAlarmActive) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("wake_alarm_banner")
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Alarm,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = NaviromStrings.get("wake_alarm_running", appLanguage),
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        TextButton(
-                                            onClick = {
-                                                haptics.click()
-                                                onStopWakeAlarm()
-                                            },
-                                            modifier = Modifier.testTag("wake_alarm_stop_btn")
-                                        ) {
-                                            Text(NaviromStrings.get("wake_alarm_stop", appLanguage))
-                                        }
+                                WakeAlarmBanner(
+                                    appLanguage = appLanguage,
+                                    onStop = {
+                                        haptics.click()
+                                        onStopWakeAlarm()
                                     }
-                                }
+                                )
                             }
 
                             Spacer(modifier = Modifier.height(20.dp))
@@ -4289,6 +4181,144 @@ private fun SecondaryPlayerDeckView(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun WakeAlarmSection(
+    appLanguage: AppLanguage,
+    wakeAlarmEnabled: Boolean,
+    wakeAlarmHour: Int,
+    wakeAlarmMinute: Int,
+    canScheduleExactAlarms: Boolean,
+    onSetWakeAlarm: (Boolean, Int, Int) -> Unit,
+    onRequestExactAlarmSettings: () -> Unit,
+    onOpenTimePicker: () -> Unit
+) {
+    val haptics = rememberNaviromHaptics()
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("wake_alarm_card")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = NaviromStrings.get("wake_alarm", appLanguage),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = NaviromStrings.get("wake_alarm_desc", appLanguage),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = wakeAlarmEnabled,
+                    onCheckedChange = {
+                        haptics.toggle()
+                        onSetWakeAlarm(it, wakeAlarmHour, wakeAlarmMinute)
+                    },
+                    modifier = Modifier.testTag("wake_alarm_switch")
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable {
+                        haptics.click()
+                        onOpenTimePicker()
+                    }
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = NaviromStrings.get("wake_alarm_time", appLanguage),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "%02d:%02d".format(wakeAlarmHour, wakeAlarmMinute),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            if (wakeAlarmEnabled) {
+                Text(
+                    text = NaviromStrings.get("wake_alarm_armed_until", appLanguage)
+                        .format(wakeAlarmHour, wakeAlarmMinute),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            if (!canScheduleExactAlarms) {
+                Text(
+                    text = NaviromStrings.get("wake_alarm_exact_permission", appLanguage),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.clickable { onRequestExactAlarmSettings() }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WakeAlarmBanner(
+    appLanguage: AppLanguage,
+    onStop: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("wake_alarm_banner")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Alarm,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = NaviromStrings.get("wake_alarm_running", appLanguage),
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(
+                onClick = onStop,
+                modifier = Modifier.testTag("wake_alarm_stop_btn")
+            ) {
+                Text(NaviromStrings.get("wake_alarm_stop", appLanguage))
             }
         }
     }
