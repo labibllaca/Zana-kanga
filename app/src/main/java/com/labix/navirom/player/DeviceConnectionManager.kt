@@ -40,6 +40,14 @@ class DeviceConnectionManager(private val context: Context) {
     }
 
     private suspend fun runCommand(cmd: String): Boolean = withContext(Dispatchers.IO) {
+        // Shizuku (ADB privileges without root) is the only path that can really
+        // switch Wi-Fi/Bluetooth/mobile data off on a locked-down modern Android.
+        try {
+            if (ShizukuShell.run(cmd)) {
+                Log.d(TAG, "Command succeeded via Shizuku: $cmd")
+                return@withContext true
+            }
+        } catch (_: Throwable) {}
         try {
             withTimeoutOrNull(2500L) {
                 // 1. Try su (root / emulator userdebug)

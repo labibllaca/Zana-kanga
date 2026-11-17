@@ -80,6 +80,8 @@ dependencies {
   implementation(libs.coil.compose)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.moshi.kotlin)
+  implementation(libs.shizuku.api)
+  implementation(libs.shizuku.provider)
   implementation(libs.okhttp)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

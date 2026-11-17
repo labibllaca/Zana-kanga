@@ -30,12 +30,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import android.content.pm.PackageManager
 import com.labix.navirom.player.SecureSettingsManager
+import com.labix.navirom.player.ShizukuShell
+import rikka.shizuku.Shizuku
 import com.labix.navirom.ui.AppLanguage
 import com.labix.navirom.ui.NaviromStrings
 import com.labix.navirom.ui.util.rememberNaviromHaptics
 import kotlinx.coroutines.launch
 import com.labix.ui.theme.LatoFamily
+
+private const val SHIZUKU_PERMISSION_REQUEST_CODE = 4401
 
 @Composable
 fun SecureSettingsAssistantDialog(
@@ -53,6 +58,22 @@ fun SecureSettingsAssistantDialog(
     var rootAvailable by remember { mutableStateOf<Boolean?>(null) }
     var showRootConfirmDialog by remember { mutableStateOf(false) }
     val isShizukuInstalled = remember { SecureSettingsManager.isShizukuInstalled(context) }
+    var isShizukuGranted by remember { mutableStateOf(ShizukuShell.hasPermission()) }
+    val shizukuPermissionListener = remember {
+        Shizuku.OnRequestPermissionResultListener { _, grantResult ->
+            isShizukuGranted = grantResult == PackageManager.PERMISSION_GRANTED
+        }
+    }
+    DisposableEffect(Unit) {
+        try {
+            Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
+        } catch (_: Throwable) {}
+        onDispose {
+            try {
+                Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
+            } catch (_: Throwable) {}
+        }
+    }
     val adbCommand = remember { SecureSettingsManager.getPrimaryAdbCommand(context) }
 
     // Check root status on open
@@ -201,6 +222,75 @@ fun SecureSettingsAssistantDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 18.sp
                 )
+
+                if (isShizukuInstalled) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("shizuku_card")
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Bolt,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = str("secure_settings_shizuku_title"),
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                    Text(
+                                        text = if (isShizukuGranted) {
+                                            str("secure_settings_shizuku_granted")
+                                        } else {
+                                            str("secure_settings_shizuku_needed")
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isShizukuGranted) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.error
+                                        }
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Button(
+                                onClick = {
+                                    haptics.click()
+                                    if (isShizukuGranted) {
+                                        SecureSettingsManager.openShizukuApp(context)
+                                    } else {
+                                        ShizukuShell.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(44.dp)
+                                    .testTag("btn_shizuku_permission")
+                            ) {
+                                Text(
+                                    text = if (isShizukuGranted) {
+                                        str("secure_settings_shizuku_granted")
+                                    } else {
+                                        str("secure_settings_shizuku_grant")
+                                    },
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
