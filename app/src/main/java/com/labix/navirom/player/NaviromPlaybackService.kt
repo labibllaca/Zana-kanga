@@ -44,6 +44,7 @@ class NaviromPlaybackService : MediaBrowserService() {
     private var lastNotifiedTrackId: String? = null
     private var lastNotifiedIsPlaying: Boolean? = null
     private var lastNotifiedBitmap: Bitmap? = null
+    private var lastNotifiedAlarmActive: Boolean = false
     private var isForegroundService = false
         set(value) {
             field = value
@@ -697,6 +698,13 @@ class NaviromPlaybackService : MediaBrowserService() {
                     NaviromMediaButtonReceiver.handleMediaKeyEvent(this, keyEvent)
                 }
             }
+            ACTION_WAKE_ALARM -> {
+                val preferences = WakeAlarmPreferences(
+                    getSharedPreferences(WakeAlarmPreferences.PREFERENCES_NAME, Context.MODE_PRIVATE)
+                )
+                player.startWakeAlarm(preferences.loadSnapshot())
+            }
+            ACTION_ALARM_STOP -> player.stopWakeAlarm()
             ACTION_PLAY -> player.resume()
             ACTION_PAUSE -> player.pause()
             ACTION_TOGGLE_PLAY -> player.togglePlayPause()
@@ -793,18 +801,18 @@ class NaviromPlaybackService : MediaBrowserService() {
             } catch (_: Exception) {}
             cachedBitmap = null
             updateMediaSessionMetadata(track, state.durationMs, null)
-            showNotification(track, isActiveForeground, null)
+            showNotification(track, isActiveForeground, null, state.isWakeAlarmActive)
             serviceScope.launch(Dispatchers.IO) {
                 val bitmap = loadCoverArtBitmap(track.coverArtUrl)
                 cachedBitmap = bitmap
                 withContext(Dispatchers.Main) {
                     updateMediaSessionMetadata(track, state.durationMs, bitmap)
-                    showNotification(track, isActiveForeground, bitmap)
+                    showNotification(track, isActiveForeground, bitmap, state.isWakeAlarmActive)
                 }
             }
         } else {
             updateMediaSessionMetadata(track, state.durationMs, cachedBitmap)
-            showNotification(track, isActiveForeground, cachedBitmap)
+            showNotification(track, isActiveForeground, cachedBitmap, state.isWakeAlarmActive)
         }
     }
 
@@ -870,14 +878,20 @@ class NaviromPlaybackService : MediaBrowserService() {
         session.setMetadata(metadataBuilder.build())
     }
 
-    private fun showNotification(track: NaviromTrack, isPlaying: Boolean, coverBitmap: Bitmap?) {
+    private fun showNotification(
+        track: NaviromTrack,
+        isPlaying: Boolean,
+        coverBitmap: Bitmap?,
+        isWakeAlarmActive: Boolean = false
+    ) {
         val session = mediaSession ?: return
 
         // Skip rebuilding and reposting notification if identical to already visible state
         if (isForegroundService &&
             lastNotifiedTrackId == track.id &&
             lastNotifiedIsPlaying == isPlaying &&
-            lastNotifiedBitmap == coverBitmap
+            lastNotifiedBitmap == coverBitmap &&
+            lastNotifiedAlarmActive == isWakeAlarmActive
         ) {
             return
         }
@@ -885,6 +899,7 @@ class NaviromPlaybackService : MediaBrowserService() {
         lastNotifiedTrackId = track.id
         lastNotifiedIsPlaying = isPlaying
         lastNotifiedBitmap = coverBitmap
+        lastNotifiedAlarmActive = isWakeAlarmActive
 
         val contentIntent = PendingIntent.getActivity(
             this,
@@ -925,6 +940,13 @@ class NaviromPlaybackService : MediaBrowserService() {
                 action = "ACTION_CLOSE_APP"
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val alarmStopIntent = PendingIntent.getService(
+            this,
+            6,
+            Intent(this, NaviromPlaybackService::class.java).apply { action = ACTION_ALARM_STOP },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
@@ -979,6 +1001,18 @@ class NaviromPlaybackService : MediaBrowserService() {
                     exitAppActivityIntent
                 ).build()
             )
+
+        if (isWakeAlarmActive) {
+            notifBuilder.addAction(
+                Notification.Action.Builder(
+                    R.drawable.ic_notif_music,
+                    "Stop alarm",
+                    alarmStopIntent
+                ).build()
+            )
+        }
+
+        notifBuilder
             .setStyle(
                 Notification.MediaStyle()
                     .setMediaSession(session.sessionToken)
