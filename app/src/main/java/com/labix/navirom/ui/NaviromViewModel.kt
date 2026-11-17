@@ -18,6 +18,8 @@ import com.labix.navirom.data.model.*
 import com.labix.navirom.data.stats.ListeningStatsManager
 import com.labix.navirom.data.stats.ListeningStatsSummary
 import com.labix.navirom.player.AudioPlayerController
+import com.labix.navirom.player.WakeAlarmPreferences
+import com.labix.navirom.player.WakeAlarmScheduler
 import com.labix.navirom.player.wlan.*
 import com.labix.navirom.update.AppUpdateInfo
 import com.labix.navirom.update.UpdateManager
@@ -144,6 +146,16 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
         prefs.getBoolean("night_sleep_timer_enabled", false)
     )
     val isNightSleepTimerEnabled: StateFlow<Boolean> = _isNightSleepTimerEnabled.asStateFlow()
+
+    private val wakeAlarmPreferences = WakeAlarmPreferences(
+        application.getSharedPreferences(WakeAlarmPreferences.PREFERENCES_NAME, Context.MODE_PRIVATE)
+    )
+    private val _wakeAlarmEnabled = MutableStateFlow(wakeAlarmPreferences.enabled)
+    val wakeAlarmEnabled: StateFlow<Boolean> = _wakeAlarmEnabled.asStateFlow()
+    private val _wakeAlarmHour = MutableStateFlow(wakeAlarmPreferences.hour)
+    val wakeAlarmHour: StateFlow<Int> = _wakeAlarmHour.asStateFlow()
+    private val _wakeAlarmMinute = MutableStateFlow(wakeAlarmPreferences.minute)
+    val wakeAlarmMinute: StateFlow<Int> = _wakeAlarmMinute.asStateFlow()
 
     // Current navigation state
     private val _currentTab = MutableStateFlow(NaviromTab.LIBRARY)
@@ -2486,6 +2498,23 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
         _sleepTimerOptions.value = options
         playerController.updateSleepTimerOptions(options)
         SleepTimerOptionsPreferences.save(prefs, options)
+    }
+
+    fun setWakeAlarm(enabled: Boolean, hour: Int, minute: Int) {
+        _wakeAlarmEnabled.value = enabled
+        _wakeAlarmHour.value = hour
+        _wakeAlarmMinute.value = minute
+        wakeAlarmPreferences.hour = hour
+        wakeAlarmPreferences.minute = minute
+        val scheduler = WakeAlarmScheduler(getApplication())
+        if (enabled) scheduler.schedule(hour, minute) else scheduler.cancel()
+    }
+
+    fun canScheduleExactWakeAlarms(): Boolean = WakeAlarmScheduler(getApplication()).canScheduleExact()
+
+    fun stopWakeAlarm() {
+        playerController.stopWakeAlarm()
+        _wakeAlarmEnabled.value = false
     }
 
     fun playNext(track: NaviromTrack) {

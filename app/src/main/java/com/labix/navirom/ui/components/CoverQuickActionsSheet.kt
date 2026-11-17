@@ -56,6 +56,10 @@ fun CoverQuickActionsSheet(
     onOpenSleepTimerDialog: () -> Unit,
     onDownloadTrack: () -> Unit,
     onOpenLyrics: () -> Unit,
+    wakeAlarmEnabled: Boolean = false,
+    wakeAlarmHour: Int = 7,
+    wakeAlarmMinute: Int = 0,
+    onStopWakeAlarm: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val haptics = rememberNaviromHaptics()
@@ -422,6 +426,29 @@ fun CoverQuickActionsSheet(
                     }
 
                     // Link to advanced sleep timer options (BT/WiFi/Data)
+                    if (wakeAlarmEnabled) {
+                        Text(
+                            text = NaviromStrings.get("wake_alarm_armed_until", appLanguage)
+                                .format(wakeAlarmHour, wakeAlarmMinute),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    if (playbackState.isWakeAlarmActive && onStopWakeAlarm != null) {
+                        TextButton(
+                            onClick = {
+                                haptics.click()
+                                onStopWakeAlarm()
+                            },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Icon(Icons.Filled.Alarm, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(NaviromStrings.get("wake_alarm_stop", appLanguage))
+                        }
+                    }
+
                     TextButton(
                         onClick = {
                             haptics.click()

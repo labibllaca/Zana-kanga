@@ -164,6 +164,10 @@ fun NaviromApp(
     val isQueueSheetVisible by viewModel.isQueueSheetVisible.collectAsStateWithLifecycle()
     val sleepTimerOptions by viewModel.sleepTimerOptions.collectAsStateWithLifecycle()
     val isNightSleepTimerEnabled by viewModel.isNightSleepTimerEnabled.collectAsStateWithLifecycle()
+    val wakeAlarmEnabled by viewModel.wakeAlarmEnabled.collectAsStateWithLifecycle()
+    val wakeAlarmHour by viewModel.wakeAlarmHour.collectAsStateWithLifecycle()
+    val wakeAlarmMinute by viewModel.wakeAlarmMinute.collectAsStateWithLifecycle()
+    val canScheduleExactAlarms = remember { viewModel.canScheduleExactWakeAlarms() }
     val isDualAudioEnabled by viewModel.isDualAudioEnabled.collectAsStateWithLifecycle()
     val secondaryPlaybackState by viewModel.secondaryPlaybackState.collectAsStateWithLifecycle()
     val isDeckSyncEnabled by viewModel.isDeckSyncEnabled.collectAsStateWithLifecycle()
@@ -326,6 +330,12 @@ fun NaviromApp(
                                         isVinylEffectEnabled = isVinylEffectEnabled,
                                          sleepTimerOptions = sleepTimerOptions,
                                          isNightSleepTimerEnabled = isNightSleepTimerEnabled,
+                                        wakeAlarmEnabled = wakeAlarmEnabled,
+                                        wakeAlarmHour = wakeAlarmHour,
+                                        wakeAlarmMinute = wakeAlarmMinute,
+                                        canScheduleExactAlarms = canScheduleExactAlarms,
+                                        onSetWakeAlarm = { enabled, hour, minute -> viewModel.setWakeAlarm(enabled, hour, minute) },
+                                        onStopWakeAlarm = { viewModel.stopWakeAlarm() },
                                         isDualAudioEnabled = isDualAudioEnabled,
                                         secondaryPlaybackState = secondaryPlaybackState,
                                         isDeckSyncEnabled = isDeckSyncEnabled,

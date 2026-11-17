@@ -432,6 +432,14 @@ object NaviromStrings {
         "sleep_timer_disable_gps" to "Turn off GPS",
         "sleep_timer_disable_gps_desc" to "Turns off device location services",
         "sleep_timer_active_badge" to "Timer Active",
+        "wake_alarm" to "Wake alarm",
+        "wake_alarm_desc" to "Resume the paused song at this time with rising volume",
+        "wake_alarm_enable" to "Enable wake alarm",
+        "wake_alarm_time" to "Wake time",
+        "wake_alarm_armed_until" to "Alarm set for %02d:%02d",
+        "wake_alarm_exact_permission" to "Allow exact alarms in the system settings so the alarm starts on time",
+        "wake_alarm_stop" to "Stop alarm",
+        "wake_alarm_running" to "Wake alarm running",
         "permission_bluetooth_needed" to "Bluetooth permission is required to turn off Bluetooth devices",
 
         // Secure Settings & ADB Assistant
@@ -906,6 +914,14 @@ object NaviromStrings {
         "sleep_timer_disable_gps" to "Fik GPS-in",
         "sleep_timer_disable_gps_desc" to "Fik shërbimet e vendndodhjes së pajisjes",
         "sleep_timer_active_badge" to "Kohëmatësi aktiv",
+        "wake_alarm" to "Alarmi i zgjimit",
+        "wake_alarm_desc" to "Vazhdon këngën e ndaluar në këtë orë me volum në rritje",
+        "wake_alarm_enable" to "Aktivizo alarmin e zgjimit",
+        "wake_alarm_time" to "Ora e zgjimit",
+        "wake_alarm_armed_until" to "Alarmi u vendos për %02d:%02d",
+        "wake_alarm_exact_permission" to "Lejo alarmet e sakta në cilësimet e sistemit që alarmi të nisë në kohë",
+        "wake_alarm_stop" to "Ndale alarmin",
+        "wake_alarm_running" to "Alarmi i zgjimit po punon",
         "permission_bluetooth_needed" to "Kërkohet leja e Bluetooth për të shkëputur pajisjet Bluetooth",
 
         // Secure Settings & ADB Assistant
@@ -1381,6 +1397,14 @@ object NaviromStrings {
         "sleep_timer_disable_gps" to "GPS ausschalten",
         "sleep_timer_disable_gps_desc" to "Schaltet die Standortdienste des Geräts aus",
         "sleep_timer_active_badge" to "Timer aktiv",
+        "wake_alarm" to "Wecker",
+        "wake_alarm_desc" to "Setzt den pausierten Song zu dieser Zeit mit steigender Lautstärke fort",
+        "wake_alarm_enable" to "Wecker aktivieren",
+        "wake_alarm_time" to "Weckzeit",
+        "wake_alarm_armed_until" to "Wecker gestellt für %02d:%02d",
+        "wake_alarm_exact_permission" to "Erlaube exakte Alarme in den Systemeinstellungen, damit der Wecker pünktlich startet",
+        "wake_alarm_stop" to "Wecker stoppen",
+        "wake_alarm_running" to "Wecker läuft",
         "permission_bluetooth_needed" to "Bluetooth-Berechtigung ist erforderlich, um Bluetooth-Geräte auszuschalten",
 
         // Secure Settings & ADB Assistant
