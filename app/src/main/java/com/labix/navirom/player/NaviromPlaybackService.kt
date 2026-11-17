@@ -64,6 +64,8 @@ class NaviromPlaybackService : MediaBrowserService() {
         const val ACTION_SEEK = "com.labix.navirom.ACTION_SEEK"
         const val ACTION_STOP = "com.labix.navirom.ACTION_STOP"
         const val ACTION_CLOSE = "com.labix.navirom.ACTION_CLOSE"
+        const val ACTION_WAKE_ALARM = "com.labix.navirom.ACTION_WAKE_ALARM"
+        const val ACTION_ALARM_STOP = "com.labix.navirom.ACTION_ALARM_STOP"
         const val ACTION_UPDATE_STATE = "com.labix.navirom.ACTION_UPDATE_STATE"
         const val EXTRA_SEEK_POSITION = "extra_seek_position"
 
