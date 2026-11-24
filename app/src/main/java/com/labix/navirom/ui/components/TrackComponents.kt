@@ -46,6 +46,7 @@ import com.labix.navirom.data.model.NaviromPlaylist
 import com.labix.navirom.data.model.NaviromTrack
 import com.labix.navirom.ui.util.rememberNaviromHaptics
 import com.labix.ui.theme.*
+import kotlinx.coroutines.delay
 
 data class DualAudioContext(
     val isDualAudioEnabled: Boolean = false,
@@ -55,6 +56,38 @@ data class DualAudioContext(
 )
 
 val LocalDualAudioContext = staticCompositionLocalOf { DualAudioContext() }
+
+/**
+ * Small rightward "wave" used when multi-select starts. The item that was long-pressed
+ * moves first, then neighbouring items follow after a short, distance-based delay.
+ * Only transform is animated, and the wave is skipped when system animations are off.
+ */
+@Composable
+private fun rememberSelectionRipple(
+    rippleTrigger: Long,
+    rippleOriginIndex: Int,
+    itemIndex: Int,
+    rippleVisible: Boolean
+): Animatable<Float, AnimationVector1D> {
+    val offset = remember { Animatable(0f) }
+    val context = LocalContext.current
+    LaunchedEffect(rippleTrigger) {
+        if (rippleTrigger == 0L || rippleOriginIndex < 0 || itemIndex < 0 || !rippleVisible) return@LaunchedEffect
+        val motionScale = android.provider.Settings.Global.getFloat(
+            context.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f
+        )
+        if (motionScale == 0f) return@LaunchedEffect
+
+        val distance = kotlin.math.abs(itemIndex - rippleOriginIndex)
+        delay((distance * 250L * motionScale).toLong())
+        val shift = if (distance == 0) 13f else 8f
+        offset.animateTo(shift, spring(dampingRatio = 0.45f, stiffness = 320f))
+        offset.animateTo(0f, spring(dampingRatio = 0.75f, stiffness = 190f))
+    }
+    return offset
+}
 
 @Composable
 fun ActionButtonGroup(
@@ -310,13 +343,20 @@ fun TrackListItem(
     onAddToQueueBeginning: (() -> Unit)? = null,
     onAddToQueueEnd: (() -> Unit)? = null,
     trackList: List<NaviromTrack>? = null,
+    onLongClick: (() -> Unit)? = null,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    rippleTrigger: Long = 0L,
+    rippleOriginIndex: Int = -1,
+    itemIndex: Int = -1,
+    rippleVisible: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val haptics = rememberNaviromHaptics()
     val context = LocalContext.current
 
-    if (enableSwipeToQueue) {
+    if (enableSwipeToQueue && !isSelectionMode) {
         val dismissState = rememberSwipeToDismissBoxState(
             confirmValueChange = { dismissValue ->
                 if (dismissValue == SwipeToDismissBoxValue.StartToEnd) {
@@ -387,6 +427,13 @@ fun TrackListItem(
                 onAddToQueueBeginning = onAddToQueueBeginning,
                 onAddToQueueEnd = onAddToQueueEnd,
                 trackList = trackList,
+                onLongClick = onLongClick,
+                isSelectionMode = isSelectionMode,
+                isSelected = isSelected,
+                rippleTrigger = rippleTrigger,
+                rippleOriginIndex = rippleOriginIndex,
+                itemIndex = itemIndex,
+                rippleVisible = rippleVisible,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -410,6 +457,13 @@ fun TrackListItem(
             onAddToQueueBeginning = onAddToQueueBeginning,
             onAddToQueueEnd = onAddToQueueEnd,
             trackList = trackList,
+            onLongClick = onLongClick,
+            isSelectionMode = isSelectionMode,
+            isSelected = isSelected,
+            rippleTrigger = rippleTrigger,
+            rippleOriginIndex = rippleOriginIndex,
+            itemIndex = itemIndex,
+            rippleVisible = rippleVisible,
             modifier = modifier
         )
     }
@@ -436,11 +490,24 @@ private fun TrackListItemContent(
     onAddToQueueBeginning: (() -> Unit)? = null,
     onAddToQueueEnd: (() -> Unit)? = null,
     trackList: List<NaviromTrack>? = null,
+    onLongClick: (() -> Unit)? = null,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    rippleTrigger: Long = 0L,
+    rippleOriginIndex: Int = -1,
+    itemIndex: Int = -1,
+    rippleVisible: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val haptics = rememberNaviromHaptics()
     val dualAudioContext = LocalDualAudioContext.current
+    val rippleOffset = rememberSelectionRipple(rippleTrigger, rippleOriginIndex, itemIndex, rippleVisible)
+    val badgeScale by animateFloatAsState(
+        targetValue = if (isSelected) 1f else 0.6f,
+        animationSpec = spring(dampingRatio = 0.45f, stiffness = 320f),
+        label = "selectionBadgeScale"
+    )
     var showQueueOptionDialog by remember { mutableStateOf(false) }
 
     val handleBeginning = {
@@ -630,6 +697,7 @@ private fun TrackListItemContent(
             .graphicsLayer {
                 scaleX = itemScale
                 scaleY = itemScale
+                translationX = rippleOffset.value
             }
             .clip(RoundedCornerShape(20.dp))
             .combinedClickable(
@@ -638,25 +706,37 @@ private fun TrackListItemContent(
                 onClick = { onTrackClick() },
                 onLongClick = {
                     haptics.longPress()
-                    showQueueOptionDialog = true
+                    if (onLongClick != null) {
+                        onLongClick()
+                    } else {
+                        showQueueOptionDialog = true
+                    }
                 }
             )
             .animateContentSize()
             .testTag("track_item_${track.id}"),
         shape = RoundedCornerShape(20.dp),
-        color = if (isCurrentTrack) {
-            if (isDark) Color(0xFF18181A) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-        } else {
-            if (isDark) Color(0xFF0A0A0A) else MaterialTheme.colorScheme.surface
+        color = when {
+            isSelected -> MaterialTheme.colorScheme.primaryContainer
+            isCurrentTrack -> {
+                if (isDark) Color(0xFF18181A) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+            }
+            else -> {
+                if (isDark) Color(0xFF0A0A0A) else MaterialTheme.colorScheme.surface
+            }
         },
         tonalElevation = 0.dp,
-        shadowElevation = if (isDark) 0.dp else (if (isCurrentTrack) 3.dp else 1.dp),
+        shadowElevation = if (isDark) 0.dp else (if (isCurrentTrack || isSelected) 3.dp else 1.dp),
         border = BorderStroke(
-            width = 1.dp,
-            color = if (isCurrentTrack) {
-                if (isDark) Color.White else MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
-            } else {
-                if (isDark) Color(0xFF222222) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+            width = if (isSelected) 2.dp else 1.dp,
+            color = when {
+                isSelected -> MaterialTheme.colorScheme.primary
+                isCurrentTrack -> {
+                    if (isDark) Color.White else MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                }
+                else -> {
+                    if (isDark) Color(0xFF222222) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                }
             }
         )
     ) {
@@ -678,6 +758,20 @@ private fun TrackListItemContent(
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+            // Multi-select indicator
+            if (isSelectionMode) {
+                Icon(
+                    imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
+                    contentDescription = if (isSelected) "Selected" else "Not selected",
+                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .graphicsLayer { scaleX = badgeScale; scaleY = badgeScale }
+                        .testTag("track_select_${track.id}")
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+
             // Track index or playing indicator
             if (trackIndex != null && !showCoverArt) {
                 Box(
@@ -881,14 +975,29 @@ private fun TrackListItemContent(
 }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AlbumCard(
     album: NaviromAlbum,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    rippleTrigger: Long = 0L,
+    rippleOriginIndex: Int = -1,
+    itemIndex: Int = -1,
+    rippleVisible: Boolean = false
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val haptics = rememberNaviromHaptics()
+    val rippleOffset = rememberSelectionRipple(rippleTrigger, rippleOriginIndex, itemIndex, rippleVisible)
+    val badgeScale by animateFloatAsState(
+        targetValue = if (isSelected) 1f else 0.6f,
+        animationSpec = spring(dampingRatio = 0.45f, stiffness = 320f),
+        label = "albumBadgeScale"
+    )
     val cardScale by animateFloatAsState(
         targetValue = if (isPressed) 0.965f else 1.0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
@@ -903,14 +1012,38 @@ fun AlbumCard(
             .graphicsLayer {
                 scaleX = cardScale
                 scaleY = cardScale
+                translationX = rippleOffset.value
             }
             .clip(RoundedCornerShape(20.dp))
-            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = { onClick() },
+                onLongClick = onLongClick?.let {
+                    {
+                        haptics.longPress()
+                        it()
+                    }
+                }
+            )
             .testTag("album_card_${album.id}"),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF0D0D0D) else MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(
+            containerColor = when {
+                isSelected -> MaterialTheme.colorScheme.primaryContainer
+                isDark -> Color(0xFF0D0D0D)
+                else -> MaterialTheme.colorScheme.surface
+            }
+        ),
         elevation = if (isDark) CardDefaults.cardElevation(0.dp, 0.dp) else CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 1.dp),
-        border = BorderStroke(1.dp, if (isDark) Color(0xFF262626) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+        border = BorderStroke(
+            width = if (isSelected) 2.dp else 1.dp,
+            color = when {
+                isSelected -> MaterialTheme.colorScheme.primary
+                isDark -> Color(0xFF262626)
+                else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+            }
+        )
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
             // Album Artwork Aspect 1:1
@@ -928,6 +1061,26 @@ fun AlbumCard(
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxSize()
                 )
+
+                if (isSelectionMode) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp),
+                        shape = CircleShape,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.55f)
+                    ) {
+                        Icon(
+                            imageVector = if (isSelected) Icons.Filled.Check else Icons.Outlined.Circle,
+                            contentDescription = if (isSelected) "Selected" else "Not selected",
+                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.White,
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .size(16.dp)
+                                .graphicsLayer { scaleX = badgeScale; scaleY = badgeScale }
+                        )
+                    }
+                }
 
                 if (album.year != null) {
                     Surface(
@@ -972,14 +1125,29 @@ fun AlbumCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArtistCard(
     artist: NaviromArtist,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    rippleTrigger: Long = 0L,
+    rippleOriginIndex: Int = -1,
+    itemIndex: Int = -1,
+    rippleVisible: Boolean = false
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val haptics = rememberNaviromHaptics()
+    val rippleOffset = rememberSelectionRipple(rippleTrigger, rippleOriginIndex, itemIndex, rippleVisible)
+    val badgeScale by animateFloatAsState(
+        targetValue = if (isSelected) 1f else 0.6f,
+        animationSpec = spring(dampingRatio = 0.45f, stiffness = 320f),
+        label = "artistBadgeScale"
+    )
     val cardScale by animateFloatAsState(
         targetValue = if (isPressed) 0.965f else 1.0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
@@ -994,14 +1162,38 @@ fun ArtistCard(
             .graphicsLayer {
                 scaleX = cardScale
                 scaleY = cardScale
+                translationX = rippleOffset.value
             }
             .clip(RoundedCornerShape(20.dp))
-            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = { onClick() },
+                onLongClick = onLongClick?.let {
+                    {
+                        haptics.longPress()
+                        it()
+                    }
+                }
+            )
             .testTag("artist_card_${artist.id}"),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF0D0D0D) else MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(
+            containerColor = when {
+                isSelected -> MaterialTheme.colorScheme.primaryContainer
+                isDark -> Color(0xFF0D0D0D)
+                else -> MaterialTheme.colorScheme.surface
+            }
+        ),
         elevation = if (isDark) CardDefaults.cardElevation(0.dp, 0.dp) else CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 1.dp),
-        border = BorderStroke(1.dp, if (isDark) Color(0xFF262626) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+        border = BorderStroke(
+            width = if (isSelected) 2.dp else 1.dp,
+            color = when {
+                isSelected -> MaterialTheme.colorScheme.primary
+                isDark -> Color(0xFF262626)
+                else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+            }
+        )
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -1028,6 +1220,24 @@ fun ArtistCard(
                         tint = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.size(40.dp)
                     )
+                }
+
+                if (isSelectionMode) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopEnd),
+                        shape = CircleShape,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.65f)
+                    ) {
+                        Icon(
+                            imageVector = if (isSelected) Icons.Filled.Check else Icons.Outlined.Circle,
+                            contentDescription = if (isSelected) "Selected" else "Not selected",
+                            tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.White,
+                            modifier = Modifier
+                                .padding(3.dp)
+                                .size(16.dp)
+                                .graphicsLayer { scaleX = badgeScale; scaleY = badgeScale }
+                        )
+                    }
                 }
             }
 

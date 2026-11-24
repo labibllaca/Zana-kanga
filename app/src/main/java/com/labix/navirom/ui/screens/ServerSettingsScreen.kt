@@ -829,7 +829,7 @@ fun ServerSettingsScreen(
             allDiscoveredLocalFolders.filter { it.trackCount > 0 && it.tracks.isNotEmpty() }
         }
         if (localMusicFolders.isNotEmpty()) {
-            var isLocalFoldersExpanded by remember { mutableStateOf(true) }
+            var isLocalFoldersExpanded by remember { mutableStateOf(false) }
             val enabledLocalFolderCount = localMusicFolders.count { !disabledLocalFolderIds.contains(it.id) }
 
             Card(

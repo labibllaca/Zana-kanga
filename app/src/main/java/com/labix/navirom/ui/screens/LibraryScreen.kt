@@ -13,10 +13,16 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.navigationBarsPadding
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -138,6 +144,9 @@ fun LibraryScreen(
     onSmartShuffle: ((List<NaviromTrack>?) -> Unit)? = null,
     onPlayTracksNext: ((List<NaviromTrack>) -> Unit)? = null,
     onAddTracksToQueue: ((List<NaviromTrack>) -> Unit)? = null,
+    onAddAlbumsToQueue: ((List<String>, (Int) -> Unit) -> Unit)? = null,
+    onAddArtistsToQueue: ((List<String>, (Int) -> Unit) -> Unit)? = null,
+    miniPlayerVisible: Boolean = false,
     onDownloadTracks: (List<NaviromTrack>) -> Unit,
     onToggleFavorite: (String) -> Unit,
     onDownloadTrack: (NaviromTrack) -> Unit,
@@ -196,6 +205,73 @@ fun LibraryScreen(
     var showFolderSwitcherDialog by remember { mutableStateOf(false) }
     var librarySearchQuery by remember { mutableStateOf("") }
     var sourceFilter by remember { mutableStateOf(LibrarySourceFilter.ALL) }
+
+    // Hoisted above the album/artist detail branches so the scroll position of the
+    // library lists survives opening a detail view and coming back.
+    val overviewListState = rememberLazyListState()
+    val newestListState = rememberLazyListState()
+    val albumsGridState = rememberLazyGridState()
+    val artistsGridState = rememberLazyGridState()
+    val songsListState = rememberLazyListState()
+
+    // Long-press multi-select state. Albums, songs and artists have independent
+    // selections; all are cleared when switching sub-tabs or on back.
+    var isAlbumSelectionMode by remember { mutableStateOf(false) }
+    var selectedAlbumIds by remember { mutableStateOf(emptySet<String>()) }
+    var isSongSelectionMode by remember { mutableStateOf(false) }
+    var selectedSongIds by remember { mutableStateOf(emptySet<String>()) }
+    var isArtistSelectionMode by remember { mutableStateOf(false) }
+    var selectedArtistIds by remember { mutableStateOf(emptySet<String>()) }
+
+    // One-shot "wave" when selection starts: only the items that are on screen at
+    // that moment are allowed to animate, capturing their keys once so scrolling
+    // afterwards doesn't trigger late waves.
+    var rippleTrigger by remember { mutableStateOf(0L) }
+    var rippleOriginIndex by remember { mutableStateOf(-1) }
+    var rippleVisibleIds by remember { mutableStateOf(emptySet<String>()) }
+
+    fun resetRipple() {
+        rippleTrigger = 0L
+        rippleOriginIndex = -1
+        rippleVisibleIds = emptySet()
+    }
+
+    fun clearArtistSelection() {
+        isArtistSelectionMode = false
+        selectedArtistIds = emptySet()
+        resetRipple()
+    }
+
+    fun clearAlbumSelection() {
+        isAlbumSelectionMode = false
+        selectedAlbumIds = emptySet()
+        resetRipple()
+    }
+
+    fun clearSongSelection() {
+        isSongSelectionMode = false
+        selectedSongIds = emptySet()
+        resetRipple()
+    }
+
+    LaunchedEffect(rippleTrigger) {
+        if (rippleTrigger != 0L) {
+            delay(4400)
+            resetRipple()
+        }
+    }
+
+    LaunchedEffect(subTab) {
+        clearAlbumSelection()
+        clearSongSelection()
+        clearArtistSelection()
+    }
+
+    BackHandler(enabled = isAlbumSelectionMode || isSongSelectionMode || isArtistSelectionMode) {
+        clearAlbumSelection()
+        clearSongSelection()
+        clearArtistSelection()
+    }
 
     // If an album is selected, show the Album Detail view (placed before artist detail view to allow navigating from artist -> album)
     if (selectedAlbumId != null) {
@@ -546,6 +622,7 @@ fun LibraryScreen(
                     val overviewRecentTracks = scopeSongs(recentlyPlayedTracks)
 
                     LazyColumn(
+                        state = overviewListState,
                         contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp),
                         verticalArrangement = Arrangement.spacedBy(20.dp),
                         modifier = Modifier
@@ -1054,7 +1131,9 @@ fun LibraryScreen(
                             it.artist.contains(searchQuery, ignoreCase = true) ||
                             it.album.contains(searchQuery, ignoreCase = true)
                     }
+                    Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
+                        state = songsListState,
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 80.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         modifier = Modifier
@@ -1222,7 +1301,7 @@ fun LibraryScreen(
                         }
 
                         // Songs list items
-                        items(effectiveSongs, key = { it.id }) { track ->
+                        itemsIndexed(effectiveSongs, key = { _, track -> track.id }) { index, track ->
                             TrackListItem(
                                 track = track,
                                 isPlaying = isPlaying,
@@ -1232,14 +1311,64 @@ fun LibraryScreen(
                                 isFavorite = favoriteIds.contains(track.id),
                                 showCoverArt = true,
                                 trackList = effectiveSongs,
-                                onTrackClick = { onTrackClick(track, effectiveSongs) },
+                                onTrackClick = {
+                                    if (isSongSelectionMode) {
+                                        selectedSongIds = if (track.id in selectedSongIds) {
+                                            selectedSongIds - track.id
+                                        } else {
+                                            selectedSongIds + track.id
+                                        }
+                                        if (selectedSongIds.isEmpty()) clearSongSelection()
+                                    } else {
+                                        onTrackClick(track, effectiveSongs)
+                                    }
+                                },
                                 onToggleFavorite = { onToggleFavorite(track.id) },
                                 onDownloadClick = { onDownloadTrack(track) },
                                 onPlayNext = { onPlayNext(track) },
                                 onAddToQueue = { onAddToQueue(track) },
+                                onLongClick = {
+                                    if (!isSongSelectionMode) {
+                                        isSongSelectionMode = true
+                                        selectedSongIds = setOf(track.id)
+                                        rippleVisibleIds = songsListState.layoutInfo.visibleItemsInfo
+                                            .map { it.key.toString() }.toSet()
+                                        rippleOriginIndex = index
+                                        rippleTrigger += 1
+                                    }
+                                },
+                                isSelectionMode = isSongSelectionMode,
+                                isSelected = track.id in selectedSongIds,
+                                rippleTrigger = rippleTrigger,
+                                rippleOriginIndex = rippleOriginIndex,
+                                itemIndex = index,
+                                rippleVisible = track.id in rippleVisibleIds,
                                 modifier = Modifier.padding(vertical = 2.dp)
                             )
                         }
+                    }
+
+                    if (isSongSelectionMode) {
+                        SelectionActionBar(
+                            count = selectedSongIds.size,
+                            allSelected = effectiveSongs.isNotEmpty() && selectedSongIds.containsAll(effectiveSongs.map { it.id }),
+                            onCancel = { clearSongSelection() },
+                            onSelectAll = { selectedSongIds = effectiveSongs.map { it.id }.toSet() },
+                            onAdd = {
+                                val tracks = effectiveSongs.filter { it.id in selectedSongIds }
+                                onAddTracksToQueue?.invoke(tracks)
+                                android.widget.Toast.makeText(
+                                    context,
+                                    String.format(str("toast_added_queue"), tracks.size),
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                                clearSongSelection()
+                            },
+                            str = ::str,
+                            miniPlayerVisible = miniPlayerVisible,
+                            modifier = Modifier.align(Alignment.BottomCenter)
+                        )
+                    }
                     }
                 }
                 LibrarySubTab.LIBRARIES -> {
@@ -1833,6 +1962,7 @@ fun LibraryScreen(
                 val effectiveNewTracks = scopeSongs(if (newestTracks.isNotEmpty()) newestTracks else quickMixTracks.take(20))
 
                 LazyColumn(
+                    state = newestListState,
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxSize().testTag("newly_added_list")
@@ -1998,36 +2128,144 @@ fun LibraryScreen(
             }
 
             LibrarySubTab.ALBUMS -> {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 160.dp),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(filteredAlbums, key = { it.id }) { album ->
-                        AlbumCard(
-                            album = album,
-                            onClick = { onSelectAlbum(album.id) }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 160.dp),
+                        state = albumsGridState,
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        itemsIndexed(filteredAlbums, key = { _, album -> album.id }) { index, album ->
+                            AlbumCard(
+                                album = album,
+                                onClick = {
+                                    if (isAlbumSelectionMode) {
+                                        selectedAlbumIds = if (album.id in selectedAlbumIds) {
+                                            selectedAlbumIds - album.id
+                                        } else {
+                                            selectedAlbumIds + album.id
+                                        }
+                                        if (selectedAlbumIds.isEmpty()) clearAlbumSelection()
+                                    } else {
+                                        onSelectAlbum(album.id)
+                                    }
+                                },
+                                onLongClick = {
+                                    if (!isAlbumSelectionMode) {
+                                        isAlbumSelectionMode = true
+                                        selectedAlbumIds = setOf(album.id)
+                                        rippleVisibleIds = albumsGridState.layoutInfo.visibleItemsInfo
+                                            .map { it.key.toString() }.toSet()
+                                        rippleOriginIndex = index
+                                        rippleTrigger += 1
+                                    }
+                                },
+                                isSelectionMode = isAlbumSelectionMode,
+                                isSelected = album.id in selectedAlbumIds,
+                                rippleTrigger = rippleTrigger,
+                                rippleOriginIndex = rippleOriginIndex,
+                                itemIndex = index,
+                                rippleVisible = album.id in rippleVisibleIds
+                            )
+                        }
+                    }
+
+                    if (isAlbumSelectionMode) {
+                        SelectionActionBar(
+                            count = selectedAlbumIds.size,
+                            allSelected = filteredAlbums.isNotEmpty() && selectedAlbumIds.containsAll(filteredAlbums.map { it.id }),
+                            onCancel = { clearAlbumSelection() },
+                            onSelectAll = { selectedAlbumIds = filteredAlbums.map { it.id }.toSet() },
+                            onAdd = {
+                                val ids = selectedAlbumIds.toList()
+                                onAddAlbumsToQueue?.invoke(ids) { added ->
+                                    if (added > 0) {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            String.format(str("toast_added_queue"), added),
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                                clearAlbumSelection()
+                            },
+                            str = ::str,
+                            miniPlayerVisible = miniPlayerVisible,
+                            modifier = Modifier.align(Alignment.BottomCenter)
                         )
                     }
                 }
             }
 
             LibrarySubTab.ARTISTS -> {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 140.dp),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(filteredArtists, key = { it.id }) { artist ->
-                        ArtistCard(
-                            artist = artist,
-                            onClick = {
-                                onSelectArtist(artist.id)
-                            }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 140.dp),
+                        state = artistsGridState,
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        itemsIndexed(filteredArtists, key = { _, artist -> artist.id }) { index, artist ->
+                            ArtistCard(
+                                artist = artist,
+                                onClick = {
+                                    if (isArtistSelectionMode) {
+                                        selectedArtistIds = if (artist.id in selectedArtistIds) {
+                                            selectedArtistIds - artist.id
+                                        } else {
+                                            selectedArtistIds + artist.id
+                                        }
+                                        if (selectedArtistIds.isEmpty()) clearArtistSelection()
+                                    } else {
+                                        onSelectArtist(artist.id)
+                                    }
+                                },
+                                onLongClick = {
+                                    if (!isArtistSelectionMode) {
+                                        isArtistSelectionMode = true
+                                        selectedArtistIds = setOf(artist.id)
+                                        rippleVisibleIds = artistsGridState.layoutInfo.visibleItemsInfo
+                                            .map { it.key.toString() }.toSet()
+                                        rippleOriginIndex = index
+                                        rippleTrigger += 1
+                                    }
+                                },
+                                isSelectionMode = isArtistSelectionMode,
+                                isSelected = artist.id in selectedArtistIds,
+                                rippleTrigger = rippleTrigger,
+                                rippleOriginIndex = rippleOriginIndex,
+                                itemIndex = index,
+                                rippleVisible = artist.id in rippleVisibleIds
+                            )
+                        }
+                    }
+
+                    if (isArtistSelectionMode) {
+                        SelectionActionBar(
+                            count = selectedArtistIds.size,
+                            allSelected = filteredArtists.isNotEmpty() && selectedArtistIds.containsAll(filteredArtists.map { it.id }),
+                            onCancel = { clearArtistSelection() },
+                            onSelectAll = { selectedArtistIds = filteredArtists.map { it.id }.toSet() },
+                            onAdd = {
+                                val ids = selectedArtistIds.toList()
+                                onAddArtistsToQueue?.invoke(ids) { added ->
+                                    if (added > 0) {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            String.format(str("toast_added_queue"), added),
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                                clearArtistSelection()
+                            },
+                            str = ::str,
+                            miniPlayerVisible = miniPlayerVisible,
+                            modifier = Modifier.align(Alignment.BottomCenter)
                         )
                     }
                 }
@@ -2645,6 +2883,76 @@ private fun EditorialSubTabItem(
                 .width(28.dp)
                 .background(if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent)
         )
+    }
+}
+
+/** Bottom action bar shown while long-press multi-select is active in Albums or Songs. */
+@Composable
+private fun SelectionActionBar(
+    count: Int,
+    allSelected: Boolean,
+    onCancel: () -> Unit,
+    onSelectAll: () -> Unit,
+    onAdd: () -> Unit,
+    str: (String) -> String,
+    miniPlayerVisible: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            // The persistent mini-player is drawn on top of the library content, so
+            // lift the action bar clear of it instead of hiding it underneath.
+            .then(if (miniPlayerVisible) Modifier.padding(bottom = 84.dp) else Modifier),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shadowElevation = 8.dp,
+        tonalElevation = 3.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onCancel) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = str("exit_dialog_cancel")
+                )
+            }
+            Text(
+                text = String.format(str("selection_count"), count),
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 4.dp)
+            )
+            IconButton(onClick = onSelectAll, enabled = !allSelected) {
+                Icon(
+                    imageVector = Icons.Filled.SelectAll,
+                    contentDescription = str("select_all_libraries"),
+                    tint = if (allSelected) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else MaterialTheme.colorScheme.primary
+                )
+            }
+            Button(
+                onClick = onAdd,
+                enabled = count > 0,
+                shape = RoundedCornerShape(14.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(str("add_to_queue"))
+            }
+        }
     }
 }
 

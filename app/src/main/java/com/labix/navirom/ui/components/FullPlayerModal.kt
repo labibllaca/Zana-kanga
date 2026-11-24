@@ -88,6 +88,10 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -116,6 +120,35 @@ import com.labix.ui.theme.*
 enum class PlayerViewMode {
     ARTWORK,
     LYRICS
+}
+
+/**
+ * Measures a composable wider than the incoming constraints and shifts it left, so a
+ * full-width row can draw beyond the parent's horizontal padding. The node itself
+ * keeps the parent's width so layout alignment is unaffected; only the drawing bleeds.
+ */
+@Composable
+private fun Modifier.bleedHorizontally(amount: Dp): Modifier {
+    val density = LocalDensity.current
+    return layout { measurable, constraints ->
+        val extra = with(density) { amount.toPx() }.toInt()
+        val childConstraints = constraints.copy(
+            maxWidth = if (constraints.maxWidth == Constraints.Infinity) {
+                Constraints.Infinity
+            } else {
+                constraints.maxWidth + extra * 2
+            }
+        )
+        val placeable = measurable.measure(childConstraints)
+        val width = if (constraints.maxWidth == Constraints.Infinity) {
+            (placeable.width - extra * 2).coerceAtLeast(0)
+        } else {
+            constraints.maxWidth
+        }
+        layout(width, placeable.height) {
+            placeable.placeRelative(-extra, 0)
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -2763,15 +2796,22 @@ fun FullPlayerModal(
                     Spacer(modifier = Modifier.weight(1f))
 
                     // Bottom Grouped & Scrollable Action Bar
+                    // Bleed past the player column's 24.dp side inset so the row spans
+                    // the full width of the player view; small spacers inside the
+                    // scroll content keep the first/last buttons off the edges.
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .bleedHorizontally(24.dp)
+                            .fillMaxWidth()
                             .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                            .padding(vertical = 14.dp)
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Spacer(modifier = Modifier.width(8.dp))
+
                         // Group 1: Lyrics Mic Button
                         Surface(
                             shape = CircleShape,
@@ -3022,6 +3062,8 @@ fun FullPlayerModal(
                                 Icon(Icons.Filled.QueueMusic, contentDescription = "Queue", tint = Color.White)
                             }
                         }
+
+                        Spacer(modifier = Modifier.width(8.dp))
                     }
                 }
             } else {

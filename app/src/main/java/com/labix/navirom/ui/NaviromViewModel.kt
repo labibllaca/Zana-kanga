@@ -2542,6 +2542,84 @@ class NaviromViewModel(application: Application) : AndroidViewModel(application)
         playerController.addTracksToQueue(tracks)
     }
 
+    /**
+     * Adds the songs of every selected album to the queue, in album order.
+     *
+     * Tracks already held in memory are used first (covers local folders and the
+     * loaded library); albums with no in-memory tracks are fetched from the server.
+     * [onAdded] reports how many tracks were actually queued.
+     */
+    fun addAlbumsToQueue(albumIds: List<String>, onAdded: ((Int) -> Unit)? = null) {
+        if (albumIds.isEmpty()) return
+        viewModelScope.launch {
+            val knownByAlbum = (_rawLibrarySongs.value + activeLocalTracks.value)
+                .filter { it.albumId in albumIds }
+                .groupBy { it.albumId }
+
+            val ordered = mutableListOf<NaviromTrack>()
+            for (albumId in albumIds) {
+                val inMemory = knownByAlbum[albumId].orEmpty()
+                val albumTracks = if (inMemory.isNotEmpty()) {
+                    TrackOrderingHelper.sortAlbumTracks(inMemory)
+                } else {
+                    subsonicClient.getAlbumDetails(albumId).getOrNull()
+                        ?.second
+                        ?.let { TrackOrderingHelper.sortAlbumTracks(it) }
+                        .orEmpty()
+                }
+                ordered += albumTracks
+            }
+
+            val tracks = ordered.distinctBy { it.id }
+            if (tracks.isNotEmpty()) {
+                playerController.addTracksToQueue(tracks)
+            }
+            onAdded?.invoke(tracks.size)
+        }
+    }
+
+    /**
+     * Adds the songs of every selected artist to the queue. In-memory library/local
+     * tracks are used when available; otherwise the artist's albums and their songs
+     * are fetched from the server (the same way artist detail views are loaded).
+     */
+    fun addArtistsToQueue(artistIds: List<String>, onAdded: ((Int) -> Unit)? = null) {
+        if (artistIds.isEmpty()) return
+        viewModelScope.launch {
+            val known = _rawLibrarySongs.value + activeLocalTracks.value
+            val collected = mutableListOf<NaviromTrack>()
+            val missing = mutableListOf<String>()
+
+            for (artistId in artistIds) {
+                val artistName = _artists.value.find { it.id == artistId }?.name
+                val matches = known.filter {
+                    it.artistId == artistId || (artistName != null && it.artist.equals(artistName, ignoreCase = true))
+                }
+                if (matches.isNotEmpty()) collected += matches else missing += artistId
+            }
+
+            if (missing.isNotEmpty()) {
+                val fetched = missing.map { artistId ->
+                    async(Dispatchers.IO) {
+                        val albums = subsonicClient.getArtistDetails(artistId).getOrNull()?.second.orEmpty()
+                        albums.map { album ->
+                            async(Dispatchers.IO) {
+                                subsonicClient.getAlbumDetails(album.id).getOrNull()?.second.orEmpty()
+                            }
+                        }.awaitAll().flatten()
+                    }
+                }.awaitAll()
+                fetched.forEach { collected += it }
+            }
+
+            val tracks = collected.distinctBy { it.id }
+            if (tracks.isNotEmpty()) {
+                playerController.addTracksToQueue(tracks)
+            }
+            onAdded?.invoke(tracks.size)
+        }
+    }
+
     fun playFolderNext(folderPath: String) {
         val tracksInFolder = getTracksUnderFolder(folderPath)
         if (tracksInFolder.isNotEmpty()) {

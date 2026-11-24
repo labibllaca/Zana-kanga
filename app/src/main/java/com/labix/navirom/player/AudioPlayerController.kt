@@ -1421,10 +1421,10 @@ class AudioPlayerController(
     fun playTrackList(tracks: List<NaviromTrack>, startIndex: Int = 0) {
         if (tracks.isEmpty()) return
         originalQueueList = tracks
-        _queue.value = if (_playbackState.value.isShuffle) tracks.shuffled() else tracks
-        persistQueueToRoom(_queue.value)
-        val safeIndex = startIndex.coerceIn(0, _queue.value.lastIndex)
-        _currentIndex.value = safeIndex
+        val start = resolvePlaybackStart(tracks, startIndex, _playbackState.value.isShuffle)
+        _queue.value = start.queue
+        persistQueueToRoom(start.queue)
+        _currentIndex.value = start.index
         playCurrentTrack()
     }
 
